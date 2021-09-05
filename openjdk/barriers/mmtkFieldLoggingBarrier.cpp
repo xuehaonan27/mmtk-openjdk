@@ -23,6 +23,26 @@ void MMTkFieldLoggingBarrierSetRuntime::record_arraycopy(arrayOop src_obj, size_
   ::mmtk_object_reference_arraycopy((MMTk_Mutator) &Thread::current()->third_party_heap_mutator, (void*) src_obj, src_offset_in_bytes, (void*) dst_obj, dst_offset_in_bytes, length);
 }
 
+
+
+void MMTkFieldLoggingBarrierSetRuntime::record_clone_slow(void* src, void* dst, size_t size) {
+  ::mmtk_object_reference_clone((MMTk_Mutator) &Thread::current()->third_party_heap_mutator, src, dst, size);
+}
+
+void MMTkFieldLoggingBarrierSetRuntime::record_clone(oop src, oop dst, size_t size) {
+#if MMTK_ENABLE_BARRIER_FASTPATH
+  intptr_t addr = (intptr_t) (void*) dst;
+  uint8_t* meta_addr = (uint8_t*) (SIDE_METADATA_BASE_ADDRESS + (addr >> 6));
+  intptr_t shift = (addr >> 3) & 0b111;
+  uint8_t byte_val = *meta_addr;
+  if (((byte_val >> shift) & 1) == 1) {
+    record_clone_slow((void*) src, (void*) dst, size);
+  }
+#else
+  record_clone_slow((void*) src, (void*) dst, size);
+#endif
+}
+
 #define __ masm->
 
 void MMTkFieldLoggingBarrierSetAssembler::oop_store_at(MacroAssembler* masm, DecoratorSet decorators, BasicType type, Address dst, Register val, Register tmp1, Register tmp2) {
@@ -204,5 +224,33 @@ void MMTkFieldLoggingBarrierSetC2::record_modified_node(GraphKit* kit, Node* src
 
   kit->final_sync(ideal); // Final sync IdealKit and GraphKit.
 }
+
+
+void MMTkFieldLoggingBarrierSetC2::record_clone(GraphKit* kit, Node* src, Node* dst, Node* size) const {
+  MMTkIdealKit ideal(kit, true);
+#if MMTK_ENABLE_BARRIER_FASTPATH
+  Node* no_base = __ top();
+  float unlikely  = PROB_UNLIKELY(0.999);
+
+  Node* zero  = __ ConI(0);
+  Node* addr = __ CastPX(__ ctrl(), src);
+  Node* meta_addr = __ AddP(no_base, __ ConP(SIDE_METADATA_BASE_ADDRESS), __ URShiftX(addr, __ ConI(6)));
+  Node* byte = __ load(__ ctrl(), meta_addr, TypeInt::INT, T_BYTE, Compile::AliasIdxRaw);
+  Node* shift = __ URShiftX(addr, __ ConI(3));
+  shift = __ AndI(__ ConvL2I(shift), __ ConI(7));
+  Node* result = __ AndI(__ URShiftI(byte, shift), __ ConI(1));
+
+  __ if_then(result, BoolTest::ne, zero, unlikely); {
+    const TypeFunc* tf = __ func_type(TypeOopPtr::BOTTOM, TypeOopPtr::BOTTOM, TypeInt::INT);
+    Node* x = __ make_leaf_call(tf, CAST_FROM_FN_PTR(address, MMTkObjectBarrierSetRuntime::record_clone_slow), "record_clone", src, dst, size);
+  } __ end_if();
+#else
+  const TypeFunc* tf = __ func_type(TypeOopPtr::BOTTOM, TypeOopPtr::BOTTOM, TypeInt::INT);
+  Node* x = __ make_leaf_call(tf, CAST_FROM_FN_PTR(address, MMTkFieldLoggingBarrierSetRuntime::record_clone_slow), "record_clone", src, dst, size);
+#endif
+
+  kit->final_sync(ideal); // Final sync IdealKit and GraphKit.
+}
+
 
 #undef __

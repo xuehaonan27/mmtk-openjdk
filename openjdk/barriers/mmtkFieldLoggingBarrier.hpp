@@ -19,6 +19,7 @@
 class MMTkFieldLoggingBarrierSetRuntime: public MMTkBarrierSetRuntime {
 public:
   static void record_modified_node_slow(void* src, void* slot, void* val);
+  static void record_clone_slow(void* src, void* dst, size_t size);
 
   virtual bool is_slow_path_call(address call) {
     return call == CAST_FROM_FN_PTR(address, record_modified_node_slow);
@@ -26,6 +27,7 @@ public:
 
   virtual void record_modified_node(oop src, ptrdiff_t offset, oop val);
   virtual void record_arraycopy(arrayOop src_obj, size_t src_offset_in_bytes, oop* src_raw, arrayOop dst_obj, size_t dst_offset_in_bytes, oop* dst_raw, size_t length);
+  virtual void record_clone(oop src, oop dst, size_t size);
 };
 
 class MMTkFieldLoggingBarrierSetC1;
@@ -150,6 +152,7 @@ public:
 
 class MMTkFieldLoggingBarrierSetC2: public MMTkBarrierSetC2 {
   void record_modified_node(GraphKit* kit, Node* node, Node* slot, Node* val) const;
+  void record_clone(GraphKit* kit, Node* src, Node* dst, Node* size) const;
 public:
   virtual Node* store_at_resolved(C2Access& access, C2AccessValue& val) const {
     if (access.is_oop()) record_modified_node(access.kit(), access.base(), access.addr().node(), val.node());
@@ -172,14 +175,13 @@ public:
     return result;
   }
   virtual void clone(GraphKit* kit, Node* src, Node* dst, Node* size, bool is_array) const {
+    record_clone(kit, src, dst, size);
     BarrierSetC2::clone(kit, src, dst, size, is_array);
-    // FIXME: This is required for generational barriers.
-    // record_modified_node(kit, dst, NULL, NULL);
   }
   virtual bool is_gc_barrier_node(Node* node) const {
     if (node->Opcode() != Op_CallLeaf) return false;
     CallLeafNode *call = node->as_CallLeaf();
-    return call->_name != NULL && strcmp(call->_name, "record_modified_node") == 0;
+    return call->_name != NULL && (strcmp(call->_name, "record_modified_node") == 0 || strcmp(call->_name, "record_clone") == 0);
   }
 };
 
