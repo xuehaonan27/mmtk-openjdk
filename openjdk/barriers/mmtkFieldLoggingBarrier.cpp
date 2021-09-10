@@ -1,17 +1,23 @@
 #include "mmtkFieldLoggingBarrier.hpp"
 #include "runtime/interfaceSupport.inline.hpp"
 
+int MMTkFieldLoggingBarrierSetRuntime::unlogged_value = 0;
+
 void MMTkFieldLoggingBarrierSetRuntime::record_modified_node_slow(void* src, void* slot, void* val) {
   ::mmtk_object_reference_write((MMTk_Mutator) &Thread::current()->third_party_heap_mutator, src, slot, val);
 }
 
+void MMTkFieldLoggingBarrierSetRuntime::record_clone_slow(void* src, void* dst, size_t size) {
+  ::mmtk_object_reference_clone((MMTk_Mutator) &Thread::current()->third_party_heap_mutator, src, dst, size);
+}
+
 void MMTkFieldLoggingBarrierSetRuntime::record_modified_node(oop src, ptrdiff_t offset, oop val) {
 #if MMTK_ENABLE_BARRIER_FASTPATH
-    intptr_t addr = (intptr_t) (void*) src;
+    intptr_t addr = ((intptr_t) (void*) src) + offset;
     uint8_t* meta_addr = (uint8_t*) (SIDE_METADATA_BASE_ADDRESS + (addr >> 6));
     intptr_t shift = (addr >> 3) & 0b111;
     uint8_t byte_val = *meta_addr;
-    if (((byte_val >> shift) & 1) == 0) {
+    if (((byte_val >> shift) & 1) == MMTkFieldLoggingBarrierSetRuntime::unlogged_value) {
       record_modified_node_slow((void*) src, (void*) (((intptr_t) (void*) src) + offset), (void*) val);
     }
 #else
@@ -19,17 +25,8 @@ void MMTkFieldLoggingBarrierSetRuntime::record_modified_node(oop src, ptrdiff_t 
 #endif
 }
 
-void MMTkFieldLoggingBarrierSetRuntime::record_arraycopy(arrayOop src_obj, size_t src_offset_in_bytes, oop* src_raw, arrayOop dst_obj, size_t dst_offset_in_bytes, oop* dst_raw, size_t length) {
-  ::mmtk_object_reference_arraycopy((MMTk_Mutator) &Thread::current()->third_party_heap_mutator, (void*) src_obj, src_offset_in_bytes, (void*) dst_obj, dst_offset_in_bytes, length);
-}
-
-
-
-void MMTkFieldLoggingBarrierSetRuntime::record_clone_slow(void* src, void* dst, size_t size) {
-  ::mmtk_object_reference_clone((MMTk_Mutator) &Thread::current()->third_party_heap_mutator, src, dst, size);
-}
-
 void MMTkFieldLoggingBarrierSetRuntime::record_clone(oop src, oop dst, size_t size) {
+  if (unlogged_value == 0) return;
 #if MMTK_ENABLE_BARRIER_FASTPATH
   intptr_t addr = (intptr_t) (void*) dst;
   uint8_t* meta_addr = (uint8_t*) (SIDE_METADATA_BASE_ADDRESS + (addr >> 6));
@@ -41,6 +38,10 @@ void MMTkFieldLoggingBarrierSetRuntime::record_clone(oop src, oop dst, size_t si
 #else
   record_clone_slow((void*) src, (void*) dst, size);
 #endif
+}
+
+void MMTkFieldLoggingBarrierSetRuntime::record_arraycopy(arrayOop src_obj, size_t src_offset_in_bytes, oop* src_raw, arrayOop dst_obj, size_t dst_offset_in_bytes, oop* dst_raw, size_t length) {
+  ::mmtk_object_reference_arraycopy((MMTk_Mutator) &Thread::current()->third_party_heap_mutator, (void*) src_obj, src_offset_in_bytes, (void*) dst_obj, dst_offset_in_bytes, length);
 }
 
 #define __ masm->
@@ -84,7 +85,7 @@ void MMTkFieldLoggingBarrierSetAssembler::record_modified_node(MacroAssembler* m
   __ movptr(rcx, tmp4);
   // if ((tmp5 & 1) == 1) goto slowpath;
   __ andptr(tmp5, 1);
-  __ cmpptr(tmp5, 0);
+  __ cmpptr(tmp5, MMTkFieldLoggingBarrierSetRuntime::unlogged_value);
   __ jcc(Assembler::notEqual, done);
 
   // TODO: Spill fewer registers
@@ -205,7 +206,7 @@ void MMTkFieldLoggingBarrierSetC2::record_modified_node(GraphKit* kit, Node* src
   Node* no_base = __ top();
   float unlikely  = PROB_UNLIKELY(0.999);
 
-  Node* zero  = __ ConI(0);
+  Node* unlogged_value  = __ ConI(MMTkFieldLoggingBarrierSetRuntime::unlogged_value);
   Node* addr = __ CastPX(__ ctrl(), slot);
   Node* meta_addr = __ AddP(no_base, __ ConP(SIDE_METADATA_BASE_ADDRESS), __ URShiftX(addr, __ ConI(6)));
   Node* byte = __ load(__ ctrl(), meta_addr, TypeInt::INT, T_BYTE, Compile::AliasIdxRaw);
@@ -213,7 +214,7 @@ void MMTkFieldLoggingBarrierSetC2::record_modified_node(GraphKit* kit, Node* src
   shift = __ AndI(__ ConvL2I(shift), __ ConI(7));
   Node* result = __ AndI(__ URShiftI(byte, shift), __ ConI(1));
 
-  __ if_then(result, BoolTest::eq, zero, unlikely); {
+  __ if_then(result, BoolTest::eq, unlogged_value, unlikely); {
     const TypeFunc* tf = __ func_type(TypeOopPtr::BOTTOM, TypeOopPtr::BOTTOM, TypeOopPtr::BOTTOM);
     Node* x = __ make_leaf_call(tf, CAST_FROM_FN_PTR(address, MMTkFieldLoggingBarrierSetRuntime::record_modified_node_slow), "record_modified_node", src, slot, val);
   } __ end_if();
@@ -225,14 +226,14 @@ void MMTkFieldLoggingBarrierSetC2::record_modified_node(GraphKit* kit, Node* src
   kit->final_sync(ideal); // Final sync IdealKit and GraphKit.
 }
 
-
 void MMTkFieldLoggingBarrierSetC2::record_clone(GraphKit* kit, Node* src, Node* dst, Node* size) const {
+  if (MMTkFieldLoggingBarrierSetRuntime::unlogged_value == 0) return;
   MMTkIdealKit ideal(kit, true);
 #if MMTK_ENABLE_BARRIER_FASTPATH
   Node* no_base = __ top();
   float unlikely  = PROB_UNLIKELY(0.999);
 
-  Node* zero  = __ ConI(0);
+  Node* unlogged_value  = __ ConI(MMTkFieldLoggingBarrierSetRuntime::unlogged_value);
   Node* addr = __ CastPX(__ ctrl(), src);
   Node* meta_addr = __ AddP(no_base, __ ConP(SIDE_METADATA_BASE_ADDRESS), __ URShiftX(addr, __ ConI(6)));
   Node* byte = __ load(__ ctrl(), meta_addr, TypeInt::INT, T_BYTE, Compile::AliasIdxRaw);
@@ -240,9 +241,9 @@ void MMTkFieldLoggingBarrierSetC2::record_clone(GraphKit* kit, Node* src, Node* 
   shift = __ AndI(__ ConvL2I(shift), __ ConI(7));
   Node* result = __ AndI(__ URShiftI(byte, shift), __ ConI(1));
 
-  __ if_then(result, BoolTest::ne, zero, unlikely); {
+  __ if_then(result, BoolTest::eq, unlogged_value, unlikely); {
     const TypeFunc* tf = __ func_type(TypeOopPtr::BOTTOM, TypeOopPtr::BOTTOM, TypeInt::INT);
-    Node* x = __ make_leaf_call(tf, CAST_FROM_FN_PTR(address, MMTkObjectBarrierSetRuntime::record_clone_slow), "record_clone", src, dst, size);
+    Node* x = __ make_leaf_call(tf, CAST_FROM_FN_PTR(address, MMTkFieldLoggingBarrierSetRuntime::record_clone_slow), "record_clone", src, dst, size);
   } __ end_if();
 #else
   const TypeFunc* tf = __ func_type(TypeOopPtr::BOTTOM, TypeOopPtr::BOTTOM, TypeInt::INT);
@@ -251,6 +252,5 @@ void MMTkFieldLoggingBarrierSetC2::record_clone(GraphKit* kit, Node* src, Node* 
 
   kit->final_sync(ideal); // Final sync IdealKit and GraphKit.
 }
-
 
 #undef __
