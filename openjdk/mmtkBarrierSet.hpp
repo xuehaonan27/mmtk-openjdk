@@ -204,8 +204,8 @@ public:
     }
 
     static void clone_in_heap(oop src, oop dst, size_t size) {
-      Raw::clone(src, dst, size);
       runtime()->record_clone(src, dst, size);
+      Raw::clone(src, dst, size);
     }
   };
 
