@@ -36,8 +36,8 @@
 #include "oops/oopsHierarchy.hpp"
 #include "utilities/fakeRttiSupport.hpp"
 
-#define MMTK_ENABLE_ALLOCATION_FASTPATH false
-#define MMTK_ENABLE_BARRIER_FASTPATH false
+#define MMTK_ENABLE_ALLOCATION_FASTPATH true
+#define MMTK_ENABLE_BARRIER_FASTPATH true
 
 const intptr_t SIDE_METADATA_BASE_ADDRESS = (intptr_t) GLOBAL_SIDE_METADATA_VM_BASE_ADDRESS;
 

@@ -1,7 +1,7 @@
 #include "mmtkFieldLoggingBarrier.hpp"
 #include "runtime/interfaceSupport.inline.hpp"
 
-int MMTkFieldLoggingBarrierSetRuntime::unlogged_value = 0;
+int MMTkFieldLoggingBarrierSetRuntime::unlogged_value = 1;
 
 void MMTkFieldLoggingBarrierSetRuntime::record_modified_node_slow(void* src, void* slot, void* val) {
   ::mmtk_object_reference_write((MMTk_Mutator) &Thread::current()->third_party_heap_mutator, src, slot, val);
@@ -26,7 +26,6 @@ void MMTkFieldLoggingBarrierSetRuntime::record_modified_node(oop src, ptrdiff_t 
 }
 
 void MMTkFieldLoggingBarrierSetRuntime::record_clone(oop src, oop dst, size_t size) {
-  // if (unlogged_value == 0) return;
 #if MMTK_ENABLE_BARRIER_FASTPATH
   intptr_t addr = (intptr_t) (void*) dst;
   uint8_t* meta_addr = (uint8_t*) (SIDE_METADATA_BASE_ADDRESS + (addr >> 6));
@@ -227,7 +226,6 @@ void MMTkFieldLoggingBarrierSetC2::record_modified_node(GraphKit* kit, Node* src
 }
 
 void MMTkFieldLoggingBarrierSetC2::record_clone(GraphKit* kit, Node* src, Node* dst, Node* size) const {
-  if (MMTkFieldLoggingBarrierSetRuntime::unlogged_value == 0) return;
   MMTkIdealKit ideal(kit, true);
 #if MMTK_ENABLE_BARRIER_FASTPATH
   Node* no_base = __ top();
