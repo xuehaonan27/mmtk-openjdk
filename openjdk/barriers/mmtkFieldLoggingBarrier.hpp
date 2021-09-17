@@ -18,8 +18,6 @@
 
 class MMTkFieldLoggingBarrierSetRuntime: public MMTkBarrierSetRuntime {
 public:
-  static int unlogged_value;
-
   static void record_modified_node_slow(void* src, void* slot, void* val);
   static void record_clone_slow(void* src, void* dst, size_t size);
 
