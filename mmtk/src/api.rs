@@ -273,7 +273,7 @@ pub extern "C" fn mmtk_object_reference_clone(
     mutator: &'static mut Mutator<OpenJDK>,
     src: ObjectReference,
     dst: ObjectReference,
-    size: usize,
+    _size: usize,
 ) {
     mutator.object_reference_clone(src, dst);
 }
