@@ -41,6 +41,8 @@
 
 const intptr_t SIDE_METADATA_BASE_ADDRESS = (intptr_t) GLOBAL_SIDE_METADATA_VM_BASE_ADDRESS;
 
+const intptr_t ALLOC_BIT_BASE_ADDRESS = GLOBAL_ALLOC_BIT_ADDRESS;
+
 class MMTkBarrierSetRuntime: public CHeapObj<mtGC> {
 public:
   virtual void record_modified_node(oop src, ptrdiff_t offset, oop val) {};
