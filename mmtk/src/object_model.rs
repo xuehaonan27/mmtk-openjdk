@@ -1,6 +1,7 @@
 use std::sync::atomic::Ordering;
 
 use super::UPCALLS;
+use crate::abi::Oop;
 use crate::{vm_metadata, OpenJDK};
 use mmtk::util::metadata::header_metadata::HeaderMetadataSpec;
 use mmtk::util::{Address, ObjectReference};
@@ -89,7 +90,7 @@ impl ObjectModel<OpenJDK> for VMObjectModel {
         allocator: AllocationSemantics,
         copy_context: &mut impl CopyContext,
     ) -> ObjectReference {
-        let bytes = unsafe { ((*UPCALLS).get_object_size)(from) };
+        let bytes = unsafe { Oop::from(from).size() };
         let dst =
             copy_context.alloc_copy(from, bytes, ::std::mem::size_of::<usize>(), 0, allocator);
         // Copy
@@ -111,7 +112,7 @@ impl ObjectModel<OpenJDK> for VMObjectModel {
     }
 
     fn get_current_size(object: ObjectReference) -> usize {
-        unsafe { ((*UPCALLS).get_object_size)(object) }
+        unsafe { Oop::from(object).size() }
     }
 
     fn get_type_descriptor(_reference: ObjectReference) -> &'static [i8] {

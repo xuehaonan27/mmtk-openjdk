@@ -4,6 +4,8 @@
 #![feature(box_syntax)]
 #![feature(vec_into_raw_parts)]
 #![feature(once_cell)]
+#![feature(const_raw_ptr_deref)]
+#![feature(const_trait_impl)]
 
 extern crate libc;
 extern crate mmtk;
