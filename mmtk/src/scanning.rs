@@ -19,11 +19,16 @@ pub(crate) extern "C" fn create_process_edges_work<W: ProcessEdgesWork<VM = Open
 ) -> NewBuffer {
     if !ptr.is_null() {
         let buf = unsafe { Vec::<Address>::from_raw_parts(ptr, length, capacity) };
-        memory_manager::add_work_packet(
-            &SINGLETON,
-            WorkBucketStage::ForwardRoots,
-            W::new(buf, true, &SINGLETON),
-        );
+        let w = W::new(buf, true, &SINGLETON);
+        if W::RC_ROOTS {
+            crate::current_worker().add_work(WorkBucketStage::Unconstrained, w);
+        } else {
+            memory_manager::add_work_packet(
+                &SINGLETON,
+                WorkBucketStage::ProcessRoots,
+                w,
+            );
+        }
     }
     let (ptr, _, capacity) = Vec::with_capacity(W::CAPACITY).into_raw_parts();
     NewBuffer { ptr, capacity }

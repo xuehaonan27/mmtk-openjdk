@@ -6,6 +6,7 @@
 #![feature(once_cell)]
 #![feature(const_raw_ptr_deref)]
 #![feature(const_trait_impl)]
+#![feature(thread_local)]
 
 extern crate libc;
 extern crate mmtk;
@@ -84,6 +85,14 @@ pub struct OpenJDK_Upcalls {
     pub number_of_mutators: extern "C" fn() -> usize,
     pub schedule_finalizer: extern "C" fn(),
     pub stop_mutators: extern "C" fn(tls: VMWorkerThread),
+}
+
+#[thread_local]
+pub static mut CURRENT_WORKER: Option<&'static mut GCWorker<OpenJDK>> = None;
+
+#[inline(always)]
+pub fn current_worker() -> &'static mut GCWorker<OpenJDK> {
+    unsafe { CURRENT_WORKER.as_mut().unwrap() }
 }
 
 pub static mut UPCALLS: *const OpenJDK_Upcalls = null_mut();

@@ -129,6 +129,9 @@ pub extern "C" fn will_never_move(object: ObjectReference) -> bool {
 // We trust the worker pointer is valid.
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
 pub extern "C" fn start_worker(tls: VMWorkerThread, worker: *mut GCWorker<OpenJDK>) {
+    unsafe {
+        crate::CURRENT_WORKER = Some(&mut *worker);
+    }
     memory_manager::start_worker::<OpenJDK>(tls, unsafe { worker.as_mut().unwrap() }, &SINGLETON)
 }
 
