@@ -242,30 +242,6 @@ void MMTkObjectBarrierSetC2::record_modified_node(GraphKit* kit, Node* src, Node
   kit->final_sync(ideal); // Final sync IdealKit and GraphKit.
 }
 
-void MMTkObjectBarrierSetC2::record_clone(GraphKit* kit, Node* src, Node* dst, Node* size) const {
-  MMTkIdealKit ideal(kit, true);
-#if MMTK_ENABLE_BARRIER_FASTPATH
-  Node* no_base = __ top();
-  float unlikely  = PROB_UNLIKELY(0.999);
-
-  Node* zero  = __ ConI(0);
-  Node* addr = __ CastPX(__ ctrl(), src);
-  Node* meta_addr = __ AddP(no_base, __ ConP(SIDE_METADATA_BASE_ADDRESS), __ URShiftX(addr, __ ConI(6)));
-  Node* byte = __ load(__ ctrl(), meta_addr, TypeInt::INT, T_BYTE, Compile::AliasIdxRaw);
-  Node* shift = __ URShiftX(addr, __ ConI(3));
-  shift = __ AndI(__ ConvL2I(shift), __ ConI(7));
-  Node* result = __ AndI(__ URShiftI(byte, shift), __ ConI(1));
-
-  __ if_then(result, BoolTest::ne, zero, unlikely); {
-    const TypeFunc* tf = __ func_type(TypeOopPtr::BOTTOM, TypeOopPtr::BOTTOM, TypeInt::INT);
-    Node* x = __ make_leaf_call(tf, CAST_FROM_FN_PTR(address, MMTkObjectBarrierSetRuntime::record_clone_slow), "record_clone", src, dst, size);
-  } __ end_if();
-#else
-  const TypeFunc* tf = __ func_type(TypeOopPtr::BOTTOM, TypeOopPtr::BOTTOM, TypeInt::INT);
-  Node* x = __ make_leaf_call(tf, CAST_FROM_FN_PTR(address, MMTkObjectBarrierSetRuntime::record_clone_slow), "record_clone", src, dst, size);
-#endif
-
-  kit->final_sync(ideal); // Final sync IdealKit and GraphKit.
-}
+void MMTkObjectBarrierSetC2::record_clone(GraphKit* kit, Node* src, Node* dst, Node* size) const {}
 
 #undef __
