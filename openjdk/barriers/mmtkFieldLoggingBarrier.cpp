@@ -3,6 +3,9 @@
 
 constexpr int kLoggedValue = 0;
 
+
+extern const intptr_t GLOBAL_RC_UNLOG_BITS_BASE_ADDRESS;
+
 void MMTkFieldLoggingBarrierSetRuntime::record_modified_node_slow(void* src, void* slot, void* val) {
   ::mmtk_object_reference_write((MMTk_Mutator) &Thread::current()->third_party_heap_mutator, src, slot, val);
 }
@@ -14,7 +17,7 @@ void MMTkFieldLoggingBarrierSetRuntime::record_clone_slow(void* src, void* dst, 
 void MMTkFieldLoggingBarrierSetRuntime::record_modified_node(oop src, ptrdiff_t offset, oop val) {
 #if MMTK_ENABLE_BARRIER_FASTPATH
     intptr_t addr = ((intptr_t) (void*) src) + offset;
-    uint8_t* meta_addr = (uint8_t*) (SIDE_METADATA_BASE_ADDRESS + (addr >> 5));
+    uint8_t* meta_addr = (uint8_t*) (GLOBAL_RC_UNLOG_BITS_BASE_ADDRESS + (addr >> 5));
     intptr_t shift = ((addr >> 3) & 0b11) << 1;
     uint8_t byte_val = *meta_addr;
     if (((byte_val >> shift) & 3) != kLoggedValue) {
@@ -58,10 +61,10 @@ void MMTkFieldLoggingBarrierSetAssembler::record_modified_node(MacroAssembler* m
   Register tmp4 = rscratch2;
   Register tmp5 = tmp1 == dst.base() || tmp1 == dst.index() ? tmp2 : tmp1;
 
-  // tmp5 = load-byte (SIDE_METADATA_BASE_ADDRESS + (obj >> 6));
+  // tmp5 = load-byte (GLOBAL_RC_UNLOG_BITS_BASE_ADDRESS + (obj >> 6));
   __ lea(tmp3, dst);
   __ shrptr(tmp3, 5);
-  __ movptr(tmp5, SIDE_METADATA_BASE_ADDRESS);
+  __ movptr(tmp5, GLOBAL_RC_UNLOG_BITS_BASE_ADDRESS);
   __ movb(tmp5, Address(tmp5, tmp3));
   // tmp3 = ((obj >> 3) & 3) << 1
   __ lea(tmp3, dst);
@@ -152,12 +155,12 @@ void MMTkFieldLoggingBarrierSetC1::record_modified_node(LIRAccess& access, LIR_O
 
 #if MMTK_ENABLE_BARRIER_FASTPATH
   LIR_Opr addr = src;
-  // uint8_t* meta_addr = (uint8_t*) (SIDE_METADATA_BASE_ADDRESS + (addr >> 6));
+  // uint8_t* meta_addr = (uint8_t*) (GLOBAL_RC_UNLOG_BITS_BASE_ADDRESS + (addr >> 6));
   LIR_Opr offset = gen->new_pointer_register();
   __ move(addr, offset);
   __ shift_right(offset, 6, offset);
   LIR_Opr base = gen->new_pointer_register();
-  __ move(LIR_OprFact::longConst(SIDE_METADATA_BASE_ADDRESS), base);
+  __ move(LIR_OprFact::longConst(GLOBAL_RC_UNLOG_BITS_BASE_ADDRESS), base);
   LIR_Address* meta_addr = new LIR_Address(base, offset, T_BYTE);
   // intptr_t shift = (addr >> 3) & 0b111;
   LIR_Opr shift_long = gen->new_pointer_register();
@@ -198,7 +201,7 @@ void MMTkFieldLoggingBarrierSetC2::record_modified_node(GraphKit* kit, Node* src
 
   Node* logged_value  = __ ConI(kLoggedValue);
   Node* addr = __ CastPX(__ ctrl(), slot);
-  Node* meta_addr = __ AddP(no_base, __ ConP(SIDE_METADATA_BASE_ADDRESS), __ URShiftX(addr, __ ConI(5)));
+  Node* meta_addr = __ AddP(no_base, __ ConP(GLOBAL_RC_UNLOG_BITS_BASE_ADDRESS), __ URShiftX(addr, __ ConI(5)));
   Node* byte = __ load(__ ctrl(), meta_addr, TypeInt::INT, T_BYTE, Compile::AliasIdxRaw);
   Node* shift = __ URShiftX(addr, __ ConI(3));
   shift = __ AndI(__ ConvL2I(shift), __ ConI(3));
