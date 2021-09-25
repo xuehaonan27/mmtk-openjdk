@@ -95,8 +95,8 @@ impl ObjectModel<OpenJDK> for VMObjectModel {
             copy_context.alloc_copy(from, bytes, ::std::mem::size_of::<usize>(), 0, allocator);
         // Copy
         let src = from.to_address();
-        for i in 0..bytes {
-            unsafe { (dst + i).store((src + i).load::<u8>()) };
+        unsafe {
+            std::ptr::copy_nonoverlapping::<u8>(src.to_ptr(), dst.to_mut_ptr(), bytes)
         }
         let to_obj = unsafe { dst.to_object_reference() };
         copy_context.post_copy(to_obj, unsafe { Address::zero() }, bytes, allocator);
