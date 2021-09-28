@@ -1,10 +1,7 @@
 #include "mmtkFieldLoggingBarrier.hpp"
 #include "runtime/interfaceSupport.inline.hpp"
 
-constexpr int kLoggedValue = 0;
-
-
-extern const intptr_t GLOBAL_RC_UNLOG_BITS_BASE_ADDRESS;
+constexpr int kUnloggedValue = 1;
 
 void MMTkFieldLoggingBarrierSetRuntime::record_modified_node_slow(void* src, void* slot, void* val) {
   ::mmtk_object_reference_write((MMTk_Mutator) &Thread::current()->third_party_heap_mutator, src, slot, val);
@@ -17,10 +14,10 @@ void MMTkFieldLoggingBarrierSetRuntime::record_clone_slow(void* src, void* dst, 
 void MMTkFieldLoggingBarrierSetRuntime::record_modified_node(oop src, ptrdiff_t offset, oop val) {
 #if MMTK_ENABLE_BARRIER_FASTPATH
     intptr_t addr = ((intptr_t) (void*) src) + offset;
-    uint8_t* meta_addr = (uint8_t*) (GLOBAL_RC_UNLOG_BITS_BASE_ADDRESS + (addr >> 5));
-    intptr_t shift = ((addr >> 3) & 0b11) << 1;
+    uint8_t* meta_addr = (uint8_t*) (SIDE_METADATA_BASE_ADDRESS + (addr >> 6));
+    intptr_t shift = (addr >> 3) & 0b111;
     uint8_t byte_val = *meta_addr;
-    if (((byte_val >> shift) & 3) != kLoggedValue) {
+    if (((byte_val >> shift) & 1) == kUnloggedValue) {
       record_modified_node_slow((void*) src, (void*) (((intptr_t) (void*) src) + offset), (void*) val);
     }
 #else
@@ -29,7 +26,17 @@ void MMTkFieldLoggingBarrierSetRuntime::record_modified_node(oop src, ptrdiff_t 
 }
 
 void MMTkFieldLoggingBarrierSetRuntime::record_clone(oop src, oop dst, size_t size) {
+#if MMTK_ENABLE_BARRIER_FASTPATH
+  intptr_t addr = (intptr_t) (void*) dst;
+  uint8_t* meta_addr = (uint8_t*) (SIDE_METADATA_BASE_ADDRESS + (addr >> 6));
+  intptr_t shift = (addr >> 3) & 0b111;
+  uint8_t byte_val = *meta_addr;
+  if (((byte_val >> shift) & 1) == 1) {
+    record_clone_slow((void*) src, (void*) dst, size);
+  }
+#else
   record_clone_slow((void*) src, (void*) dst, size);
+#endif
 }
 
 void MMTkFieldLoggingBarrierSetRuntime::record_arraycopy(arrayOop src_obj, size_t src_offset_in_bytes, oop* src_raw, arrayOop dst_obj, size_t dst_offset_in_bytes, oop* dst_raw, size_t length) {
@@ -61,25 +68,24 @@ void MMTkFieldLoggingBarrierSetAssembler::record_modified_node(MacroAssembler* m
   Register tmp4 = rscratch2;
   Register tmp5 = tmp1 == dst.base() || tmp1 == dst.index() ? tmp2 : tmp1;
 
-  // tmp5 = load-byte (GLOBAL_RC_UNLOG_BITS_BASE_ADDRESS + (obj >> 6));
+  // tmp5 = load-byte (SIDE_METADATA_BASE_ADDRESS + (obj >> 6));
   __ lea(tmp3, dst);
-  __ shrptr(tmp3, 5);
-  __ movptr(tmp5, GLOBAL_RC_UNLOG_BITS_BASE_ADDRESS);
+  __ shrptr(tmp3, 6);
+  __ movptr(tmp5, SIDE_METADATA_BASE_ADDRESS);
   __ movb(tmp5, Address(tmp5, tmp3));
-  // tmp3 = ((obj >> 3) & 3) << 1
+  // tmp3 = (obj >> 3) & 7
   __ lea(tmp3, dst);
   __ shrptr(tmp3, 3);
-  __ andptr(tmp3, 3);
-  __ shlptr(tmp3, 1);
+  __ andptr(tmp3, 7);
   // tmp5 = tmp5 >> tmp3
   __ movptr(tmp4, rcx);
   __ movl(rcx, tmp3);
   __ shrptr(tmp5);
   __ movptr(rcx, tmp4);
-  // if ((tmp5 & 3) == 1) goto slowpath;
-  __ andptr(tmp5, 3);
-  __ cmpptr(tmp5, kLoggedValue);
-  __ jcc(Assembler::equal, done);
+  // if ((tmp5 & 1) == 1) goto slowpath;
+  __ andptr(tmp5, 1);
+  __ cmpptr(tmp5, kUnloggedValue);
+  __ jcc(Assembler::notEqual, done);
 
   // TODO: Spill fewer registers
   __ pusha();
@@ -155,12 +161,12 @@ void MMTkFieldLoggingBarrierSetC1::record_modified_node(LIRAccess& access, LIR_O
 
 #if MMTK_ENABLE_BARRIER_FASTPATH
   LIR_Opr addr = src;
-  // uint8_t* meta_addr = (uint8_t*) (GLOBAL_RC_UNLOG_BITS_BASE_ADDRESS + (addr >> 6));
+  // uint8_t* meta_addr = (uint8_t*) (SIDE_METADATA_BASE_ADDRESS + (addr >> 6));
   LIR_Opr offset = gen->new_pointer_register();
   __ move(addr, offset);
   __ shift_right(offset, 6, offset);
   LIR_Opr base = gen->new_pointer_register();
-  __ move(LIR_OprFact::longConst(GLOBAL_RC_UNLOG_BITS_BASE_ADDRESS), base);
+  __ move(LIR_OprFact::longConst(SIDE_METADATA_BASE_ADDRESS), base);
   LIR_Address* meta_addr = new LIR_Address(base, offset, T_BYTE);
   // intptr_t shift = (addr >> 3) & 0b111;
   LIR_Opr shift_long = gen->new_pointer_register();
@@ -199,16 +205,15 @@ void MMTkFieldLoggingBarrierSetC2::record_modified_node(GraphKit* kit, Node* src
   Node* no_base = __ top();
   float unlikely  = PROB_UNLIKELY(0.999);
 
-  Node* logged_value  = __ ConI(kLoggedValue);
+  Node* unlogged_value  = __ ConI(kUnloggedValue);
   Node* addr = __ CastPX(__ ctrl(), slot);
-  Node* meta_addr = __ AddP(no_base, __ ConP(GLOBAL_RC_UNLOG_BITS_BASE_ADDRESS), __ URShiftX(addr, __ ConI(5)));
+  Node* meta_addr = __ AddP(no_base, __ ConP(SIDE_METADATA_BASE_ADDRESS), __ URShiftX(addr, __ ConI(6)));
   Node* byte = __ load(__ ctrl(), meta_addr, TypeInt::INT, T_BYTE, Compile::AliasIdxRaw);
   Node* shift = __ URShiftX(addr, __ ConI(3));
-  shift = __ AndI(__ ConvL2I(shift), __ ConI(3));
-  shift = __ LShiftI(shift, __ ConI(1));
-  Node* result = __ AndI(__ URShiftI(byte, shift), __ ConI(3));
+  shift = __ AndI(__ ConvL2I(shift), __ ConI(7));
+  Node* result = __ AndI(__ URShiftI(byte, shift), __ ConI(1));
 
-  __ if_then(result, BoolTest::ne, logged_value, unlikely); {
+  __ if_then(result, BoolTest::eq, unlogged_value, unlikely); {
     const TypeFunc* tf = __ func_type(TypeOopPtr::BOTTOM, TypeOopPtr::BOTTOM, TypeOopPtr::BOTTOM);
     Node* x = __ make_leaf_call(tf, CAST_FROM_FN_PTR(address, MMTkFieldLoggingBarrierSetRuntime::record_modified_node_slow), "record_modified_node", src, slot, val);
   } __ end_if();

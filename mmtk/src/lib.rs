@@ -106,10 +106,6 @@ pub static GLOBAL_SIDE_METADATA_VM_BASE_ADDRESS: uintptr_t =
     crate::mmtk::util::metadata::side_metadata::GLOBAL_SIDE_METADATA_VM_BASE_ADDRESS.as_usize();
 
 #[no_mangle]
-pub static GLOBAL_RC_UNLOG_BITS_BASE_ADDRESS: uintptr_t =
-    crate::mmtk::util::metadata::side_metadata::RC_UNLOG_BIT_SIDE_METADATA_SPEC.get_absolute_offset().as_usize();
-
-#[no_mangle]
 pub static GLOBAL_ALLOC_BIT_ADDRESS: uintptr_t =
     crate::mmtk::util::metadata::side_metadata::ALLOC_SIDE_METADATA_ADDR.as_usize();
 
