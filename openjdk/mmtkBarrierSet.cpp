@@ -45,7 +45,6 @@ MMTkBarrierBase* get_selected_barrier() {
     if (strcmp(barrier, "NoBarrier") == 0) selected_barrier = new MMTkNoBarrier();
     else if (strcmp(barrier, "ObjectBarrier") == 0) selected_barrier = new MMTkObjectBarrier();
     else if (strcmp(barrier, "FieldLoggingBarrier") == 0) selected_barrier = new MMTkFieldLoggingBarrier();
-    else if (strcmp(barrier, "FieldLoggingBarrier-GEN") == 0) selected_barrier = new MMTkFieldLoggingBarrier();
     else guarantee(false, "Unimplemented");
     return selected_barrier;
 }
