@@ -15,7 +15,8 @@ extern "C" fn create_mutator_scan_work<E: ProcessEdgesWork<VM = OpenJDK>>(
     mutator.flush();
     mmtk::memory_manager::add_work_packet(
         &SINGLETON,
-        WorkBucketStage::Unconstrained,
+        // FIXME: Should be Unconstrained!
+        WorkBucketStage::ScanGlobalRoots,
         ScanStackRoot::<E>(mutator),
     );
 }
