@@ -390,6 +390,7 @@ void MMTkHeap::scan_system_dictionary_roots(OopClosure& cl) {
 void MMTkHeap::scan_code_cache_roots(OopClosure& cl) {
   ResourceMark rm;
   MMTkRootScanWorkScope<> root_scan_work(&_num_root_scan_tasks);
+  CodeCache::gc_prologue();
   CodeBlobToOopClosure cb_cl(&cl, true);
   {
     MutexLockerEx lock(CodeCache_lock, Mutex::_no_safepoint_check_flag);
@@ -407,6 +408,7 @@ void MMTkHeap::scan_class_loader_data_graph_roots(OopClosure& cl) {
   MMTkRootScanWorkScope<> root_scan_work(&_num_root_scan_tasks);
   CLDToOopClosure cld_cl(&cl, false);
   ClassLoaderDataGraph::cld_do(&cld_cl);
+  ClassLoaderDataGraph::oops_do(&cl, false);
 }
 void MMTkHeap::scan_weak_processor_roots(OopClosure& cl) {
   ResourceMark rm;

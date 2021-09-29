@@ -85,6 +85,7 @@ pub struct OpenJDK_Upcalls {
     pub number_of_mutators: extern "C" fn() -> usize,
     pub schedule_finalizer: extern "C" fn(),
     pub stop_mutators: extern "C" fn(tls: VMWorkerThread),
+    pub prepare_for_sanity_roots_scanning: extern "C" fn(),
 }
 
 #[thread_local]

@@ -136,6 +136,7 @@ typedef struct {
     size_t (*number_of_mutators)();
     void (*schedule_finalizer)();
     void (*mmtk_stop_mutators)(void *tls);
+    void (*prepare_for_sanity_roots_scanning)();
 } OpenJDK_Upcalls;
 
 extern void openjdk_gc_init(OpenJDK_Upcalls *calls, size_t heap_size);

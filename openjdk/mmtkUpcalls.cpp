@@ -44,6 +44,10 @@ static bool gcInProgress = false;
 static void mmtk_stop_all_mutators(void *tls, void (*create_stack_scan_work)(void* mutator)) {
   gcInProgress = true;
   MMTkHeap::_create_stack_scan_work = create_stack_scan_work;
+#if COMPILER2_OR_JVMCI
+    DerivedPointerTable::clear();
+#endif
+  ClassLoaderDataGraph::clear_claimed_marks();
   SafepointSynchronize::begin();
 }
 
@@ -54,6 +58,13 @@ static void mmtk_stop_mutators(void *tls) {
 }
 
 static void mmtk_resume_mutators(void *tls) {
+  ClassLoaderDataGraph::purge();
+  CodeCache::gc_epilogue();
+  JvmtiExport::gc_epilogue();
+#if COMPILER2_OR_JVMCI
+  DerivedPointerTable::update_pointers();
+#endif
+
   MMTkHeap::_create_stack_scan_work = NULL;
   SafepointSynchronize::end();
   MMTkHeap::heap()->gc_lock()->lock_without_safepoint_check();
@@ -253,6 +264,21 @@ static size_t mmtk_number_of_mutators() {
   return Threads::number_of_threads();
 }
 
+static void mmtk_prepare_for_sanity_roots_scanning() {
+  ClassLoaderDataGraph::purge();
+  CodeCache::gc_epilogue();
+  JvmtiExport::gc_epilogue();
+#if COMPILER2_OR_JVMCI
+  DerivedPointerTable::update_pointers();
+#endif
+
+
+#if COMPILER2_OR_JVMCI
+    DerivedPointerTable::clear();
+#endif
+  ClassLoaderDataGraph::clear_claimed_marks();
+}
+
 OpenJDK_Upcalls mmtk_upcalls = {
   mmtk_stop_all_mutators,
   mmtk_resume_mutators,
@@ -293,4 +319,5 @@ OpenJDK_Upcalls mmtk_upcalls = {
   mmtk_number_of_mutators,
   mmtk_schedule_finalizer,
   mmtk_stop_mutators,
+  mmtk_prepare_for_sanity_roots_scanning,
 };
