@@ -135,7 +135,6 @@ typedef struct {
     void (*scan_vm_thread_roots) (ProcessEdgesFn process_edges);
     size_t (*number_of_mutators)();
     void (*schedule_finalizer)();
-    void (*mmtk_stop_mutators)(void *tls);
     void (*prepare_for_sanity_roots_scanning)();
 } OpenJDK_Upcalls;
 
