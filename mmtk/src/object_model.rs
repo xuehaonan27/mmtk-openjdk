@@ -1,3 +1,4 @@
+use std::ffi::CStr;
 use std::sync::atomic::Ordering;
 
 use super::UPCALLS;
@@ -130,6 +131,13 @@ impl ObjectModel<OpenJDK> for VMObjectModel {
     fn dump_object(object: ObjectReference) {
         unsafe {
             ((*UPCALLS).dump_object)(object);
+        }
+    }
+
+    fn dump_object_s(object: ObjectReference) -> String {
+        unsafe {
+            let c_str = ((*UPCALLS).dump_object_string)(object);
+            CStr::from_ptr(c_str).to_str().unwrap().to_owned()
         }
     }
 }

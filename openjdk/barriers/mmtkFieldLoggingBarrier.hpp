@@ -20,9 +20,15 @@ class MMTkFieldLoggingBarrierSetRuntime: public MMTkBarrierSetRuntime {
 public:
   static void record_modified_node_slow(void* src, void* slot, void* val);
   static void record_clone_slow(void* src, void* dst, size_t size);
+  static void record_array_copy_slow(void* src, void* dst, size_t size) {
+    for (size_t i = 0; i < size; i++) {
+      auto d = (void*) (((intptr_t) dst) + (i << 3));
+      record_modified_node_slow((oop) NULL, d, (oop) NULL);
+    }
+  }
 
   virtual bool is_slow_path_call(address call) {
-    return call == CAST_FROM_FN_PTR(address, record_modified_node_slow) || call == CAST_FROM_FN_PTR(address, record_clone_slow);
+    return call == CAST_FROM_FN_PTR(address, record_modified_node_slow) || call == CAST_FROM_FN_PTR(address, record_clone_slow) || call == CAST_FROM_FN_PTR(address, record_array_copy_slow);
   }
 
   virtual void record_modified_node(oop src, ptrdiff_t offset, oop val);
@@ -44,6 +50,7 @@ public:
       BarrierSetAssembler::store_at(masm, decorators, type, dst, val, tmp1, tmp2);
     }
   }
+  virtual void arraycopy_prologue(MacroAssembler* masm, DecoratorSet decorators, BasicType type, Register src, Register dst, Register count) override;
   inline void gen_write_barrier_stub(LIR_Assembler* ce, MMTkFieldLoggingBarrierStub* stub);
 #define __ sasm->
   void generate_c1_write_barrier_runtime_stub(StubAssembler* sasm) {

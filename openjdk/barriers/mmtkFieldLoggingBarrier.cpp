@@ -8,6 +8,7 @@ void MMTkFieldLoggingBarrierSetRuntime::record_modified_node_slow(void* src, voi
 }
 
 void MMTkFieldLoggingBarrierSetRuntime::record_clone_slow(void* src, void* dst, size_t size) {
+  guarantee(false, "not implemented");
   ::mmtk_object_reference_clone((MMTk_Mutator) &Thread::current()->third_party_heap_mutator, src, dst, size);
 }
 
@@ -26,17 +27,7 @@ void MMTkFieldLoggingBarrierSetRuntime::record_modified_node(oop src, ptrdiff_t 
 }
 
 void MMTkFieldLoggingBarrierSetRuntime::record_clone(oop src, oop dst, size_t size) {
-#if MMTK_ENABLE_BARRIER_FASTPATH
-  intptr_t addr = (intptr_t) (void*) dst;
-  uint8_t* meta_addr = (uint8_t*) (SIDE_METADATA_BASE_ADDRESS + (addr >> 6));
-  intptr_t shift = (addr >> 3) & 0b111;
-  uint8_t byte_val = *meta_addr;
-  if (((byte_val >> shift) & 1) == 1) {
-    record_clone_slow((void*) src, (void*) dst, size);
-  }
-#else
-  record_clone_slow((void*) src, (void*) dst, size);
-#endif
+  // record_clone_slow((void*) src, (void*) dst, size);
 }
 
 void MMTkFieldLoggingBarrierSetRuntime::record_arraycopy(arrayOop src_obj, size_t src_offset_in_bytes, oop* src_raw, arrayOop dst_obj, size_t dst_offset_in_bytes, oop* dst_raw, size_t length) {
@@ -58,6 +49,36 @@ void MMTkFieldLoggingBarrierSetAssembler::oop_store_at(MacroAssembler* masm, Dec
   record_modified_node(masm, dst, val, tmp1, tmp2);
 
   BarrierSetAssembler::store_at(masm, decorators, type, dst, val, tmp1, tmp2);
+}
+
+void MMTkFieldLoggingBarrierSetAssembler::arraycopy_prologue(MacroAssembler* masm, DecoratorSet decorators, BasicType type, Register src, Register dst, Register count) {
+  if (type == T_OBJECT || type == T_ARRAY) {
+    __ pusha();
+    assert_different_registers(c_rarg0, dst);
+    assert_different_registers(c_rarg0, count);
+    // guarantee(c_rarg0 != dst, "X");
+    guarantee(rscratch1 != src, "X");
+    guarantee(rscratch1 != dst, "X");
+    guarantee(rscratch1 != count, "X");
+
+    guarantee(c_rarg0 != count, "X");
+
+    if (c_rarg0 == dst) {
+      __ movptr(rscratch1, dst);
+    }
+    __ movptr(c_rarg0, src);
+    if (c_rarg0 == dst) {
+      __ movptr(dst, rscratch1);
+    }
+
+    assert_different_registers(c_rarg1, count);
+    guarantee(c_rarg1 != count, "X");
+
+    __ movptr(c_rarg1, dst);
+    __ movptr(c_rarg2, count);
+    __ call_VM_leaf_base(CAST_FROM_FN_PTR(address, MMTkFieldLoggingBarrierSetRuntime::record_array_copy_slow), 3);
+    __ popa();
+  }
 }
 
 void MMTkFieldLoggingBarrierSetAssembler::record_modified_node(MacroAssembler* masm, Address dst, Register val, Register tmp1, Register tmp2) {
@@ -225,6 +246,11 @@ void MMTkFieldLoggingBarrierSetC2::record_modified_node(GraphKit* kit, Node* src
   kit->final_sync(ideal); // Final sync IdealKit and GraphKit.
 }
 
-void MMTkFieldLoggingBarrierSetC2::record_clone(GraphKit* kit, Node* src, Node* dst, Node* size) const {}
+void MMTkFieldLoggingBarrierSetC2::record_clone(GraphKit* kit, Node* src, Node* dst, Node* size) const {
+  MMTkIdealKit ideal(kit, true);
+  const TypeFunc* tf = __ func_type(TypeOopPtr::BOTTOM, TypeOopPtr::BOTTOM, TypeInt::INT);
+  Node* x = __ make_leaf_call(tf, CAST_FROM_FN_PTR(address, MMTkFieldLoggingBarrierSetRuntime::record_clone_slow), "record_clone", src, dst, size);
+  kit->final_sync(ideal); // Final sync IdealKit and GraphKit.
+}
 
 #undef __
