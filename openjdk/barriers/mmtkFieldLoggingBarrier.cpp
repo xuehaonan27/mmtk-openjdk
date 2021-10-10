@@ -8,7 +8,6 @@ void MMTkFieldLoggingBarrierSetRuntime::record_modified_node_slow(void* src, voi
 }
 
 void MMTkFieldLoggingBarrierSetRuntime::record_clone_slow(void* src, void* dst, size_t size) {
-  guarantee(false, "not implemented");
   ::mmtk_object_reference_clone((MMTk_Mutator) &Thread::current()->third_party_heap_mutator, src, dst, size);
 }
 
@@ -27,7 +26,7 @@ void MMTkFieldLoggingBarrierSetRuntime::record_modified_node(oop src, ptrdiff_t 
 }
 
 void MMTkFieldLoggingBarrierSetRuntime::record_clone(oop src, oop dst, size_t size) {
-  // record_clone_slow((void*) src, (void*) dst, size);
+  record_clone_slow((void*) src, (void*) dst, size);
 }
 
 void MMTkFieldLoggingBarrierSetRuntime::record_arraycopy(arrayOop src_obj, size_t src_offset_in_bytes, oop* src_raw, arrayOop dst_obj, size_t dst_offset_in_bytes, oop* dst_raw, size_t length) {
@@ -242,6 +241,9 @@ void MMTkFieldLoggingBarrierSetC2::record_modified_node(GraphKit* kit, Node* src
   const TypeFunc* tf = __ func_type(TypeOopPtr::BOTTOM, TypeOopPtr::BOTTOM, TypeOopPtr::BOTTOM);
   Node* x = __ make_leaf_call(tf, CAST_FROM_FN_PTR(address, MMTkFieldLoggingBarrierSetRuntime::record_modified_node_slow), "record_modified_node", src, slot, val);
 #endif
+  kit->sync_kit(ideal);
+  kit->insert_mem_bar(Op_MemBarCPUOrder);
+  __ sync_kit(kit);
 
   kit->final_sync(ideal); // Final sync IdealKit and GraphKit.
 }
@@ -250,6 +252,11 @@ void MMTkFieldLoggingBarrierSetC2::record_clone(GraphKit* kit, Node* src, Node* 
   MMTkIdealKit ideal(kit, true);
   const TypeFunc* tf = __ func_type(TypeOopPtr::BOTTOM, TypeOopPtr::BOTTOM, TypeInt::INT);
   Node* x = __ make_leaf_call(tf, CAST_FROM_FN_PTR(address, MMTkFieldLoggingBarrierSetRuntime::record_clone_slow), "record_clone", src, dst, size);
+
+  kit->sync_kit(ideal);
+  kit->insert_mem_bar(Op_MemBarCPUOrder);
+  __ sync_kit(kit);
+
   kit->final_sync(ideal); // Final sync IdealKit and GraphKit.
 }
 
