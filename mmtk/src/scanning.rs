@@ -38,6 +38,7 @@ impl Scanning<OpenJDK> for VMScanning {
     const SCAN_MUTATORS_IN_SAFEPOINT: bool = false;
     const SINGLE_THREAD_MUTATOR_SCANNING: bool = false;
 
+    #[inline]
     fn scan_object<T: TransitiveClosure>(
         trace: &mut T,
         object: ObjectReference,

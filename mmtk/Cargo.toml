@@ -11,6 +11,7 @@ crate-type = ["cdylib"]
 [profile.release]
 lto = true
 # codegen-units = 1
+# debug-assertions = true
 
 [dependencies]
 libc = "0.2"
@@ -27,6 +28,7 @@ mmtk = { git = "https://github.com/mmtk/mmtk-core.git", rev = "e581539f25d050bd3
 
 [features]
 default = []
+release_debug_assertions = []
 mmtk_extreme_assertions = ["mmtk/extreme_assertions"]
 nogc_lock_free = ["mmtk/nogc_lock_free"]
 nogc_no_zeroing = ["mmtk/nogc_no_zeroing"]
