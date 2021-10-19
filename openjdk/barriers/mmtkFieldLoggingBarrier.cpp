@@ -243,7 +243,6 @@ void MMTkFieldLoggingBarrierSetC2::record_modified_node(GraphKit* kit, Node* src
 #endif
   kit->sync_kit(ideal);
   kit->insert_mem_bar(Op_MemBarCPUOrder);
-  // __ sync_kit(kit);
 
   kit->final_sync(ideal); // Final sync IdealKit and GraphKit.
 }
@@ -255,7 +254,6 @@ void MMTkFieldLoggingBarrierSetC2::record_clone(GraphKit* kit, Node* src, Node* 
 
   kit->sync_kit(ideal);
   kit->insert_mem_bar(Op_MemBarCPUOrder);
-  // __ sync_kit(kit);
 
   kit->final_sync(ideal); // Final sync IdealKit and GraphKit.
 }

@@ -10,7 +10,8 @@ crate-type = ["cdylib"]
 
 [profile.release]
 lto = true
-# codegen-units = 1
+# codegen-units = 24
+codegen-units = 1
 # debug-assertions = true
 
 [dependencies]
