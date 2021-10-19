@@ -107,9 +107,9 @@ static void mmtk_block_for_gc() {
   MMTkHeap::heap()->_last_gc_time = os::javaTimeNanos() / NANOSECS_PER_MILLISEC;
   log_debug(gc)("Thread (id=%d) will block waiting for GC to finish.", Thread::current()->osthread()->thread_id());
   {
-    MutexLocker locker(MMTkHeap::heap()->gc_lock());
     size_t my_count = mmtk_start_the_world_count;
     size_t next_count = my_count + 1;
+    MutexLocker locker(MMTkHeap::heap()->gc_lock());
 
     while (mmtk_start_the_world_count < next_count) {
       MMTkHeap::heap()->gc_lock()->wait();
