@@ -8,6 +8,10 @@ name = "mmtk_openjdk"
 # be careful - LTO is only allowed for certain crate types
 crate-type = ["cdylib"]
 
+[profile.dev]
+panic = "abort"
+codegen-units = 24
+
 [profile.release]
 lto = true
 # codegen-units = 24
