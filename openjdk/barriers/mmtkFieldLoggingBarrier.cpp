@@ -248,14 +248,14 @@ void MMTkFieldLoggingBarrierSetC2::record_modified_node(GraphKit* kit, Node* src
 }
 
 void MMTkFieldLoggingBarrierSetC2::record_clone(GraphKit* kit, Node* src, Node* dst, Node* size) const {
-  MMTkIdealKit ideal(kit, true);
-  const TypeFunc* tf = __ func_type(TypeOopPtr::BOTTOM, TypeOopPtr::BOTTOM, TypeInt::INT);
-  Node* x = __ make_leaf_call(tf, CAST_FROM_FN_PTR(address, MMTkFieldLoggingBarrierSetRuntime::record_clone_slow), "record_clone", src, dst, size);
+  // MMTkIdealKit ideal(kit, true);
+  // const TypeFunc* tf = __ func_type(TypeOopPtr::BOTTOM, TypeOopPtr::BOTTOM, TypeInt::INT);
+  // Node* x = __ make_leaf_call(tf, CAST_FROM_FN_PTR(address, MMTkFieldLoggingBarrierSetRuntime::record_clone_slow), "record_clone", src, dst, size);
 
-  kit->sync_kit(ideal);
-  kit->insert_mem_bar(Op_MemBarCPUOrder);
+  // kit->sync_kit(ideal);
+  // kit->insert_mem_bar(Op_MemBarCPUOrder);
 
-  kit->final_sync(ideal); // Final sync IdealKit and GraphKit.
+  // kit->final_sync(ideal); // Final sync IdealKit and GraphKit.
 }
 
 #undef __
