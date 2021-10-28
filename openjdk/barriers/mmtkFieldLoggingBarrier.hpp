@@ -267,6 +267,7 @@ public:
 class MMTkFieldLoggingBarrierSetC2: public MMTkBarrierSetC2 {
   void record_modified_node(GraphKit* kit, Node* node, Node* slot, Node* val) const;
   void record_clone(GraphKit* kit, Node* src, Node* dst, Node* size) const;
+  bool can_remove_barrier(GraphKit* kit, PhaseTransform* phase, Node* adr) const;
 public:
   virtual Node* store_at_resolved(C2Access& access, C2AccessValue& val) const {
     if (access.is_oop()) record_modified_node(access.kit(), access.base(), access.addr().node(), val.node());
@@ -296,6 +297,9 @@ public:
     if (node->Opcode() != Op_CallLeaf) return false;
     CallLeafNode *call = node->as_CallLeaf();
     return call->_name != NULL && (strcmp(call->_name, "record_modified_node") == 0 || strcmp(call->_name, "record_clone") == 0);
+  }
+  virtual bool array_copy_requires_gc_barriers(BasicType type) const override {
+    return false;
   }
 };
 

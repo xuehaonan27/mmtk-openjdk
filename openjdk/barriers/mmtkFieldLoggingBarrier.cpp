@@ -232,7 +232,43 @@ void MMTkFieldLoggingBarrierSetC1::record_modified_node(LIRAccess& access, LIR_O
 
 #define __ ideal.
 
+bool MMTkFieldLoggingBarrierSetC2::can_remove_barrier(GraphKit* kit, PhaseTransform* phase, Node* adr) const {
+  intptr_t      offset = 0;
+  Node*         base   = AddPNode::Ideal_base_and_offset(adr, phase, offset);
+  AllocateNode* alloc  = AllocateNode::Ideal_allocation(base, phase);
+
+  if (offset == Type::OffsetBot) {
+    return false; // cannot unalias unless there are precise offsets
+  }
+
+  if (alloc == NULL) {
+     return false; // No allocation found
+  }
+
+  // Start search from Store node
+  Node* mem = kit->control();
+  if (mem->is_Proj() && mem->in(0)->is_Initialize()) {
+
+    InitializeNode* st_init = mem->in(0)->as_Initialize();
+    AllocateNode*  st_alloc = st_init->allocation();
+
+    // Make sure we are looking at the same allocation
+    if (alloc == st_alloc) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
 void MMTkFieldLoggingBarrierSetC2::record_modified_node(GraphKit* kit, Node* src, Node* slot, Node* val) const {
+
+  if (src == kit->just_allocated_object(kit->control())) {
+    return;
+  }
+  if (can_remove_barrier(kit, &kit->gvn(), slot)) {
+    return;
+  }
 
   MMTkIdealKit ideal(kit, true);
 
@@ -240,7 +276,7 @@ void MMTkFieldLoggingBarrierSetC2::record_modified_node(GraphKit* kit, Node* src
   Node* no_base = __ top();
   float unlikely  = PROB_UNLIKELY(0.999);
 
-  Node* unlogged_value  = __ ConI(kUnloggedValue);
+  Node* zero  = __ ConI(0);
   Node* addr = __ CastPX(__ ctrl(), slot);
   Node* meta_addr = __ AddP(no_base, __ ConP(SIDE_METADATA_BASE_ADDRESS), __ URShiftX(addr, __ ConI(6)));
   Node* byte = __ load(__ ctrl(), meta_addr, TypeInt::INT, T_BYTE, Compile::AliasIdxRaw);
@@ -248,7 +284,7 @@ void MMTkFieldLoggingBarrierSetC2::record_modified_node(GraphKit* kit, Node* src
   shift = __ AndI(__ ConvL2I(shift), __ ConI(7));
   Node* result = __ AndI(__ URShiftI(byte, shift), __ ConI(1));
 
-  __ if_then(result, BoolTest::eq, unlogged_value, unlikely); {
+  __ if_then(result, BoolTest::ne, zero, unlikely); {
     const TypeFunc* tf = __ func_type(TypeOopPtr::BOTTOM, TypeOopPtr::BOTTOM, TypeOopPtr::BOTTOM);
     Node* x = __ make_leaf_call(tf, CAST_FROM_FN_PTR(address, MMTkFieldLoggingBarrierSetRuntime::record_modified_node_slow), "record_modified_node", src, slot, val);
   } __ end_if();
