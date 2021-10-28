@@ -24,55 +24,112 @@ public:
     record_array_copy_inline(src, dst, size);
   }
 
-  inline static void record_array_copy_inline(const void* src, const void* dst, const size_t size) {
-    const auto origin_dst = dst;
+  inline static void record_array_copy_mmtk_slow(const void* src, const void* dst, const size_t size) {
+    ::mmtk_object_reference_arraycopy(
+      (MMTk_Mutator) &Thread::current()->third_party_heap_mutator,
+      (void*) ((intptr_t) src),
+      0,
+      (void*) ((intptr_t) dst),
+      0,
+      size
+    );
+  }
+
+  inline static void record_array_copy_inline(const void* src_ptr, void* dst_ptr, const size_t size) {
     if (size == 0) return;
-    size_t i = 0;
-    {
-      const uint64_t* meta_addr = (uint64_t*) ((SIDE_METADATA_BASE_ADDRESS + (((intptr_t) dst) >> 6)) >> 3 << 3);
-      const uint64_t val = *meta_addr;
-      if (val != 0) {
-        const auto shift_base = ((((intptr_t) dst) >> 3) & 0b111111);
-        while (i < size && (((intptr_t) dst) & 0b111111111) != 0) {
-          const intptr_t shift = shift_base + i;
-          if (((val >> shift) & 1) != 0) {
-            ::mmtk_object_reference_arraycopy(
-              (MMTk_Mutator) &Thread::current()->third_party_heap_mutator,
-              (void*) (((intptr_t) src) + (i << 3)),
-              0,
-              (void*) (((intptr_t) origin_dst) + (i << 3)),
-              0,
-              size - i
-            );
-            return;
-          }
-          i++;
-          dst = (void*) (((intptr_t) dst) + 64);
+    if (size == 1) {
+      intptr_t addr = (intptr_t) dst_ptr;
+      uint8_t* meta_addr = (uint8_t*) (SIDE_METADATA_BASE_ADDRESS + (addr >> 6));
+      intptr_t shift = (addr >> 3) & 0b111;
+      uint8_t byte_val = *meta_addr;
+      if (((byte_val >> shift) & 1) != 0) {
+        record_modified_node_slow((void*) NULL, dst_ptr, (void*) NULL);
+      }
+      return;
+    }
+
+    constexpr intptr_t kLogBitsInUInt = 6;
+    constexpr intptr_t kBitsInUInt = 1 << kLogBitsInUInt;
+    constexpr intptr_t kBytesInUInt = 8;
+    intptr_t origin_dst = (intptr_t) dst_ptr;
+    intptr_t dst = origin_dst;
+    intptr_t src = (intptr_t) src_ptr;
+    intptr_t limit = dst + (size << 3);
+    auto meta_addr = (uint64_t*) ((SIDE_METADATA_BASE_ADDRESS + (dst >> 6)) >> 3 << 3);
+    auto val = *meta_addr;
+    while (dst < limit) {
+      if ((dst & 0b111111111) == 0) {
+        auto val = *meta_addr;
+        for (auto j = 0; j < kBitsInUInt; j++) {
+            if (((val >> j) & 1) != 0) {
+                auto e = dst + (j << 3);
+                if (e < limit) {
+                  auto offset = e - origin_dst;
+                  record_array_copy_mmtk_slow((void*) (src + offset), (void*) e, size - (offset >> 3));
+                  return;
+                }
+            }
         }
+        dst += 1 << (kLogBitsInUInt + 3);
+        meta_addr += kBytesInUInt;
       } else {
-        const auto new_dst = (void*) ((((intptr_t) dst) + 0b111111111L) >> 9 << 9);
-        const auto dist = ((intptr_t) new_dst) - ((intptr_t) dst);
-        i = i + (dist >> 3);
-        dst = new_dst;
+        auto shift = (dst >> 3) & (kBitsInUInt - 1);
+        if ((val >> shift) & 1 != 0) {
+          auto offset = dst - origin_dst;
+          record_array_copy_mmtk_slow((void*) (src + offset), (void*) dst, size - (offset >> 3));
+          return;
+        }
+        dst += kBytesInUInt;
       }
     }
-    if (i >= size) return;
-    uint64_t* meta_addr = (uint64_t*) (SIDE_METADATA_BASE_ADDRESS + (((intptr_t) dst) >> 6));
-    for (; i < size;) {
-      if (*meta_addr != 0) {
-        ::mmtk_object_reference_arraycopy(
-          (MMTk_Mutator) &Thread::current()->third_party_heap_mutator,
-          (void*) (((intptr_t) src) + (i << 3)),
-          0,
-          (void*) (((intptr_t) origin_dst) + (i << 3)),
-          0,
-          size - i
-        );
-        return;
-      }
-      i += 64;
-      meta_addr += 1;
-    }
+
+    // const auto origin_dst = dst;
+    // size_t i = 0;
+    // {
+    //   const uint64_t* meta_addr = (uint64_t*) ((SIDE_METADATA_BASE_ADDRESS + (((intptr_t) dst) >> 6)) >> 3 << 3);
+    //   const uint64_t val = *meta_addr;
+    //   if (val != 0) {
+    //     const auto shift_base = ((((intptr_t) dst) >> 3) & 0b111111);
+    //     while (i < size && (((intptr_t) dst) & 0b111111111) != 0) {
+    //       const intptr_t shift = shift_base + i;
+    //       if (((val >> shift) & 1) != 0) {
+    //         ::mmtk_object_reference_arraycopy(
+    //           (MMTk_Mutator) &Thread::current()->third_party_heap_mutator,
+    //           (void*) (((intptr_t) src) + (i << 3)),
+    //           0,
+    //           (void*) (((intptr_t) origin_dst) + (i << 3)),
+    //           0,
+    //           size - i
+    //         );
+    //         return;
+    //       }
+    //       i++;
+    //       dst = (void*) (((intptr_t) dst) + 8);
+    //     }
+    //   } else {
+    //     const auto new_dst = (void*) ((((intptr_t) dst) + 0b111111111L) >> 9 << 9);
+    //     const auto dist = ((intptr_t) new_dst) - ((intptr_t) dst);
+    //     i = i + (dist >> 3);
+    //     dst = new_dst;
+    //   }
+    // }
+    // if (i >= size) return;
+    // uint64_t* meta_addr = (uint64_t*) (SIDE_METADATA_BASE_ADDRESS + (((intptr_t) dst) >> 6));
+    // for (; i < size;) {
+    //   if (*meta_addr != 0) {
+    //     ::mmtk_object_reference_arraycopy(
+    //       (MMTk_Mutator) &Thread::current()->third_party_heap_mutator,
+    //       (void*) (((intptr_t) src) + (i << 3)),
+    //       0,
+    //       (void*) (((intptr_t) origin_dst) + (i << 3)),
+    //       0,
+    //       size - i
+    //     );
+    //     return;
+    //   }
+    //   i += 64;
+    //   meta_addr += 1;
+    // }
   }
 
   virtual bool is_slow_path_call(address call) {

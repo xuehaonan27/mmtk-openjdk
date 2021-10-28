@@ -53,6 +53,19 @@ void MMTkFieldLoggingBarrierSetAssembler::oop_store_at(MacroAssembler* masm, Dec
 
 void MMTkFieldLoggingBarrierSetAssembler::arraycopy_prologue(MacroAssembler* masm, DecoratorSet decorators, BasicType type, Register src, Register dst, Register count) {
   if (type == T_OBJECT || type == T_ARRAY) {
+    Label slow, done;
+    // Bailout if count is zero
+    // __ cmpptr(count, 0);
+    // __ jcc(Assembler::equal, done);
+    // Fast path if count is one
+    __ cmpptr(count, 1);
+    __ jcc(Assembler::notEqual, slow);
+    __ push(rax);
+    record_modified_node(masm, Address(dst, 0), src, rax, rax);
+    __ pop(rax);
+    __ jmp(done);
+    // Slow path
+    __ bind(slow);
     __ pusha();
     assert_different_registers(c_rarg0, dst);
     assert_different_registers(c_rarg0, count);
@@ -78,6 +91,7 @@ void MMTkFieldLoggingBarrierSetAssembler::arraycopy_prologue(MacroAssembler* mas
     __ movptr(c_rarg2, count);
     __ call_VM_leaf_base(CAST_FROM_FN_PTR(address, MMTkFieldLoggingBarrierSetRuntime::record_array_copy_slow), 3);
     __ popa();
+    __ bind(done);
   }
 }
 
