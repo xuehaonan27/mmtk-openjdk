@@ -20,27 +20,56 @@ class MMTkFieldLoggingBarrierSetRuntime: public MMTkBarrierSetRuntime {
 public:
   static void record_modified_node_slow(void* src, void* slot, void* val);
   static void record_clone_slow(void* src, void* dst, size_t size);
-  static void record_array_copy_slow(const void* src, const void* dst, const size_t size) {
+  static void record_array_copy_slow(void* src, void* dst, const size_t size) {
     record_array_copy_inline(src, dst, size);
   }
 
-  inline static void record_array_copy_inline(const void* src, const void* dst, const size_t size) {
-    for (size_t i = 0; i < size; i++) {
-      const auto offset = i << 3;
-      const auto addr = ((intptr_t) dst) + offset;
-      const uint8_t* meta_addr = (uint8_t*) (SIDE_METADATA_BASE_ADDRESS + (addr >> 6));
-      const uint8_t byte_val = *meta_addr;
-      const intptr_t shift = (addr >> 3) & 0b111;
-      if (((byte_val >> shift) & 1) != 0) {
+  inline static void record_array_copy_inline(const void* src, void* dst, const size_t size) {
+    if (size == 0) return;
+    size_t i = 0;
+    {
+      const uint64_t* meta_addr = (uint64_t*) (SIDE_METADATA_BASE_ADDRESS + (((intptr_t) dst) >> 6));
+      const uint64_t val = *meta_addr;
+      if (val != 0) {
+        while (i < size && (((intptr_t) dst) & 0b111111) != 0) {
+          const intptr_t shift = ((((intptr_t) dst) >> 3) & 0b111111) + i;
+          if (((val >> shift) & 1) != 0) {
+            ::mmtk_object_reference_arraycopy(
+              (MMTk_Mutator) &Thread::current()->third_party_heap_mutator,
+              (void*) (((intptr_t) src) + (i << 3)),
+              0,
+              (void*) (((intptr_t) dst) + (i << 3)),
+              0,
+              size - i
+            );
+            return;
+          }
+          i++;
+          dst = (void*) (((intptr_t) dst) + 1);
+        }
+      } else {
+        const auto new_dst = (void*) ((((intptr_t) dst) + 0b111111L) & !0b111111L);
+        const auto dist = ((intptr_t) new_dst) - ((intptr_t) dst);
+        i = i + dist;
+        dst = new_dst;
+      }
+    }
+
+    uint64_t* meta_addr = (uint64_t*) (SIDE_METADATA_BASE_ADDRESS + (((intptr_t) dst) >> 6));
+    for (; i < size;) {
+      if (*meta_addr != 0) {
         ::mmtk_object_reference_arraycopy(
           (MMTk_Mutator) &Thread::current()->third_party_heap_mutator,
-          (void*) (((intptr_t) src) + offset),
+          (void*) (((intptr_t) src) + (i << 3)),
           0,
-          (void*) addr,
+          (void*) (((intptr_t) dst) + (i << 3)),
           0,
           size - i
         );
+        return;
       }
+      i += 64;
+      meta_addr += 1;
     }
   }
 
