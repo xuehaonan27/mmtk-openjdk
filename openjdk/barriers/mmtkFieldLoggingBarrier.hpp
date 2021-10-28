@@ -48,40 +48,42 @@ public:
       return;
     }
 
-    constexpr intptr_t kLogBitsInUInt = 6;
-    constexpr intptr_t kBitsInUInt = 1 << kLogBitsInUInt;
-    constexpr intptr_t kBytesInUInt = 8;
-    intptr_t origin_dst = (intptr_t) dst_ptr;
-    intptr_t dst = origin_dst;
-    intptr_t src = (intptr_t) src_ptr;
-    intptr_t limit = dst + (size << 3);
-    auto meta_addr = (uint64_t*) ((SIDE_METADATA_BASE_ADDRESS + (dst >> 6)) >> 3 << 3);
-    auto val = *meta_addr;
-    while (dst < limit) {
-      if ((dst & 0b111111111) == 0) {
-        auto val = *meta_addr;
-        for (auto j = 0; j < kBitsInUInt; j++) {
-            if (((val >> j) & 1) != 0) {
-                auto e = dst + (j << 3);
-                if (e < limit) {
-                  auto offset = e - origin_dst;
-                  record_array_copy_mmtk_slow((void*) (src + offset), (void*) e, size - (offset >> 3));
-                  return;
-                }
-            }
-        }
-        dst += 1 << (kLogBitsInUInt + 3);
-        meta_addr += kBytesInUInt;
-      } else {
-        auto shift = (dst >> 3) & (kBitsInUInt - 1);
-        if ((val >> shift) & 1 != 0) {
-          auto offset = dst - origin_dst;
-          record_array_copy_mmtk_slow((void*) (src + offset), (void*) dst, size - (offset >> 3));
-          return;
-        }
-        dst += kBytesInUInt;
-      }
-    }
+    record_array_copy_mmtk_slow(src_ptr, dst_ptr, size);
+
+    // constexpr intptr_t kLogBitsInUInt = 6;
+    // constexpr intptr_t kBitsInUInt = 1 << kLogBitsInUInt;
+    // constexpr intptr_t kBytesInUInt = 8;
+    // intptr_t origin_dst = (intptr_t) dst_ptr;
+    // intptr_t dst = origin_dst;
+    // intptr_t src = (intptr_t) src_ptr;
+    // intptr_t limit = dst + (size << 3);
+    // auto meta_addr = (uint64_t*) ((SIDE_METADATA_BASE_ADDRESS + (dst >> 6)) >> 3 << 3);
+    // auto val = *meta_addr;
+    // while (dst < limit) {
+    //   if ((dst & 0b111111111) == 0) {
+    //     auto val = *meta_addr;
+    //     for (auto j = 0; j < kBitsInUInt; j++) {
+    //         if (((val >> j) & 1) != 0) {
+    //             auto e = dst + (j << 3);
+    //             if (e < limit) {
+    //               auto offset = e - origin_dst;
+    //               record_array_copy_mmtk_slow((void*) (src + offset), (void*) e, size - (offset >> 3));
+    //               return;
+    //             }
+    //         }
+    //     }
+    //     dst += 1 << (kLogBitsInUInt + 3);
+    //     meta_addr += kBytesInUInt;
+    //   } else {
+    //     auto shift = (dst >> 3) & (kBitsInUInt - 1);
+    //     if ((val >> shift) & 1 != 0) {
+    //       auto offset = dst - origin_dst;
+    //       record_array_copy_mmtk_slow((void*) (src + offset), (void*) dst, size - (offset >> 3));
+    //       return;
+    //     }
+    //     dst += kBytesInUInt;
+    //   }
+    // }
 
     // const auto origin_dst = dst;
     // size_t i = 0;
