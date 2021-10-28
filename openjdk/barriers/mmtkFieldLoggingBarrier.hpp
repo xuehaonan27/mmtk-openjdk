@@ -20,10 +20,27 @@ class MMTkFieldLoggingBarrierSetRuntime: public MMTkBarrierSetRuntime {
 public:
   static void record_modified_node_slow(void* src, void* slot, void* val);
   static void record_clone_slow(void* src, void* dst, size_t size);
-  static void record_array_copy_slow(void* src, void* dst, size_t size) {
+  static void record_array_copy_slow(const void* src, const void* dst, const size_t size) {
+    record_array_copy_inline(src, dst, size);
+  }
+
+  inline static void record_array_copy_inline(const void* src, const void* dst, const size_t size) {
     for (size_t i = 0; i < size; i++) {
-      auto d = (void*) (((intptr_t) dst) + (i << 3));
-      record_modified_node_slow((oop) NULL, d, (oop) NULL);
+      const auto offset = i << 3;
+      const auto addr = ((intptr_t) dst) + offset;
+      const uint8_t* meta_addr = (uint8_t*) (SIDE_METADATA_BASE_ADDRESS + (addr >> 6));
+      const uint8_t byte_val = *meta_addr;
+      const intptr_t shift = (addr >> 3) & 0b111;
+      if (((byte_val >> shift) & 1) != 0) {
+        ::mmtk_object_reference_arraycopy(
+          (MMTk_Mutator) &Thread::current()->third_party_heap_mutator,
+          (void*) (((intptr_t) src) + offset),
+          0,
+          (void*) addr,
+          0,
+          size - i
+        );
+      }
     }
   }
 

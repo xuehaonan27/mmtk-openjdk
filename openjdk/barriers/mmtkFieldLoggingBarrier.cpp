@@ -30,7 +30,8 @@ void MMTkFieldLoggingBarrierSetRuntime::record_clone(oop src, oop dst, size_t si
 }
 
 void MMTkFieldLoggingBarrierSetRuntime::record_arraycopy(arrayOop src_obj, size_t src_offset_in_bytes, oop* src_raw, arrayOop dst_obj, size_t dst_offset_in_bytes, oop* dst_raw, size_t length) {
-  ::mmtk_object_reference_arraycopy((MMTk_Mutator) &Thread::current()->third_party_heap_mutator, (void*) src_obj, src_offset_in_bytes, (void*) dst_obj, dst_offset_in_bytes, length);
+  // ::mmtk_object_reference_arraycopy((MMTk_Mutator) &Thread::current()->third_party_heap_mutator, (void*) src_obj, src_offset_in_bytes, (void*) dst_obj, dst_offset_in_bytes, length);
+  record_array_copy_inline((void*) (((intptr_t) (void*) src_obj) + src_offset_in_bytes), (void*) (((intptr_t) (void*) dst_obj) + dst_offset_in_bytes), length);
 }
 
 #define __ masm->
