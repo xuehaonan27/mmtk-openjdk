@@ -24,51 +24,53 @@ public:
     record_array_copy_inline(src, dst, size);
   }
 
-  inline static void record_array_copy_inline(const void* src, void* dst, const size_t size) {
+  inline static void record_array_copy_inline(const void* src, const void* dst, const size_t size) {
+    const auto origin_dst = dst;
     if (size == 0) return;
     size_t i = 0;
     {
-      const uint64_t* meta_addr = (uint64_t*) (SIDE_METADATA_BASE_ADDRESS + (((intptr_t) dst) >> 6));
-      const uint64_t val = *meta_addr;
+      const uint8_t* meta_addr = (uint8_t*) (SIDE_METADATA_BASE_ADDRESS + (((intptr_t) dst) >> 6));
+      const uint8_t val = *meta_addr;
       if (val != 0) {
+        const auto shift_base = ((((intptr_t) dst) >> 3) & 0b111);
         while (i < size && (((intptr_t) dst) & 0b111111) != 0) {
-          const intptr_t shift = ((((intptr_t) dst) >> 3) & 0b111111) + i;
+          const intptr_t shift = shift_base + i;
           if (((val >> shift) & 1) != 0) {
             ::mmtk_object_reference_arraycopy(
               (MMTk_Mutator) &Thread::current()->third_party_heap_mutator,
               (void*) (((intptr_t) src) + (i << 3)),
               0,
-              (void*) (((intptr_t) dst) + (i << 3)),
+              (void*) (((intptr_t) origin_dst) + (i << 3)),
               0,
               size - i
             );
             return;
           }
           i++;
-          dst = (void*) (((intptr_t) dst) + 1);
+          dst = (void*) (((intptr_t) dst) + 8);
         }
       } else {
-        const auto new_dst = (void*) ((((intptr_t) dst) + 0b111111L) & !0b111111L);
+        const auto new_dst = (void*) ((((intptr_t) dst) + 0b111111L) >> 6 << 6);
         const auto dist = ((intptr_t) new_dst) - ((intptr_t) dst);
-        i = i + dist;
+        i = i + (dist >> 3);
         dst = new_dst;
       }
     }
-
-    uint64_t* meta_addr = (uint64_t*) (SIDE_METADATA_BASE_ADDRESS + (((intptr_t) dst) >> 6));
+    if (i >= size) return;
+    uint8_t* meta_addr = (uint8_t*) (SIDE_METADATA_BASE_ADDRESS + (((intptr_t) dst) >> 6));
     for (; i < size;) {
       if (*meta_addr != 0) {
         ::mmtk_object_reference_arraycopy(
           (MMTk_Mutator) &Thread::current()->third_party_heap_mutator,
           (void*) (((intptr_t) src) + (i << 3)),
           0,
-          (void*) (((intptr_t) dst) + (i << 3)),
+          (void*) (((intptr_t) origin_dst) + (i << 3)),
           0,
           size - i
         );
         return;
       }
-      i += 64;
+      i += 8;
       meta_addr += 1;
     }
   }
