@@ -20,22 +20,22 @@ class MMTkFieldLoggingBarrierSetRuntime: public MMTkBarrierSetRuntime {
 public:
   static void record_modified_node_slow(void* src, void* slot, void* val);
   static void record_clone_slow(void* src, void* dst, size_t size);
-  static void record_array_copy_slow(void* src, void* dst, const size_t size) {
-    record_array_copy_inline(src, dst, size);
+  static void record_array_copy_slow(void* src, void* dst, const size_t size, void* dst_obj) {
+    record_array_copy_inline(src, dst, size, dst_obj);
   }
 
-  inline static void record_array_copy_mmtk_slow(const void* src, const void* dst, const size_t size) {
+  inline static void record_array_copy_mmtk_slow(const void* src, const void* dst, const size_t size, void* dst_obj) {
     ::mmtk_object_reference_arraycopy(
       (MMTk_Mutator) &Thread::current()->third_party_heap_mutator,
       (void*) ((intptr_t) src),
       0,
-      (void*) ((intptr_t) dst),
-      0,
+      (void*) ((intptr_t) dst_obj),
+      ((intptr_t) dst) - ((intptr_t) dst_obj),
       size
     );
   }
 
-  inline static void record_array_copy_inline(const void* src_ptr, void* dst_ptr, const size_t size) {
+  inline static void record_array_copy_inline(const void* src_ptr, void* dst_ptr, const size_t size, void* dst_obj) {
     if (size == 0) return;
     if (size == 1) {
       intptr_t addr = (intptr_t) dst_ptr;
@@ -43,12 +43,12 @@ public:
       intptr_t shift = (addr >> 3) & 0b111;
       uint8_t byte_val = *meta_addr;
       if (((byte_val >> shift) & 1) != 0) {
-        record_modified_node_slow((void*) NULL, dst_ptr, (void*) NULL);
+        record_modified_node_slow(dst_obj, dst_ptr, (void*) NULL);
       }
       return;
     }
 
-    record_array_copy_mmtk_slow(src_ptr, dst_ptr, size);
+    record_array_copy_mmtk_slow(src_ptr, dst_ptr, size, dst_obj);
 
     // constexpr intptr_t kLogBitsInUInt = 6;
     // constexpr intptr_t kBitsInUInt = 1 << kLogBitsInUInt;
@@ -158,6 +158,7 @@ public:
     }
   }
   virtual void arraycopy_prologue(MacroAssembler* masm, DecoratorSet decorators, BasicType type, Register src, Register dst, Register count) override;
+  virtual void arraycopy_prologue2(MacroAssembler* masm, DecoratorSet decorators, BasicType type, Register src, Register dst, Register count, Register dst_obj) override;
   inline void gen_write_barrier_stub(LIR_Assembler* ce, MMTkFieldLoggingBarrierStub* stub);
 #define __ sasm->
   void generate_c1_write_barrier_runtime_stub(StubAssembler* sasm) {
