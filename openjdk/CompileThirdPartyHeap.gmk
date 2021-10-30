@@ -39,9 +39,15 @@ else
   CARGO_PROFILE = debug
 endif
 
+ifeq ($(strip $(GC_FEATURES)),)
+  CARGO_BUILD_FEATURES =
+else
+  CARGO_BUILD_FEATURES = --features $(GC_FEATURES)
+endif
+
 $(LIB_MMTK): FORCE
-	echo "cd $(MMTK_RUST_ROOT) && cargo build $(CARGO_PROFILE_FLAG) --features $(GC_FEATURES)"
-	cd $(MMTK_RUST_ROOT) && cargo build $(CARGO_PROFILE_FLAG) --features $(GC_FEATURES)
+	echo "cd $(MMTK_RUST_ROOT) && cargo build $(CARGO_PROFILE_FLAG) $(CARGO_BUILD_FEATURES)"
+	cd $(MMTK_RUST_ROOT) && cargo build $(CARGO_PROFILE_FLAG) $(CARGO_BUILD_FEATURES)
 	cp $(MMTK_RUST_ROOT)/target/$(CARGO_PROFILE)/libmmtk_openjdk.so $(LIB_MMTK)
 
 JVM_LIBS += -L$(JVM_LIB_OUTPUTDIR) -lmmtk_openjdk
