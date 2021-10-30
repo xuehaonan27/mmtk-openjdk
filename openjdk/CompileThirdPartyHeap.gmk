@@ -40,8 +40,8 @@ else
 endif
 
 $(LIB_MMTK): FORCE
-	echo "cd $(MMTK_RUST_ROOT) && cargo build $(CARGO_PROFILE_FLAG) $(GC_FEATURES)"
-	cd $(MMTK_RUST_ROOT) && cargo build $(CARGO_PROFILE_FLAG) $(GC_FEATURES)
+	echo "cd $(MMTK_RUST_ROOT) && cargo build $(CARGO_PROFILE_FLAG) --features $(GC_FEATURES)"
+	cd $(MMTK_RUST_ROOT) && cargo build $(CARGO_PROFILE_FLAG) --features $(GC_FEATURES)
 	cp $(MMTK_RUST_ROOT)/target/$(CARGO_PROFILE)/libmmtk_openjdk.so $(LIB_MMTK)
 
 JVM_LIBS += -L$(JVM_LIB_OUTPUTDIR) -lmmtk_openjdk
