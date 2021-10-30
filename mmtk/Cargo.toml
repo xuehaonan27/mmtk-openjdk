@@ -14,9 +14,10 @@ codegen-units = 24
 
 [profile.release]
 lto = true
-# codegen-units = 24
 codegen-units = 1
+# codegen-units = 24
 # debug-assertions = true
+# debug = true
 
 [dependencies]
 libc = "0.2"
@@ -60,6 +61,9 @@ barrier_measurement = ["mmtk/barrier_measurement"]
 log_gc = ["mmtk/log_gc"]
 log_stages = ["mmtk/log_stages"]
 log_work_packets = ["mmtk/log_work_packets"]
+
+ix_block_only = ["mmtk/ix_block_only"]
+
 # Non-moving, Non-concurrent LXR
 lxr_basic = ["mmtk/lxr_basic"]
 # LXR (Concurrent marking)
