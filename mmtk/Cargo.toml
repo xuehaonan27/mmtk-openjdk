@@ -55,6 +55,7 @@ marksweep = []
 pageprotect = []
 immix = []
 
+sanity = ["mmtk/sanity"]
 barrier_measurement = ["mmtk/barrier_measurement"]
 log_gc = ["mmtk/log_gc"]
 log_stages = ["mmtk/log_stages"]
