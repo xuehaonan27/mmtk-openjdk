@@ -15,6 +15,11 @@ typedef void* MMTk_TraceLocal;
 extern const uintptr_t GLOBAL_SIDE_METADATA_BASE_ADDRESS;
 extern const uintptr_t GLOBAL_SIDE_METADATA_VM_BASE_ADDRESS;
 extern const uintptr_t GLOBAL_ALLOC_BIT_ADDRESS;
+extern const int DISABLE_ALLOCATION_FAST_PATH;
+
+inline bool disable_fast_alloc() {
+    return DISABLE_ALLOCATION_FAST_PATH != 0;
+}
 
 /**
  * Allocation

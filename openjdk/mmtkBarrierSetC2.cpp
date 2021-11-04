@@ -125,7 +125,7 @@ void MMTkBarrierSetC2::expand_allocate(PhaseMacroExpand* x,
   // But we need to figure out which allocator we are using by querying MMTk.
   AllocatorSelector selector = get_allocator_mapping(AllocatorDefault);
 
-  if (x->C->env()->dtrace_alloc_probes() || !MMTK_ENABLE_ALLOCATION_FASTPATH
+  if (x->C->env()->dtrace_alloc_probes() || !MMTK_ENABLE_ALLOCATION_FASTPATH || disable_fast_alloc()
       // Malloc allocator has no fastpath
       || (selector.tag == TAG_MALLOC || selector.tag == TAG_LARGE_OBJECT)) {
     // Force slow-path allocation
@@ -278,13 +278,13 @@ void MMTkBarrierSetC2::expand_allocate(PhaseMacroExpand* x,
     fast_oop_rawmem = store_eden_top;
 
 #ifdef MMTK_ENABLE_GLOBAL_ALLOC_BIT
-    // set the alloc bit:          
+    // set the alloc bit:
     // intptr_t addr = (intptr_t) (void*) fast_oop;
     // uint8_t* meta_addr = (uint8_t*) (ALLOC_BIT_BASE_ADDRESS + (addr >> 6));
     // intptr_t shift = (addr >> 3) & 0b111;
     // uint8_t byte_val = *meta_addr;
     // uint8_t new_byte_val = byte_val | (1 << shift);
-    // *meta_addr = new_byte_val;  
+    // *meta_addr = new_byte_val;
     Node *obj_addr = new CastP2XNode(fast_oop_ctrl, fast_oop);
     x->transform_later(obj_addr);
 
@@ -321,7 +321,7 @@ void MMTkBarrierSetC2::expand_allocate(PhaseMacroExpand* x,
     Node *const_one =  ConINode::make(1);
     x->transform_later(const_one);
 
-    Node *shifted_masked_addr_i = new ConvL2INode(shifted_masked_addr);   
+    Node *shifted_masked_addr_i = new ConvL2INode(shifted_masked_addr);
     x->transform_later(shifted_masked_addr_i);
 
     Node *set_bit = new LShiftINode(const_one, shifted_masked_addr_i);

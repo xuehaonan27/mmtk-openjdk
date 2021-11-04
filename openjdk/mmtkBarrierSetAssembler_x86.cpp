@@ -37,7 +37,7 @@ void MMTkBarrierSetAssembler::eden_allocate(MacroAssembler* masm, Register threa
   assert(obj == rax, "obj must be in rax, for cmpxchg");
   assert_different_registers(obj, var_size_in_bytes, t1);
 
-  if (!MMTK_ENABLE_ALLOCATION_FASTPATH) {
+  if (!MMTK_ENABLE_ALLOCATION_FASTPATH || disable_fast_alloc()) {
     __ jmp(slow_case);
   } else {
     // MMTk size check. If the alloc size is larger than the allowed max size for non los,
@@ -136,7 +136,7 @@ void MMTkBarrierSetAssembler::eden_allocate(MacroAssembler* masm, Register threa
     __ movptr(tmp3, obj);
     __ shrptr(tmp3, 6);
     __ movptr(rcx, ALLOC_BIT_BASE_ADDRESS);
-    __ movb(Address(rcx, tmp3), tmp2);  
+    __ movb(Address(rcx, tmp3), tmp2);
 
 #endif
 
