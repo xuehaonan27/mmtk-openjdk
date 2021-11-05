@@ -147,22 +147,22 @@ pub struct InstanceKlass {
 impl InstanceKlass {
     const HEADER_SIZE: usize = mem::size_of::<Self>() / BYTES_IN_WORD;
     const VTABLE_START_OFFSET: usize = Self::HEADER_SIZE * BYTES_IN_WORD;
-
+    #[inline(always)]
     fn start_of_vtable(&self) -> *const usize {
         unsafe { (self as *const _ as *const u8).add(Self::VTABLE_START_OFFSET) as _ }
     }
-
+    #[inline(always)]
     fn start_of_itable(&self) -> *const usize {
         unsafe { self.start_of_vtable().add(self.klass.vtable_len as _) }
     }
-
+    #[inline(always)]
     fn nonstatic_oop_map_count(&self) -> usize {
         let oop_map_block_size = mem::size_of::<OopMapBlock>();
         let oop_map_block_size_up =
             mmtk::util::conversions::raw_align_up(oop_map_block_size, BYTES_IN_WORD);
         self.nonstatic_oop_map_size as usize / (oop_map_block_size_up >> LOG_BYTES_IN_WORD)
     }
-
+    #[inline(always)]
     pub fn nonstatic_oop_maps(&self) -> &'static [OopMapBlock] {
         let start_of_itable = self.start_of_itable();
         let start = unsafe { start_of_itable.add(self.itable_len as _) as *const OopMapBlock };
@@ -177,6 +177,7 @@ pub struct InstanceMirrorKlass {
 }
 
 impl InstanceMirrorKlass {
+    #[inline(always)]
     fn offset_of_static_fields() -> usize {
         lazy_static! {
             pub static ref OFFSET_OF_STATIC_FIELDS: usize =
@@ -184,6 +185,7 @@ impl InstanceMirrorKlass {
         }
         *OFFSET_OF_STATIC_FIELDS
     }
+    #[inline(always)]
     fn static_oop_field_count_offset() -> i32 {
         lazy_static! {
             pub static ref STATIC_OOP_FIELD_COUNT_OFFSET: i32 =
@@ -191,9 +193,11 @@ impl InstanceMirrorKlass {
         }
         *STATIC_OOP_FIELD_COUNT_OFFSET
     }
+    #[inline(always)]
     pub fn start_of_static_fields(oop: Oop) -> Address {
         Address::from_ref(oop) + Self::offset_of_static_fields()
     }
+    #[inline(always)]
     pub fn static_oop_field_count(oop: Oop) -> usize {
         let offset = Self::static_oop_field_count_offset();
         unsafe { oop.get_field_address(offset).load::<i32>() as _ }
@@ -232,21 +236,25 @@ pub struct InstanceRefKlass {
 }
 
 impl InstanceRefKlass {
+    #[inline(always)]
     fn referent_offset() -> i32 {
         lazy_static! {
             pub static ref REFERENT_OFFSET: i32 = unsafe { ((*UPCALLS).referent_offset)() };
         }
         *REFERENT_OFFSET
     }
+    #[inline(always)]
     fn discovered_offset() -> i32 {
         lazy_static! {
             pub static ref DISCOVERED_OFFSET: i32 = unsafe { ((*UPCALLS).discovered_offset)() };
         }
         *DISCOVERED_OFFSET
     }
+    #[inline(always)]
     pub fn referent_address(oop: Oop) -> Address {
         oop.get_field_address(Self::referent_offset())
     }
+    #[inline(always)]
     pub fn discovered_address(oop: Oop) -> Address {
         oop.get_field_address(Self::discovered_offset())
     }
@@ -336,6 +344,7 @@ pub type ArrayOop<T> = &'static ArrayOopDesc<T>;
 impl<T> ArrayOopDesc<T> {
     const ELEMENT_TYPE_SHOULD_BE_ALIGNED: bool = type_equal::<T, f64>() || type_equal::<T, i64>();
     const LENGTH_OFFSET: usize = mem::size_of::<Self>();
+    #[inline(always)]
     fn header_size() -> usize {
         let typesize_in_bytes =
             conversions::raw_align_up(Self::LENGTH_OFFSET + BYTES_IN_INT, BYTES_IN_LONG);
@@ -345,13 +354,16 @@ impl<T> ArrayOopDesc<T> {
             typesize_in_bytes / BYTES_IN_WORD
         }
     }
+    #[inline(always)]
     fn length(&self) -> i32 {
         unsafe { *((self as *const _ as *const u8).add(Self::LENGTH_OFFSET) as *const i32) }
     }
+    #[inline(always)]
     fn base(&self) -> *const T {
         let base_offset_in_bytes = Self::header_size() * BYTES_IN_WORD;
         unsafe { (self as *const _ as *const u8).add(base_offset_in_bytes) as _ }
     }
+    #[inline(always)]
     pub fn data(&self) -> &[T] {
         unsafe { slice::from_raw_parts(self.base(), self.length() as _) }
     }

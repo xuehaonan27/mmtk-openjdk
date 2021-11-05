@@ -15,7 +15,7 @@ trait OopIterate: Sized {
 }
 
 impl OopIterate for OopMapBlock {
-    #[inline]
+    #[inline(always)]
     fn oop_iterate(&self, oop: Oop, closure: &mut impl TransitiveClosure) {
         let start = oop.get_field_address(self.offset);
         for i in 0..self.count as usize {
@@ -26,7 +26,7 @@ impl OopIterate for OopMapBlock {
 }
 
 impl OopIterate for InstanceKlass {
-    #[inline]
+    #[inline(always)]
     fn oop_iterate(&self, oop: Oop, closure: &mut impl TransitiveClosure) {
         let oop_maps = self.nonstatic_oop_maps();
         for map in oop_maps {
@@ -36,7 +36,7 @@ impl OopIterate for InstanceKlass {
 }
 
 impl OopIterate for InstanceMirrorKlass {
-    #[inline]
+    #[inline(always)]
     fn oop_iterate(&self, oop: Oop, closure: &mut impl TransitiveClosure) {
         self.instance_klass.oop_iterate(oop, closure);
         // if (Devirtualizer::do_metadata(closure)) {
@@ -77,7 +77,7 @@ impl OopIterate for InstanceMirrorKlass {
 }
 
 impl OopIterate for InstanceClassLoaderKlass {
-    #[inline]
+    #[inline(always)]
     fn oop_iterate(&self, oop: Oop, closure: &mut impl TransitiveClosure) {
         self.instance_klass.oop_iterate(oop, closure);
         // if (Devirtualizer::do_metadata(closure)) {
@@ -91,7 +91,7 @@ impl OopIterate for InstanceClassLoaderKlass {
 }
 
 impl OopIterate for ObjArrayKlass {
-    #[inline]
+    #[inline(always)]
     fn oop_iterate(&self, oop: Oop, closure: &mut impl TransitiveClosure) {
         let array = unsafe { oop.as_array_oop::<Oop>() };
         for oop in array.data() {
@@ -101,7 +101,7 @@ impl OopIterate for ObjArrayKlass {
 }
 
 impl OopIterate for TypeArrayKlass {
-    #[inline]
+    #[inline(always)]
     fn oop_iterate(&self, _oop: Oop, _closure: &mut impl TransitiveClosure) {
         // Performance tweak: We skip processing the klass pointer since all
         // TypeArrayKlasses are guaranteed processed via the null class loader.
@@ -109,7 +109,7 @@ impl OopIterate for TypeArrayKlass {
 }
 
 impl OopIterate for InstanceRefKlass {
-    #[inline]
+    #[inline(always)]
     fn oop_iterate(&self, oop: Oop, closure: &mut impl TransitiveClosure) {
         self.instance_klass.oop_iterate(oop, closure);
         let referent_addr = Self::referent_address(oop);
@@ -126,7 +126,7 @@ fn oop_iterate_slow(oop: Oop, closure: &mut impl TransitiveClosure, tls: OpaqueP
     }
 }
 
-#[inline]
+#[inline(always)]
 fn oop_iterate(oop: Oop, closure: &mut impl TransitiveClosure) {
     let klass_id = oop.klass.id;
     debug_assert!(
