@@ -184,7 +184,7 @@ public:
   bool is_scavengable(oop obj);
   // Registering and unregistering an nmethod (compiled code) with the heap.
   // Override with specific mechanism for each specialized heap type.
-
+  void register_nmethod(nmethod* nm);
   // Heap verification
   void verify(VerifyOption option);
 
