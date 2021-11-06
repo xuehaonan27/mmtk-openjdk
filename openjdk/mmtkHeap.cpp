@@ -66,6 +66,11 @@ MMTkHeap::MMTkHeap(MMTkCollectorPolicy* policy) : CollectedHeap(), _last_gc_time
 // , _par_state_string(StringTable::weak_storage())
 {
   _heap = this;
+  unsigned int ncpus = (unsigned int) os::initial_active_processor_count();
+  _safepoint_workers = new WorkGang("GC Thread", ncpus,
+    /* are_GC_task_threads */true,
+    /* are_ConcurrentGC_threads */false);
+  _safepoint_workers->initialize_workers();
 }
 
 jint MMTkHeap::initialize() {
@@ -330,7 +335,7 @@ void MMTkHeap::print_tracing_info() const {
 
 // An object is scavengable if its location may move during a scavenge.
 // (A scavenge is a GC which is not a full GC.)
-bool MMTkHeap::is_scavengable(oop obj) {return true;}
+// bool MMTkHeap::is_scavengable(oop obj) {return true;}
 // Registering and unregistering an nmethod (compiled code) with the heap.
 // Override with specific mechanism for each specialized heap type.
 

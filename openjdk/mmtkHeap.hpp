@@ -59,6 +59,7 @@ class MMTkHeap : public CollectedHeap {
   ContiguousSpace* _space;
   int _num_root_scan_tasks;
   MMTkVMCompanionThread* _companion_thread;
+  WorkGang* _safepoint_workers;
 public:
 
   MMTkHeap(MMTkCollectorPolicy* policy);
@@ -178,10 +179,11 @@ public:
   // Default implementation does nothing.
   void print_tracing_info() const ;
 
+  inline virtual WorkGang* get_safepoint_workers() { return _safepoint_workers; }
 
   // An object is scavengable if its location may move during a scavenge.
   // (A scavenge is a GC which is not a full GC.)
-  bool is_scavengable(oop obj);
+  inline bool is_scavengable(oop obj) { return true; }
   // Registering and unregistering an nmethod (compiled code) with the heap.
   // Override with specific mechanism for each specialized heap type.
   void register_nmethod(nmethod* nm);
