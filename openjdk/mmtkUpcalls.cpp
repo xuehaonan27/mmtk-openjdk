@@ -54,6 +54,7 @@ static void mmtk_stop_all_mutators(void *tls, void (*create_stack_scan_work)(voi
   log_debug(gc)("Requesting the VM to suspend all mutators...");
   MMTkHeap::heap()->companion_thread()->request(MMTkVMCompanionThread::_threads_suspended, true);
   log_debug(gc)("Mutators stopped. Now enumerate threads for scanning...");
+  mmtk_report_gc_start();
 
   nmethod::oops_do_marking_prologue();
   {

@@ -33,6 +33,11 @@ pub extern "C" fn mmtk_active_barrier() -> *const c_char {
     }
 }
 
+#[no_mangle]
+pub extern "C" fn mmtk_report_gc_start() {
+    mmtk::memory_manager::report_gc_start::<OpenJDK>(&SINGLETON)
+}
+
 /// # Safety
 /// Caller needs to make sure the ptr is a valid vector pointer.
 #[no_mangle]
