@@ -40,6 +40,7 @@ private:
 public:
   VM_MMTkSTWOperation(MMTkVMCompanionThread *companion_thread);
   virtual void doit() override;
+  virtual void doit_epilogue() override; // Note: Not called if mode is: _concurrent
 };
 
 #endif // MMTK_OPENJDK_MMTK_VM_OPERATION_HPP

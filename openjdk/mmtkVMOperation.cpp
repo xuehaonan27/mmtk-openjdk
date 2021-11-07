@@ -26,6 +26,7 @@
 #include "mmtk.h"
 #include "mmtkVMCompanionThread.hpp"
 #include "mmtkVMOperation.hpp"
+#include "interpreter/oopMapCache.hpp"
 
 VM_MMTkSTWOperation::VM_MMTkSTWOperation(MMTkVMCompanionThread *companion_thread):
     _companion_thread(companion_thread) {
@@ -35,4 +36,9 @@ void VM_MMTkSTWOperation::doit() {
     log_trace(vmthread)("Entered VM_MMTkSTWOperation::doit().");
     _companion_thread->reach_suspended_and_wait_for_resume();
     log_trace(vmthread)("Leaving VM_MMTkSTWOperation::doit()");
+}
+
+
+void VM_MMTkSTWOperation::doit_epilogue() {
+  OopMapCache::cleanup_old_entries();
 }
