@@ -25,7 +25,7 @@ pub(crate) extern "C" fn create_process_edges_work<W: ProcessEdgesWork<VM = Open
         } else {
             memory_manager::add_work_packet(
                 &SINGLETON,
-                WorkBucketStage::ProcessRoots,
+                WorkBucketStage::Closure,
                 w,
             );
         }
@@ -80,7 +80,7 @@ impl Scanning<OpenJDK> for VMScanning {
     fn scan_vm_specific_roots<W: ProcessEdgesWork<VM = OpenJDK>>() {
         memory_manager::add_work_packets(
             &SINGLETON,
-            WorkBucketStage::ScanGlobalRoots,
+            WorkBucketStage::Unconstrained,
             vec![
                 box ScanUniverseRoots::<W>::new(),
                 box ScanJNIHandlesRoots::<W>::new(),
@@ -98,7 +98,7 @@ impl Scanning<OpenJDK> for VMScanning {
         if !(Self::SCAN_MUTATORS_IN_SAFEPOINT && Self::SINGLE_THREAD_MUTATOR_SCANNING) {
             memory_manager::add_work_packet(
                 &SINGLETON,
-                WorkBucketStage::ScanGlobalRoots,
+                WorkBucketStage::Unconstrained,
                 ScanVMThreadRoots::<W>::new(),
             );
         }
