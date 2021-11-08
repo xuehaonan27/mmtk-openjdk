@@ -28,7 +28,7 @@ lazy_static = "1.1"
 # - change branch
 # - change repo name
 # But other changes including adding/removing whitespaces in commented lines may break the CI.
-mmtk = { git = "https://github.com/wenyuzhao/mmtk-core.git", rev = "f6a8108fad8e7cb717edbd8f17977aef963ba1cb" }
+mmtk = { git = "https://github.com/wenyuzhao/mmtk-core.git", rev = "d1aa270ba527d8e7e1de30cd7c88c8b840f42669" }
 # Uncomment the following to build locally
 # mmtk = { path = "../repos/mmtk-core" }
 
@@ -79,6 +79,7 @@ lxr_lazy = ["mmtk/lxr_lazy"]
 # LXR (Concurrent)
 lxr_conc = ["mmtk/lxr_conc"]
 # LXR (Evacuation)
+lxr_nevac = ["mmtk/lxr_nevac"]
 lxr_evac = ["mmtk/lxr_evac"]
 # LXR (Block only)
 lxr_block = ["mmtk/lxr_block"]
