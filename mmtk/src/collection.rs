@@ -12,11 +12,10 @@ pub struct VMCollection {}
 extern "C" fn create_mutator_scan_work<E: ProcessEdgesWork<VM = OpenJDK>>(
     mutator: &'static mut Mutator<OpenJDK>,
 ) {
-    mutator.flush();
     mmtk::memory_manager::add_work_packet(
         &SINGLETON,
         // FIXME: Should be Unconstrained!
-        WorkBucketStage::Unconstrained,
+        WorkBucketStage::Prepare,
         ScanStackRoot::<E>(mutator),
     );
 }
