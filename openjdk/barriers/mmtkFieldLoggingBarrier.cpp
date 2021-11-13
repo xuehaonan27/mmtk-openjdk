@@ -26,7 +26,7 @@ void MMTkFieldLoggingBarrierSetRuntime::record_modified_node(oop src, ptrdiff_t 
 }
 
 void MMTkFieldLoggingBarrierSetRuntime::record_clone(oop src, oop dst, size_t size) {
-  record_clone_slow((void*) src, (void*) dst, size);
+  // record_clone_slow((void*) src, (void*) dst, size);
 }
 
 void MMTkFieldLoggingBarrierSetRuntime::record_arraycopy(arrayOop src_obj, size_t src_offset_in_bytes, oop* src_raw, arrayOop dst_obj, size_t dst_offset_in_bytes, oop* dst_raw, size_t length) {
@@ -282,20 +282,46 @@ void MMTkFieldLoggingBarrierSetC2::record_modified_node(GraphKit* kit, Node* src
   Node* x = __ make_leaf_call(tf, CAST_FROM_FN_PTR(address, MMTkFieldLoggingBarrierSetRuntime::record_modified_node_slow), "record_modified_node", src, slot, val);
 #endif
   kit->sync_kit(ideal);
-  kit->insert_mem_bar(Op_MemBarCPUOrder);
+  kit->insert_mem_bar(Op_MemBarVolatile);
 
   kit->final_sync(ideal); // Final sync IdealKit and GraphKit.
 }
 
+// static bool clone_needs_barrier(Node* src, PhaseGVN& gvn) {
+//   const TypeOopPtr* src_type = gvn.type(src)->is_oopptr();
+//   if (src_type->isa_instptr() != NULL) {
+//     ciInstanceKlass* ik = src_type->klass()->as_instance_klass();
+//     if ((src_type->klass_is_exact() || (!ik->is_interface() && !ik->has_subklass())) && !ik->has_injected_fields()) {
+//       return ik->has_object_fields();
+//     } else {
+//       return true;
+//     }
+//   } else if (src_type->isa_aryptr()) {
+//     BasicType src_elem  = src_type->klass()->as_array_klass()->element_type()->basic_type();
+//     if (src_elem == T_OBJECT || src_elem == T_ARRAY) {
+//       return true;
+//     } else {
+//       return false;
+//     }
+//   } else {
+//     return true;
+//   }
+// }
+
 void MMTkFieldLoggingBarrierSetC2::record_clone(GraphKit* kit, Node* src, Node* dst, Node* size) const {
-  MMTkIdealKit ideal(kit, true);
-  const TypeFunc* tf = __ func_type(TypeOopPtr::BOTTOM, TypeOopPtr::BOTTOM, TypeInt::INT);
-  Node* x = __ make_leaf_call(tf, CAST_FROM_FN_PTR(address, MMTkFieldLoggingBarrierSetRuntime::record_clone_slow), "record_clone", src, dst, size);
+  // if (!clone_needs_barrier(src, kit->gvn())) return;
+  // if (src == kit->just_allocated_object(kit->control())) {
+  //   return;
+  // }
 
-  kit->sync_kit(ideal);
-  kit->insert_mem_bar(Op_MemBarCPUOrder);
+  // MMTkIdealKit ideal(kit, true);
+  // const TypeFunc* tf = __ func_type(TypeOopPtr::BOTTOM, TypeOopPtr::BOTTOM, TypeInt::INT);
+  // Node* x = __ make_leaf_call(tf, CAST_FROM_FN_PTR(address, MMTkFieldLoggingBarrierSetRuntime::record_clone_slow), "record_clone", src, dst, size);
 
-  kit->final_sync(ideal); // Final sync IdealKit and GraphKit.
+  // kit->sync_kit(ideal);
+  // kit->insert_mem_bar(Op_MemBarVolatile);
+
+  // kit->final_sync(ideal); // Final sync IdealKit and GraphKit.
 }
 
 #undef __

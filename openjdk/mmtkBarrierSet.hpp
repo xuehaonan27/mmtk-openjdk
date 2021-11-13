@@ -202,6 +202,7 @@ public:
     static bool oop_arraycopy_in_heap(arrayOop src_obj, size_t src_offset_in_bytes, T* src_raw,
                                       arrayOop dst_obj, size_t dst_offset_in_bytes, T* dst_raw,
                                       size_t length) {
+      runtime()->record_arraycopy(src_obj, src_offset_in_bytes, (oop*) src_raw, dst_obj, dst_offset_in_bytes, (oop*) dst_raw, length);
       return Raw::oop_arraycopy(src_obj, src_offset_in_bytes, src_raw, dst_obj, dst_offset_in_bytes, dst_raw, length);
     }
 
