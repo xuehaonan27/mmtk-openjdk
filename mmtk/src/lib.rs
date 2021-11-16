@@ -112,6 +112,9 @@ pub static GLOBAL_ALLOC_BIT_ADDRESS: uintptr_t =
 #[no_mangle]
 pub static DISABLE_ALLOCATION_FAST_PATH: i32 = cfg!(feature = "no_fast_alloc") as _;
 
+#[no_mangle]
+pub static IMMIX_ALLOCATOR_SIZE: uintptr_t = std::mem::size_of::<mmtk::util::alloc::ImmixAllocator<OpenJDK>>();
+
 #[derive(Default)]
 pub struct OpenJDK;
 

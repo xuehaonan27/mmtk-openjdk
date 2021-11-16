@@ -54,6 +54,7 @@ struct ImmixAllocator {
   uint8_t _align[7];
   uint8_t line_opt_tag;
   uintptr_t line_opt;
+  uintptr_t mutator_recycled_blocks;
 };
 
 struct MallocAllocator {

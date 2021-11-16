@@ -16,6 +16,7 @@ extern const uintptr_t GLOBAL_SIDE_METADATA_BASE_ADDRESS;
 extern const uintptr_t GLOBAL_SIDE_METADATA_VM_BASE_ADDRESS;
 extern const uintptr_t GLOBAL_ALLOC_BIT_ADDRESS;
 extern const int DISABLE_ALLOCATION_FAST_PATH;
+extern const uintptr_t IMMIX_ALLOCATOR_SIZE;
 
 inline bool disable_fast_alloc() {
     return DISABLE_ALLOCATION_FAST_PATH != 0;
