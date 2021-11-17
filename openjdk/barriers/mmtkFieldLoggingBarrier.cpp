@@ -51,10 +51,21 @@ void MMTkFieldLoggingBarrierSetAssembler::oop_store_at(MacroAssembler* masm, Dec
   BarrierSetAssembler::store_at(masm, decorators, type, dst, val, tmp1, tmp2);
 }
 
-void MMTkFieldLoggingBarrierSetAssembler::arraycopy_prologue(MacroAssembler* masm, DecoratorSet decorators, BasicType type, Register src, Register dst, Register count) {}
-
-void MMTkFieldLoggingBarrierSetAssembler::arraycopy_prologue2(MacroAssembler* masm, DecoratorSet decorators, BasicType type, Register src, Register dst, Register count, Register dst_obj) {
+void MMTkFieldLoggingBarrierSetAssembler::arraycopy_prologue(MacroAssembler* masm, DecoratorSet decorators, BasicType type, Register src, Register dst, Register count) {
   if (type == T_OBJECT || type == T_ARRAY) {
+    Label slow, done;
+    // Bailout if count is zero
+    __ cmpptr(count, 0);
+    __ jcc(Assembler::equal, done);
+    // Fast path if count is one
+    __ cmpptr(count, 1);
+    __ jcc(Assembler::notEqual, slow);
+    __ push(rax);
+    record_modified_node(masm, Address(dst, 0), src, rax, rax);
+    __ pop(rax);
+    __ jmp(done);
+    // Slow path
+    __ bind(slow);
     __ pusha();
     assert_different_registers(c_rarg0, dst);
     assert_different_registers(c_rarg0, count);
@@ -78,11 +89,42 @@ void MMTkFieldLoggingBarrierSetAssembler::arraycopy_prologue2(MacroAssembler* ma
 
     __ movptr(c_rarg1, dst);
     __ movptr(c_rarg2, count);
-    __ movptr(c_rarg3, dst_obj);
-    __ call_VM_leaf_base(CAST_FROM_FN_PTR(address, MMTkFieldLoggingBarrierSetRuntime::record_array_copy_slow), 4);
+    __ call_VM_leaf_base(CAST_FROM_FN_PTR(address, MMTkFieldLoggingBarrierSetRuntime::record_array_copy_slow), 3);
     __ popa();
+    __ bind(done);
   }
 }
+
+// void MMTkFieldLoggingBarrierSetAssembler::arraycopy_prologue2(MacroAssembler* masm, DecoratorSet decorators, BasicType type, Register src, Register dst, Register count, Register dst_obj) {
+//   if (type == T_OBJECT || type == T_ARRAY) {
+//     __ pusha();
+//     assert_different_registers(c_rarg0, dst);
+//     assert_different_registers(c_rarg0, count);
+//     // guarantee(c_rarg0 != dst, "X");
+//     guarantee(rscratch1 != src, "X");
+//     guarantee(rscratch1 != dst, "X");
+//     guarantee(rscratch1 != count, "X");
+
+//     guarantee(c_rarg0 != count, "X");
+
+//     if (c_rarg0 == dst) {
+//       __ movptr(rscratch1, dst);
+//     }
+//     __ movptr(c_rarg0, src);
+//     if (c_rarg0 == dst) {
+//       __ movptr(dst, rscratch1);
+//     }
+
+//     assert_different_registers(c_rarg1, count);
+//     guarantee(c_rarg1 != count, "X");
+
+//     __ movptr(c_rarg1, dst);
+//     __ movptr(c_rarg2, count);
+//     __ movptr(c_rarg3, dst_obj);
+//     __ call_VM_leaf_base(CAST_FROM_FN_PTR(address, MMTkFieldLoggingBarrierSetRuntime::record_array_copy_slow), 4);
+//     __ popa();
+//   }
+// }
 
 void MMTkFieldLoggingBarrierSetAssembler::record_modified_node(MacroAssembler* masm, Address dst, Register val, Register tmp1, Register tmp2) {
 #if MMTK_ENABLE_BARRIER_FASTPATH

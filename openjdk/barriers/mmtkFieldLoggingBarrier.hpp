@@ -20,8 +20,8 @@ class MMTkFieldLoggingBarrierSetRuntime: public MMTkBarrierSetRuntime {
 public:
   static void record_modified_node_slow(void* src, void* slot, void* val);
   static void record_clone_slow(void* src, void* dst, size_t size);
-  static void record_array_copy_slow(void* src, void* dst, const size_t size, void* dst_obj) {
-    record_array_copy_inline(src, dst, size, dst_obj);
+  static void record_array_copy_slow(void* src, void* dst, const size_t size) {
+    record_array_copy_inline(src, dst, size, NULL);
   }
 
   inline static void record_array_copy_mmtk_slow(const void* src, const void* dst, const size_t size, void* dst_obj) {
@@ -158,7 +158,7 @@ public:
     }
   }
   virtual void arraycopy_prologue(MacroAssembler* masm, DecoratorSet decorators, BasicType type, Register src, Register dst, Register count) override;
-  virtual void arraycopy_prologue2(MacroAssembler* masm, DecoratorSet decorators, BasicType type, Register src, Register dst, Register count, Register dst_obj) override;
+  // virtual void arraycopy_prologue2(MacroAssembler* masm, DecoratorSet decorators, BasicType type, Register src, Register dst, Register count, Register dst_obj) override;
   inline void gen_write_barrier_stub(LIR_Assembler* ce, MMTkFieldLoggingBarrierStub* stub);
 #define __ sasm->
   void generate_c1_write_barrier_runtime_stub(StubAssembler* sasm) {
