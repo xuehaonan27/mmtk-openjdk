@@ -6,6 +6,7 @@ use mmtk::util::{Address, OpaquePointer};
 use std::ffi::CStr;
 use std::fmt;
 use std::marker::PhantomData;
+use std::ops::Range;
 use std::{mem, slice};
 
 trait EqualTo<T> {
@@ -266,6 +267,15 @@ pub struct OopDesc {
     pub klass: &'static Klass,
 }
 
+impl OopDesc {
+    #[inline(always)]
+    pub fn start(&self) -> Address {
+        unsafe {
+            mem::transmute(self)
+        }
+    }
+}
+
 impl fmt::Debug for OopDesc {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let c_string = unsafe { ((*UPCALLS).dump_object_string)(mem::transmute(self)) };
@@ -366,6 +376,12 @@ impl<T> ArrayOopDesc<T> {
     #[inline(always)]
     pub fn data(&self) -> &[T] {
         unsafe { slice::from_raw_parts(self.base(), self.length() as _) }
+    }
+    #[inline(always)]
+    pub fn data_range(&self) -> Range<Address> {
+        let base = Address::from_ptr(self.base());
+        let len = self.length() as usize;
+        base .. (base + (len << BYTES_IN_ADDRESS))
     }
 }
 
