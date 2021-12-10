@@ -284,19 +284,11 @@ static size_t mmtk_number_of_mutators() {
   return Threads::number_of_threads();
 }
 
-static void mmtk_prepare_for_sanity_roots_scanning() {
-  ClassLoaderDataGraph::purge();
-  CodeCache::gc_epilogue();
-  JvmtiExport::gc_epilogue();
+static void mmtk_prepare_for_roots_re_scanning() {
 #if COMPILER2_OR_JVMCI
   DerivedPointerTable::update_pointers();
+  DerivedPointerTable::clear();
 #endif
-
-
-#if COMPILER2_OR_JVMCI
-    DerivedPointerTable::clear();
-#endif
-  ClassLoaderDataGraph::clear_claimed_marks();
 }
 
 OpenJDK_Upcalls mmtk_upcalls = {
@@ -338,5 +330,5 @@ OpenJDK_Upcalls mmtk_upcalls = {
   mmtk_scan_vm_thread_roots,
   mmtk_number_of_mutators,
   mmtk_schedule_finalizer,
-  mmtk_prepare_for_sanity_roots_scanning,
+  mmtk_prepare_for_roots_re_scanning,
 };
