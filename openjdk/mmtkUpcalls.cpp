@@ -287,6 +287,7 @@ static int discovered_offset() {
 }
 
 static char* dump_object_string(void* object) {
+  ResourceMark rm;
   oop o = (oop) object;
   return o->print_value_string();
 }
@@ -317,6 +318,19 @@ static void mmtk_prepare_for_roots_re_scanning() {
   DerivedPointerTable::update_pointers();
   DerivedPointerTable::clear();
 #endif
+}
+
+static const char* get_oop_class_name(void* object, void (*cb)(const char* ptr)) {
+  ResourceMark rm;
+  oop o = (oop) object;
+// printf("get_oop_class_name object=%p\n", object);
+  // o->print_value();
+  // printf("\n");
+  auto ptr = o->klass()->signature_name();
+  // printf("get_oop_class_name ptr=%p\n", ptr);
+  // printf("get_oop_class_name c=%d\n", *ptr);
+  cb(ptr);
+  return ptr;
 }
 
 OpenJDK_Upcalls mmtk_upcalls = {
@@ -360,4 +374,5 @@ OpenJDK_Upcalls mmtk_upcalls = {
   mmtk_number_of_mutators,
   mmtk_schedule_finalizer,
   mmtk_prepare_for_roots_re_scanning,
+  get_oop_class_name,
 };

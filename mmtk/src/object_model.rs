@@ -1,8 +1,11 @@
+use std::ffi::{CStr, CString};
+use std::mem;
 use std::sync::atomic::Ordering;
 
 use super::UPCALLS;
 use crate::abi::Oop;
 use crate::{vm_metadata, OpenJDK};
+use libc::c_char;
 use mmtk::util::alloc::fill_alignment_gap;
 use mmtk::util::copy::*;
 use mmtk::util::metadata::header_metadata::HeaderMetadataSpec;
@@ -156,5 +159,27 @@ impl ObjectModel<OpenJDK> for VMObjectModel {
         unsafe {
             ((*UPCALLS).dump_object)(object);
         }
+    }
+
+    fn dump_object_s(o: ObjectReference) -> String {
+        let c_string = unsafe { ((*UPCALLS).dump_object_string)(mem::transmute(o)) };
+        let c_str: &CStr = unsafe { CStr::from_ptr(c_string) };
+        let s: &str = c_str.to_str().unwrap();
+        s.to_string()
+    }
+
+    fn get_type_info(o: ObjectReference) -> String {
+        unsafe { ((*UPCALLS).get_oop_class_name)(mem::transmute(o), parse_string) };
+        unsafe { S.take().unwrap() }
+    }
+}
+
+#[thread_local]
+static mut S: Option<String> = None;
+
+extern fn parse_string(s: *const c_char) {
+    let c_str: &CStr = unsafe { CStr::from_ptr(s) };
+    unsafe {
+        S = Some(c_str.to_str().unwrap().to_owned())
     }
 }

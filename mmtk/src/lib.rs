@@ -4,6 +4,7 @@
 #![feature(box_syntax)]
 #![feature(vec_into_raw_parts)]
 #![feature(once_cell)]
+#![feature(thread_local)]
 
 extern crate libc;
 extern crate mmtk;
@@ -83,7 +84,7 @@ pub struct OpenJDK_Upcalls {
     pub number_of_mutators: extern "C" fn() -> usize,
     pub schedule_finalizer: extern "C" fn(),
     pub prepare_for_roots_re_scanning: extern "C" fn(),
-    pub object_alignment: extern "C" fn() -> i32,
+    pub get_oop_class_name: extern "C" fn(object: ObjectReference, extern "C" fn(*const c_char)) -> *const c_char,
 }
 
 pub static mut UPCALLS: *const OpenJDK_Upcalls = null_mut();
