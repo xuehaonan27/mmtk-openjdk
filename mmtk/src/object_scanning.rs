@@ -1,12 +1,14 @@
 use super::abi::*;
 use super::UPCALLS;
 use crate::{OpenJDK, SINGLETON};
+use libc::c_char;
 use mmtk::scheduler::ProcessEdgesWork;
 use mmtk::scheduler::{GCWorker, WorkBucketStage};
 use mmtk::util::constants::*;
 use mmtk::util::opaque_pointer::*;
 use mmtk::util::{Address, ObjectReference};
 use mmtk::TransitiveClosure;
+use std::ffi::CStr;
 use std::marker::PhantomData;
 use std::{mem, slice};
 
@@ -20,6 +22,7 @@ impl OopIterate for OopMapBlock {
         let start = oop.get_field_address(self.offset);
         for i in 0..self.count as usize {
             let edge = start + (i << LOG_BYTES_IN_ADDRESS);
+            log(oop, edge);
             closure.process_edge(edge);
         }
     }
@@ -70,8 +73,9 @@ impl OopIterate for InstanceMirrorKlass {
         let start: *const Oop = Self::start_of_static_fields(oop).to_ptr::<Oop>();
         let len = Self::static_oop_field_count(oop);
         let slice = unsafe { slice::from_raw_parts(start, len as _) };
-        for oop in slice {
-            closure.process_edge(Address::from_ref(oop as &Oop));
+        for x in slice {
+            log(oop, Address::from_ref(x as &Oop));
+            closure.process_edge(Address::from_ref(x as &Oop));
         }
     }
 }
@@ -94,8 +98,9 @@ impl OopIterate for ObjArrayKlass {
     #[inline]
     fn oop_iterate(&self, oop: Oop, closure: &mut impl TransitiveClosure) {
         let array = unsafe { oop.as_array_oop::<Oop>() };
-        for oop in array.data() {
-            closure.process_edge(Address::from_ref(oop as &Oop));
+        for x in array.data() {
+            log(oop, Address::from_ref(x as &Oop));
+            closure.process_edge(Address::from_ref(x as &Oop));
         }
     }
 }
@@ -113,8 +118,10 @@ impl OopIterate for InstanceRefKlass {
     fn oop_iterate(&self, oop: Oop, closure: &mut impl TransitiveClosure) {
         self.instance_klass.oop_iterate(oop, closure);
         let referent_addr = Self::referent_address(oop);
+        log(oop, referent_addr);
         closure.process_edge(referent_addr);
         let discovered_addr = Self::discovered_address(oop);
+        log(oop, discovered_addr);
         closure.process_edge(discovered_addr);
     }
 }
@@ -227,5 +234,36 @@ pub fn scan_objects_and_create_edges_work<E: ProcessEdgesWork<VM = OpenJDK>>(
             &mut closure,
             VMWorkerThread(VMThread::UNINITIALIZED),
         );
+    }
+}
+
+fn log(o: Oop, a: Address) {
+    let x = unsafe {a.load::<ObjectReference>()};
+    if x.is_null() {
+        return;
+    }
+    let t = x.type_info::<OpenJDK>();
+    // if t != "Lsun/awt/image/BufImgSurfaceManager;" &&  t != "Ljava/awt/image/BufferedImage;" {
+    //     return;
+    // }
+    if t != "Ljava/awt/image/BufferedImage;" {
+        return;
+    }
+    let s = {
+        unsafe { ((*UPCALLS).get_oop_class_name)(mem::transmute(o), parse_string) };
+        unsafe { S.take().unwrap() }
+    };
+    let u = format!("{} -> {} {}", s, t, a.as_usize() - o as *const _ as usize);
+    *mmtk::EDGE_TYPES.lock().entry(u).or_insert(0) += 1;
+    // println!("    - {} {:?} -> {} {:?}", s, o, t, x);
+}
+
+#[thread_local]
+static mut S: Option<String> = None;
+
+extern fn parse_string(s: *const c_char) {
+    let c_str: &CStr = unsafe { CStr::from_ptr(s) };
+    unsafe {
+        S = Some(c_str.to_str().unwrap().to_owned())
     }
 }
