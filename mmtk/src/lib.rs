@@ -85,6 +85,7 @@ pub struct OpenJDK_Upcalls {
     pub schedule_finalizer: extern "C" fn(),
     pub prepare_for_roots_re_scanning: extern "C" fn(),
     pub get_oop_class_name: extern "C" fn(object: ObjectReference, extern "C" fn(*const c_char)) -> *const c_char,
+    pub process_weak_refs: extern "C" fn(),
 }
 
 pub static mut UPCALLS: *const OpenJDK_Upcalls = null_mut();

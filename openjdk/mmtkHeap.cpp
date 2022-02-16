@@ -424,7 +424,8 @@ void MMTkHeap::scan_class_loader_data_graph_roots(OopClosure& cl) {
 void MMTkHeap::scan_weak_processor_roots(OopClosure& cl) {
   ResourceMark rm;
   MMTkRootScanWorkScope<> root_scan_work(&_num_root_scan_tasks);
-  WeakProcessor::oops_do(&cl); // (really needed???)
+  // Looks like this will keep all the weak-ref alive...
+  // WeakProcessor::oops_do(&cl); // (really needed???)
 }
 void MMTkHeap::scan_vm_thread_roots(OopClosure& cl) {
   ResourceMark rm;

@@ -274,3 +274,19 @@ pub extern "C" fn get_finalized_object() -> ObjectReference {
         None => unsafe { Address::ZERO.to_object_reference() },
     }
 }
+
+#[no_mangle]
+pub extern "C" fn mmtk_is_live(object: ObjectReference) -> usize {
+    if object.is_null() {
+        return 0;
+    }
+    object.is_live() as _
+}
+
+#[no_mangle]
+pub extern "C" fn mmtk_get_forwarded_ref(object: ObjectReference) -> ObjectReference {
+    if object.is_null() {
+        return object;
+    }
+    object.get_forwarded_object().unwrap_or(object)
+}

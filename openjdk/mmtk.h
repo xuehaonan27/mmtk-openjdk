@@ -87,6 +87,9 @@ extern void handle_user_collection_request(void *tls);
 extern void start_control_collector(void *tls, void *context);
 extern void start_worker(void *tls, void* worker);
 
+extern size_t mmtk_is_live(void* object);
+extern void* mmtk_get_forwarded_ref(void* object);
+
 /**
  * VM Accounting
  */
@@ -145,6 +148,7 @@ typedef struct {
     void (*schedule_finalizer)();
     void (*prepare_for_roots_re_scanning)();
     const char* (*get_oop_class_name) (void* object, void (*cb)(const char* ptr));
+    void (*process_weak_ref)();
 } OpenJDK_Upcalls;
 
 extern void openjdk_gc_init(OpenJDK_Upcalls *calls, size_t heap_size);

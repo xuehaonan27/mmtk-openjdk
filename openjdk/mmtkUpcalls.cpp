@@ -40,6 +40,7 @@
 #include "runtime/threadSMR.hpp"
 #include "runtime/vmThread.hpp"
 #include "utilities/debug.hpp"
+#include "gc/shared/weakProcessor.hpp"
 
 static size_t mmtk_start_the_world_count = 0;
 
@@ -63,6 +64,29 @@ static void mmtk_stop_all_mutators(void *tls, void (*create_stack_scan_work)(voi
     }
   }
   log_debug(gc)("Finished enumerating threads.");
+}
+
+class MMTkIsAliveClosure : public BoolObjectClosure {
+public:
+  virtual bool do_object_b(oop p) {
+    return mmtk_is_live((void*) p) != 0;
+  }
+};
+
+class MMTkForwardClosure : public OopClosure {
+ public:
+  virtual void do_oop(oop* o) {
+    *o = (oop) mmtk_get_forwarded_ref((void*) *o);
+  }
+
+  virtual void do_oop(narrowOop* o) {}
+};
+
+/// Clean up the weak-ref storage and update pointers.
+static void mmtk_process_weak_ref() {
+  MMTkIsAliveClosure is_alive;
+  MMTkForwardClosure forward;
+  WeakProcessor::weak_oops_do(&is_alive, &forward);
 }
 
 static void mmtk_resume_mutators(void *tls) {
@@ -375,4 +399,5 @@ OpenJDK_Upcalls mmtk_upcalls = {
   mmtk_schedule_finalizer,
   mmtk_prepare_for_roots_re_scanning,
   get_oop_class_name,
+  mmtk_process_weak_ref,
 };
