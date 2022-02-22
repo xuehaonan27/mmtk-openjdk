@@ -406,20 +406,21 @@ void MMTkHeap::scan_code_cache_roots(OopClosure& cl) {
   CodeBlobToOopClosure cb_cl(&cl, true);
   {
     MutexLockerEx lock(CodeCache_lock, Mutex::_no_safepoint_check_flag);
-    CodeCache::scavenge_root_nmethods_do(&cb_cl);
-    CodeCache::blobs_do(&cb_cl);
+    // CodeCache::scavenge_root_nmethods_do(&cb_cl);
+    // CodeCache::blobs_do(&cb_cl);
   }
 }
 void MMTkHeap::scan_string_table_roots(OopClosure& cl) {
   ResourceMark rm;
   MMTkRootScanWorkScope<> root_scan_work(&_num_root_scan_tasks);
-  StringTable::oops_do(&cl);
+  // StringTable::oops_do(&cl);
 }
 void MMTkHeap::scan_class_loader_data_graph_roots(OopClosure& cl) {
   ResourceMark rm;
   MMTkRootScanWorkScope<> root_scan_work(&_num_root_scan_tasks);
-  CLDToOopClosure cld_cl(&cl, false);
-  ClassLoaderDataGraph::cld_do(&cld_cl);
+  CLDToOopClosure cld_cl(&cl);
+  ClassLoaderDataGraph::roots_cld_do(&cld_cl, &cld_cl);
+  // ClassLoaderDataGraph::always_strong_oops_do(&cl, false);
 }
 void MMTkHeap::scan_weak_processor_roots(OopClosure& cl) {
   ResourceMark rm;
@@ -515,6 +516,14 @@ void (*MMTkHeap::_create_stack_scan_work)(void*) = NULL;
 
 void MMTkHeap::report_java_thread_yield(JavaThread* thread) {
   if (_create_stack_scan_work != NULL) _create_stack_scan_work((void*) &thread->third_party_heap_mutator);
+}
+
+void MMTkHeap::register_nmethod(nmethod* nm) {
+  CodeCache::register_scavenge_root_nmethod(nm);
+}
+
+void MMTkHeap::verify_nmethod(nmethod* nm) {
+  CodeCache::verify_scavenge_root_nmethod(nm);
 }
 
 /*

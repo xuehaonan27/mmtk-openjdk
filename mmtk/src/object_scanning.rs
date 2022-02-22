@@ -13,6 +13,7 @@ use std::marker::PhantomData;
 use std::{mem, slice};
 
 trait OopIterate: Sized {
+    fn do_metadata(&self) -> bool { false }
     fn oop_iterate(&self, oop: Oop, closure: &mut impl TransitiveClosure);
 }
 
@@ -40,8 +41,18 @@ impl OopIterate for InstanceKlass {
 
 impl OopIterate for InstanceMirrorKlass {
     #[inline]
+    fn do_metadata(&self) -> bool {
+        true
+    }
+    #[inline]
     fn oop_iterate(&self, oop: Oop, closure: &mut impl TransitiveClosure) {
         self.instance_klass.oop_iterate(oop, closure);
+        unsafe { ((*UPCALLS).scan_cld)(oop, process_edge as _) };
+        unsafe {
+            for e in EDGES.drain(..) {
+                closure.process_edge(e)
+            }
+        }
         // if (Devirtualizer::do_metadata(closure)) {
         //     Klass* klass = java_lang_Class::as_Klass(obj);
         //     // We'll get NULL for primitive mirrors.
@@ -82,8 +93,20 @@ impl OopIterate for InstanceMirrorKlass {
 
 impl OopIterate for InstanceClassLoaderKlass {
     #[inline]
+    fn do_metadata(&self) -> bool {
+        true
+    }
+    #[inline]
     fn oop_iterate(&self, oop: Oop, closure: &mut impl TransitiveClosure) {
         self.instance_klass.oop_iterate(oop, closure);
+        if self.do_metadata() {
+            unsafe { ((*UPCALLS).scan_cld)(oop, process_edge as _) };
+            unsafe {
+                for e in EDGES.drain(..) {
+                    closure.process_edge(e)
+                }
+            }
+        }
         // if (Devirtualizer::do_metadata(closure)) {
         //     ClassLoaderData* cld = java_lang_ClassLoader::loader_data(obj);
         //     // cld can be null if we have a non-registered class loader.
@@ -265,5 +288,15 @@ extern fn parse_string(s: *const c_char) {
     let c_str: &CStr = unsafe { CStr::from_ptr(s) };
     unsafe {
         S = Some(c_str.to_str().unwrap().to_owned())
+    }
+}
+
+#[thread_local]
+static mut EDGES: Vec<Address> = Vec::new();
+
+#[thread_local]
+extern fn process_edge(e: Address) {
+    unsafe {
+        EDGES.push(e)
     }
 }

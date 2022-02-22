@@ -25,6 +25,7 @@
 #include "precompiled.hpp"
 #include "classfile/stringTable.hpp"
 #include "code/nmethod.hpp"
+#include "memory/iterator.hpp"
 #include "memory/iterator.inline.hpp"
 #include "memory/resourceArea.hpp"
 #include "mmtkCollectorThread.hpp"
@@ -49,6 +50,8 @@ static void mmtk_stop_all_mutators(void *tls, void (*create_stack_scan_work)(voi
 
   ClassLoaderDataGraph::clear_claimed_marks();
   CodeCache::gc_prologue();
+
+  BiasedLocking::preserve_marks();
 #if COMPILER2_OR_JVMCI
   DerivedPointerTable::clear();
 #endif
@@ -73,24 +76,53 @@ public:
   }
 };
 
-class MMTkForwardClosure : public OopClosure {
+class MMTkForwardClosure : public OopIterateClosure {
  public:
+  MMTkForwardClosure() : OopIterateClosure(NULL) {}
+
   virtual void do_oop(oop* o) {
     *o = (oop) mmtk_get_forwarded_ref((void*) *o);
   }
 
   virtual void do_oop(narrowOop* o) {}
+  virtual ReferenceIterationMode reference_iteration_mode() { return DO_FIELDS; }
+  debug_only(virtual bool should_verify_oops() { return false; })
+
+  virtual bool do_metadata() { return false; }
+  virtual void do_klass(Klass* k) { ShouldNotReachHere(); }
+  virtual void do_cld(ClassLoaderData* cld) { ShouldNotReachHere(); }
+
 };
 
 /// Clean up the weak-ref storage and update pointers.
 static void mmtk_process_weak_ref() {
   MMTkIsAliveClosure is_alive;
   MMTkForwardClosure forward;
+
   WeakProcessor::weak_oops_do(&is_alive, &forward);
+
+  bool purged_class = SystemDictionary::do_unloading(NULL);
+
+  CodeBlobToOopClosure adjust_from_blobs(&forward, CodeBlobToOopClosure::FixRelocations);
+  CodeCache::blobs_do(&adjust_from_blobs);
+  CodeCache::do_unloading(&is_alive, purged_class);
+  Klass::clean_weak_klass_links(purged_class);
+
+  StringTable::oops_do(&forward);
+  StringTable::unlink(&is_alive);
+
+  SymbolTable::unlink();
+
+  // TODO: This does not take effect for now. But we need this later to support class unloading
+  ClassLoaderDataGraph::clear_claimed_marks();
+  CLDToOopClosure adjust_cld_closure(&forward);
+  ClassLoaderDataGraph::cld_do(&adjust_cld_closure);
+  ClassLoaderDataGraph::oops_do(&forward, true);
 }
 
 static void mmtk_resume_mutators(void *tls) {
   ClassLoaderDataGraph::purge();
+  BiasedLocking::restore_marks();
   CodeCache::gc_epilogue();
   JvmtiExport::gc_epilogue();
 #if COMPILER2_OR_JVMCI
@@ -357,6 +389,59 @@ static const char* get_oop_class_name(void* object, void (*cb)(const char* ptr))
   return ptr;
 }
 
+static void mmtk_scan_cld(void* _obj, ProcessEdgeFn process_edge) {
+  oop obj = (oop) _obj;
+  const auto class_id = obj->klass()->id();
+  class _OopClosure : public BasicOopIterateClosure {
+    ProcessEdgeFn process_edge;
+    CLDToOopClosure follow_cld_closure;
+  public:
+    _OopClosure(ProcessEdgeFn process_edge): process_edge(process_edge), follow_cld_closure(this) {}
+    virtual void do_oop(oop* o) {
+      process_edge((void*) o);
+    }
+    virtual void do_oop(narrowOop* o) {
+      ShouldNotReachHere();
+    }
+
+    virtual bool do_metadata() {
+      return true;
+    }
+
+    virtual void do_klass(Klass* k) {}
+
+    virtual void do_cld(ClassLoaderData* cld) {
+      follow_cld_closure.do_cld(cld);
+    }
+  };
+  _OopClosure closure(process_edge);
+  if (class_id == InstanceMirrorKlassID) {
+    Klass* klass = java_lang_Class::as_Klass(obj);
+    // We'll get NULL for primitive mirrors.
+    if (klass != NULL) {
+      if (klass->is_instance_klass() && InstanceKlass::cast(klass)->is_anonymous()) {
+        // An anonymous class doesn't have its own class loader, so when handling
+        // the java mirror for an anonymous class we need to make sure its class
+        // loader data is claimed, this is done by calling do_cld explicitly.
+        // For non-anonymous classes the call to do_cld is made when the class
+        // loader itself is handled.
+
+        Devirtualizer::do_cld(&closure, klass->class_loader_data());
+      } else {
+        // Devirtualizer::do_klass(closure, klass);
+      }
+    }
+  } else if (class_id == InstanceClassLoaderKlassID) {
+    ClassLoaderData* cld = java_lang_ClassLoader::loader_data(obj);
+    // cld can be null if we have a non-registered class loader.
+    if (cld != NULL) {
+      Devirtualizer::do_cld(&closure, cld);
+    }
+  } else {
+    ShouldNotReachHere();
+  }
+}
+
 OpenJDK_Upcalls mmtk_upcalls = {
   mmtk_stop_all_mutators,
   mmtk_resume_mutators,
@@ -400,4 +485,5 @@ OpenJDK_Upcalls mmtk_upcalls = {
   mmtk_prepare_for_roots_re_scanning,
   get_oop_class_name,
   mmtk_process_weak_ref,
+  mmtk_scan_cld,
 };

@@ -13,6 +13,7 @@ extern crate lazy_static;
 
 use std::ptr::null_mut;
 
+use abi::Oop;
 use libc::{c_char, c_void, uintptr_t};
 use mmtk::util::alloc::AllocationError;
 use mmtk::util::opaque_pointer::*;
@@ -38,6 +39,7 @@ pub struct NewBuffer {
 }
 
 type ProcessEdgesFn = *const extern "C" fn(buf: *mut Address, size: usize, cap: usize) -> NewBuffer;
+type ProcessEdgeFn = *const extern "C" fn(slot: Address) -> NewBuffer;
 
 #[repr(C)]
 pub struct OpenJDK_Upcalls {
@@ -86,6 +88,7 @@ pub struct OpenJDK_Upcalls {
     pub prepare_for_roots_re_scanning: extern "C" fn(),
     pub get_oop_class_name: extern "C" fn(object: ObjectReference, extern "C" fn(*const c_char)) -> *const c_char,
     pub process_weak_refs: extern "C" fn(),
+    pub scan_cld: extern "C" fn(o: Oop, process_edge: ProcessEdgeFn),
 }
 
 pub static mut UPCALLS: *const OpenJDK_Upcalls = null_mut();

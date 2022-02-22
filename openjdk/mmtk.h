@@ -103,6 +103,8 @@ typedef struct {
 
 typedef NewBuffer (*ProcessEdgesFn)(void** buf, size_t len, size_t cap);
 
+typedef void (*ProcessEdgeFn)(void* slot);
+
 /**
  * OpenJDK-specific
  */
@@ -149,6 +151,7 @@ typedef struct {
     void (*prepare_for_roots_re_scanning)();
     const char* (*get_oop_class_name) (void* object, void (*cb)(const char* ptr));
     void (*process_weak_ref)();
+    void (*scan_cld)(void* slot, ProcessEdgeFn process_edge);
 } OpenJDK_Upcalls;
 
 extern void openjdk_gc_init(OpenJDK_Upcalls *calls, size_t heap_size);
