@@ -97,7 +97,7 @@ impl Scanning<OpenJDK> for VMScanning {
                 box ScanCodeCacheRoots::<W>::new(),
                 box ScanStringTableRoots::<W>::new(),
                 box ScanClassLoaderDataGraphRoots::<W>::new(),
-                box ScanWeakProcessorRoots::<W>::new(),
+                // box ScanWeakProcessorRoots::<W>::new(),
             ],
         );
         if !(Self::SCAN_MUTATORS_IN_SAFEPOINT && Self::SINGLE_THREAD_MUTATOR_SCANNING) {

@@ -39,6 +39,10 @@
 #include "runtime/thread.hpp"
 #include "runtime/threadSMR.hpp"
 #include "runtime/vmThread.hpp"
+#include "gc/shared/weakProcessor.hpp"
+#include "prims/resolvedMethodTable.hpp"
+#include "jfr/jfr.hpp"
+#include "gc/shared/oopStorage.inline.hpp"
 
 static size_t mmtk_start_the_world_count = 0;
 
@@ -71,6 +75,10 @@ static void mmtk_resume_mutators(void *tls) {
   // CodeCache::gc_epilogue();
   // JvmtiExport::gc_epilogue();
   nmethod::oops_do_marking_epilogue();
+  // ClassLoaderDataGraph::purge();
+  // BiasedLocking::restore_marks();
+  // CodeCache::gc_epilogue();
+  // JvmtiExport::gc_epilogue();
 #if COMPILER2_OR_JVMCI
   DerivedPointerTable::update_pointers();
 #endif
@@ -291,6 +299,60 @@ static void mmtk_prepare_for_roots_re_scanning() {
 #endif
 }
 
+static int32_t mmtk_object_alignment() {
+  ShouldNotReachHere();
+  return 0;
+}
+
+class MMTkIsAliveClosure : public BoolObjectClosure {
+public:
+  virtual bool do_object_b(oop p) {
+    if (p == NULL) return false;
+    return mmtk_is_live((void*) p) != 0;
+  }
+};
+
+class MMTkForwardClosure : public BasicOopIterateClosure {
+ public:
+  virtual void do_oop(oop* slot) {
+    // *slot = (oop) mmtk_get_forwarded_ref((void*) *slot);
+    auto o = *slot;
+    if (o == NULL) return;
+    auto status = *((size_t*) (void*) o);
+    if ((status & (3ull << 56)) != 0) {
+      auto ptr = (oop) (void*) (status << 8 >> 8);
+      *slot = ptr;
+    }
+  }
+  virtual void do_oop(narrowOop* o) {}
+  virtual ReferenceIterationMode reference_iteration_mode() { return DO_FIELDS; }
+};
+
+/// Clean up the weak-ref storage and update pointers.
+static void mmtk_process_weak_ref(int id) {
+  HandleMark hm;
+
+  MMTkIsAliveClosure is_alive;
+  MMTkForwardClosure forward;
+
+  JNIHandles::weak_oops_do(&is_alive, &forward);
+  JvmtiExport::weak_oops_do(&is_alive, &forward);
+  SystemDictionary::vm_weak_oop_storage()->weak_oops_do(&is_alive, &forward);
+  JFR_ONLY(Jfr::weak_oops_do(&is_alive, &forward););
+  // if (id == 0) JNIHandles::weak_oops_do(&is_alive, &forward);
+  // else if (id == 1) JvmtiExport::weak_oops_do(&is_alive, &forward);
+  // else if (id == 2) SystemDictionary::vm_weak_oop_storage()->weak_oops_do(&is_alive, &forward);
+  // else {
+  //   JFR_ONLY(Jfr::weak_oops_do(&is_alive, &forward););
+  // }
+printf("mmtk_process_weak_ref end\n");
+}
+
+static void mmtk_process_nmethods() {
+  // HandleMark hm;
+  // nmethod::oops_do_marking_epilogue();
+}
+
 OpenJDK_Upcalls mmtk_upcalls = {
   mmtk_stop_all_mutators,
   mmtk_resume_mutators,
@@ -331,4 +393,7 @@ OpenJDK_Upcalls mmtk_upcalls = {
   mmtk_number_of_mutators,
   mmtk_schedule_finalizer,
   mmtk_prepare_for_roots_re_scanning,
+  mmtk_object_alignment,
+  mmtk_process_weak_ref,
+  mmtk_process_nmethods,
 };

@@ -195,3 +195,23 @@ impl<E: ProcessEdgesWork<VM = OpenJDK>> GCWork<OpenJDK> for ScanVMThreadRoots<E>
         }
     }
 }
+
+pub struct ProcessWeakRef(pub i32);
+
+impl GCWork<OpenJDK> for ProcessWeakRef {
+    fn do_work(&mut self, _worker: &mut GCWorker<OpenJDK>, _mmtk: &'static MMTK<OpenJDK>) {
+        unsafe {
+            ((*UPCALLS).process_weak_refs)(self.0);
+        }
+    }
+}
+
+pub struct ProcessNMethods;
+
+impl GCWork<OpenJDK> for ProcessNMethods {
+    fn do_work(&mut self, _worker: &mut GCWorker<OpenJDK>, _mmtk: &'static MMTK<OpenJDK>) {
+        unsafe {
+            ((*UPCALLS).process_nmethods)();
+        }
+    }
+}
