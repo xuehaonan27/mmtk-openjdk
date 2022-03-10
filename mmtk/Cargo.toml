@@ -87,3 +87,5 @@ lxr_evac = ["mmtk/lxr_evac"]
 lxr_block = ["mmtk/lxr_block"]
 # LXR (Default config with full features)
 lxr = ["mmtk/lxr"]
+
+rc_immix = ["lxr_evac"]
