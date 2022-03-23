@@ -39,14 +39,55 @@
 #include "runtime/thread.hpp"
 #include "runtime/threadSMR.hpp"
 #include "runtime/vmThread.hpp"
+#include "gc/shared/weakProcessor.hpp"
+#include "prims/resolvedMethodTable.hpp"
+#include "jfr/jfr.hpp"
+#include "gc/shared/oopStorage.inline.hpp"
 
 static size_t mmtk_start_the_world_count = 0;
+
+class MMTkIsAliveClosure : public BoolObjectClosure {
+  static constexpr size_t SS0_START = 0x20000000000ULL;
+  static constexpr size_t SS1_START = 0x40000000000ULL;
+  static constexpr size_t LOS_START = 0x80000000000ULL;
+  void* from_start = NULL;
+  void* from_limit = NULL;
+  void* to_start = NULL;
+  void* to_limit = NULL;
+public:
+  MMTkIsAliveClosure() {
+    from_start = (void*) (high ? SS0_START : SS1_START);
+    from_limit = (void*) (((size_t) from_start) + 0x20000000000ULL);
+    to_start = (void*) (high ? SS1_START : SS0_START);
+    to_limit = (void*) (((size_t) to_start) + 0x20000000000ULL);
+  }
+  inline virtual bool do_object_b(oop p) {
+    if (p == NULL) return false;
+    return mmtk_is_live((void*) p) != 0;
+  }
+};
+
+class MMTkForwardClosure : public BasicOopIterateClosure {
+ public:
+  virtual void do_oop(oop* slot) {
+    // *slot = (oop) mmtk_get_forwarded_ref((void*) *slot);
+    auto o = *slot;
+    if (o == NULL) return;
+    auto status = *((size_t*) (void*) o);
+    if ((status & (3ull << 56)) != 0) {
+      auto ptr = (oop) (void*) (status << 8 >> 8);
+      *slot = ptr;
+    }
+  }
+  virtual void do_oop(narrowOop* o) {}
+  virtual ReferenceIterationMode reference_iteration_mode() { return DO_FIELDS; }
+};
 
 static void mmtk_stop_all_mutators(void *tls, void (*create_stack_scan_work)(void* mutator)) {
   MMTkHeap::_create_stack_scan_work = create_stack_scan_work;
 
-  // ClassLoaderDataGraph::clear_claimed_marks();
-  // CodeCache::gc_prologue();
+  ClassLoaderDataGraph::clear_claimed_marks();
+  CodeCache::gc_prologue();
 #if COMPILER2_OR_JVMCI
   DerivedPointerTable::clear();
 #endif
@@ -56,7 +97,6 @@ static void mmtk_stop_all_mutators(void *tls, void (*create_stack_scan_work)(voi
   log_debug(gc)("Mutators stopped. Now enumerate threads for scanning...");
   mmtk_report_gc_start();
 
-  nmethod::oops_do_marking_prologue();
   {
     JavaThreadIteratorWithHandle jtiwh;
     while (JavaThread *cur = jtiwh.next()) {
@@ -64,13 +104,21 @@ static void mmtk_stop_all_mutators(void *tls, void (*create_stack_scan_work)(voi
     }
   }
   log_debug(gc)("Finished enumerating threads.");
+  nmethod::oops_do_marking_prologue();
 }
 
 static void mmtk_resume_mutators(void *tls) {
-  // ClassLoaderDataGraph::purge();
-  // CodeCache::gc_epilogue();
-  // JvmtiExport::gc_epilogue();
+  {
+    HandleMark hm;
+    MMTkIsAliveClosure is_alive;
+    MMTkForwardClosure forward;
+    WeakProcessor::weak_oops_do(&is_alive, &forward);
+  }
   nmethod::oops_do_marking_epilogue();
+  // ClassLoaderDataGraph::purge();
+  // BiasedLocking::restore_marks();
+  CodeCache::gc_epilogue();
+  JvmtiExport::gc_epilogue();
 #if COMPILER2_OR_JVMCI
   DerivedPointerTable::update_pointers();
 #endif
@@ -291,6 +339,11 @@ static void mmtk_prepare_for_roots_re_scanning() {
 #endif
 }
 
+static int32_t mmtk_object_alignment() {
+  ShouldNotReachHere();
+  return 0;
+}
+
 OpenJDK_Upcalls mmtk_upcalls = {
   mmtk_stop_all_mutators,
   mmtk_resume_mutators,
@@ -331,4 +384,5 @@ OpenJDK_Upcalls mmtk_upcalls = {
   mmtk_number_of_mutators,
   mmtk_schedule_finalizer,
   mmtk_prepare_for_roots_re_scanning,
+  mmtk_object_alignment,
 };
