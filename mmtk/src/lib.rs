@@ -86,8 +86,6 @@ pub struct OpenJDK_Upcalls {
     pub schedule_finalizer: extern "C" fn(),
     pub prepare_for_roots_re_scanning: extern "C" fn(),
     pub object_alignment: extern "C" fn() -> i32,
-    pub process_weak_refs: extern "C" fn(id: i32),
-    pub process_nmethods: extern "C" fn(),
 }
 
 #[thread_local]

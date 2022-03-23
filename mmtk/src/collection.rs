@@ -6,7 +6,6 @@ use mmtk::{Mutator, MutatorContext};
 
 use crate::OpenJDK;
 use crate::{SINGLETON, UPCALLS};
-use crate::gc_work::*;
 
 pub struct VMCollection {}
 
@@ -74,20 +73,5 @@ impl Collection<OpenJDK> for VMCollection {
         unsafe {
             ((*UPCALLS).schedule_finalizer)();
         }
-    }
-
-    fn process_weak_refs<E: ProcessEdgesWork<VM = OpenJDK>>(_worker: &mut GCWorker<OpenJDK>) {
-        println!("process_weak_refs");
-        mmtk::memory_manager::add_work_packets(
-            &SINGLETON,
-            WorkBucketStage::Prepare,
-            vec![
-                box ProcessWeakRef(0),
-                box ProcessWeakRef(1),
-                box ProcessWeakRef(2),
-                box ProcessWeakRef(3),
-                box ProcessNMethods,
-            ],
-        );
     }
 }
