@@ -338,7 +338,7 @@ dependencies = [
 [[package]]
 name = "mmtk"
 version = "0.8.0"
-source = "git+https://github.com/wenyuzhao/mmtk-core.git?rev=21251948b856836b82ba295d726bf98cc480ae2d#21251948b856836b82ba295d726bf98cc480ae2d"
+source = "git+https://github.com/wenyuzhao/mmtk-core.git?rev=67212aaaa2a46fa35d1c7ab808f6fc32ca9b380b#67212aaaa2a46fa35d1c7ab808f6fc32ca9b380b"
 dependencies = [
  "atomic",
  "atomic-traits",
