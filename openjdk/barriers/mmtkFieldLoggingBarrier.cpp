@@ -31,7 +31,7 @@ void MMTkFieldLoggingBarrierSetRuntime::record_clone(oop src, oop dst, size_t si
 
 void MMTkFieldLoggingBarrierSetRuntime::record_arraycopy(arrayOop src_obj, size_t src_offset_in_bytes, oop* src_raw, arrayOop dst_obj, size_t dst_offset_in_bytes, oop* dst_raw, size_t length) {
   // ::mmtk_object_reference_arraycopy((MMTk_Mutator) &Thread::current()->third_party_heap_mutator, (void*) src_obj, src_offset_in_bytes, (void*) dst_obj, dst_offset_in_bytes, length);
-  record_array_copy_inline((void*) (((intptr_t) (void*) src_obj) + src_offset_in_bytes), (void*) (((intptr_t) (void*) dst_obj) + dst_offset_in_bytes), length, (void*) dst_obj);
+  record_array_copy_inline((void*) (((intptr_t) (void*) src_obj) + src_offset_in_bytes), (void*) (((intptr_t) (void*) dst_obj) + dst_offset_in_bytes), length);
 }
 
 #define __ masm->
@@ -52,7 +52,8 @@ void MMTkFieldLoggingBarrierSetAssembler::oop_store_at(MacroAssembler* masm, Dec
 }
 
 void MMTkFieldLoggingBarrierSetAssembler::arraycopy_prologue(MacroAssembler* masm, DecoratorSet decorators, BasicType type, Register src, Register dst, Register count) {
-  if (type == T_OBJECT || type == T_ARRAY) {
+  const bool dest_uninitialized = (decorators & IS_DEST_UNINITIALIZED) != 0;
+  if ((type == T_OBJECT || type == T_ARRAY) && !dest_uninitialized) {
     Label slow, done;
     // Bailout if count is zero
     __ cmpptr(count, 0);
@@ -67,29 +68,11 @@ void MMTkFieldLoggingBarrierSetAssembler::arraycopy_prologue(MacroAssembler* mas
     // Slow path
     __ bind(slow);
     __ pusha();
-    assert_different_registers(c_rarg0, dst);
-    assert_different_registers(c_rarg0, count);
-    // guarantee(c_rarg0 != dst, "X");
-    guarantee(rscratch1 != src, "X");
-    guarantee(rscratch1 != dst, "X");
-    guarantee(rscratch1 != count, "X");
-
-    guarantee(c_rarg0 != count, "X");
-
-    if (c_rarg0 == dst) {
-      __ movptr(rscratch1, dst);
-    }
-    __ movptr(c_rarg0, src);
-    if (c_rarg0 == dst) {
-      __ movptr(dst, rscratch1);
-    }
-
-    assert_different_registers(c_rarg1, count);
-    guarantee(c_rarg1 != count, "X");
-
-    __ movptr(c_rarg1, dst);
-    __ movptr(c_rarg2, count);
-    __ call_VM_leaf_base(CAST_FROM_FN_PTR(address, MMTkFieldLoggingBarrierSetRuntime::record_array_copy_slow), 3);
+    assert_different_registers(src, dst, count);
+    assert(src == rdi, "expected");
+    assert(dst == rsi, "expected");
+    assert(count == rdx, "expected");
+    __ call_VM_leaf(CAST_FROM_FN_PTR(address, MMTkFieldLoggingBarrierSetRuntime::record_array_copy_slow), src, dst, count);
     __ popa();
     __ bind(done);
   }
