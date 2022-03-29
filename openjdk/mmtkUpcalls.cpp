@@ -47,20 +47,7 @@
 static size_t mmtk_start_the_world_count = 0;
 
 class MMTkIsAliveClosure : public BoolObjectClosure {
-  static constexpr size_t SS0_START = 0x20000000000ULL;
-  static constexpr size_t SS1_START = 0x40000000000ULL;
-  static constexpr size_t LOS_START = 0x80000000000ULL;
-  void* from_start = NULL;
-  void* from_limit = NULL;
-  void* to_start = NULL;
-  void* to_limit = NULL;
 public:
-  MMTkIsAliveClosure() {
-    from_start = (void*) (high ? SS0_START : SS1_START);
-    from_limit = (void*) (((size_t) from_start) + 0x20000000000ULL);
-    to_start = (void*) (high ? SS1_START : SS0_START);
-    to_limit = (void*) (((size_t) to_start) + 0x20000000000ULL);
-  }
   inline virtual bool do_object_b(oop p) {
     if (p == NULL) return false;
     return mmtk_is_live((void*) p) != 0;
@@ -69,14 +56,27 @@ public:
 
 class MMTkForwardClosure : public BasicOopIterateClosure {
  public:
+  inline size_t read_forwarding_word(oop o) const {
+    return *((size_t*) (void*) o);
+  }
+  inline oop extract_forwarding_pointer(size_t status) const {
+    return (oop) (void*) (status << 8 >> 8);
+  }
+  inline bool is_forwarded(size_t status) const {
+    return (status & (3ull << 56)) != 0;
+  }
   virtual void do_oop(oop* slot) {
     // *slot = (oop) mmtk_get_forwarded_ref((void*) *slot);
     auto o = *slot;
     if (o == NULL) return;
-    auto status = *((size_t*) (void*) o);
-    if ((status & (3ull << 56)) != 0) {
-      auto ptr = (oop) (void*) (status << 8 >> 8);
-      *slot = ptr;
+    auto status = read_forwarding_word(o);
+    if (is_forwarded(status)) {
+      o = extract_forwarding_pointer(status);
+      auto status = read_forwarding_word(o);
+      if (is_forwarded(status)) {
+        o = extract_forwarding_pointer(status);
+      }
+      *slot = o;
     }
   }
   virtual void do_oop(narrowOop* o) {}
