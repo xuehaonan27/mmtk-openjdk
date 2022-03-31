@@ -379,9 +379,8 @@ void MMTkHeap::scan_string_table_roots(OopClosure& cl) {
   StringTable::oops_do(&cl);
 }
 void MMTkHeap::scan_class_loader_data_graph_roots(OopClosure& cl) {
-  ResourceMark rm;
-  CLDToOopClosure cld_cl(&cl);
-  ClassLoaderDataGraph::roots_cld_do(&cld_cl, &cld_cl);
+  CLDToOopClosure cld_cl(&cl, false);
+  ClassLoaderDataGraph::cld_do(&cld_cl);
 }
 void MMTkHeap::scan_weak_processor_roots(OopClosure& cl) {
   ShouldNotReachHere();
