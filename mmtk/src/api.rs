@@ -291,7 +291,7 @@ pub extern "C" fn get_finalized_object() -> ObjectReference {
 /// Note: only call this method after the liveness tracing and before gc release.
 #[no_mangle]
 pub extern "C" fn mmtk_is_live(object: ObjectReference) -> usize {
-    if object.is_null() || !object.to_address().is_mapped() {
+    if object.is_null() || !object.to_address().is_mapped() || !object.class_is_valid() {
         return 0;
     }
     object.is_live() as _
