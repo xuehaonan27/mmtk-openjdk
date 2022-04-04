@@ -277,10 +277,10 @@ bool MMTkFieldLoggingBarrierSetC2::can_remove_barrier(GraphKit* kit, PhaseTransf
 
 void MMTkFieldLoggingBarrierSetC2::record_modified_node(GraphKit* kit, Node* src, Node* slot, Node* val) const {
 
-  if (src == kit->just_allocated_object(kit->control())) {
+  if (!disable_fast_alloc() && src == kit->just_allocated_object(kit->control())) {
     return;
   }
-  if (can_remove_barrier(kit, &kit->gvn(), slot)) {
+  if (!disable_fast_alloc() && can_remove_barrier(kit, &kit->gvn(), slot)) {
     return;
   }
 
