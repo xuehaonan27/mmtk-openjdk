@@ -48,6 +48,21 @@ impl Scanning<OpenJDK> for VMScanning {
     }
 
     #[inline(always)]
+    fn obj_array_data(o: ObjectReference) -> &'static [ObjectReference] {
+        crate::object_scanning::obj_array_data(unsafe { std::mem::transmute(o) })
+    }
+
+    #[inline(always)]
+    fn is_obj_array(o: ObjectReference) -> bool {
+        crate::object_scanning::is_obj_array(unsafe { std::mem::transmute(o) })
+    }
+
+    #[inline(always)]
+    fn is_type_array(o: ObjectReference) -> bool {
+        crate::object_scanning::is_type_array(unsafe { std::mem::transmute(o) })
+    }
+
+    #[inline(always)]
     fn is_oop_field(o: ObjectReference, e: Address) -> bool {
         crate::object_scanning::is_oop_field(unsafe { std::mem::transmute(o) }, e)
     }

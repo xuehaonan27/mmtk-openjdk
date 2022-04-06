@@ -208,15 +208,34 @@ fn oop_iterate(oop: Oop, closure: &mut impl TransitiveClosure) {
             let array_klass = unsafe { oop.klass.cast::<ObjArrayKlass>() };
             array_klass.oop_iterate(oop, closure);
         }
-        KlassID::TypeArray => {
-            let array_klass = unsafe { oop.klass.cast::<TypeArrayKlass>() };
-            array_klass.oop_iterate(oop, closure);
-        }
+        // KlassID::TypeArray => {
+        //     // let array_klass = unsafe { oop.klass.cast::<TypeArrayKlass>() };
+        //     // array_klass.oop_iterate(oop, closure);
+        // }
         KlassID::InstanceRef => {
             let instance_klass = unsafe { oop.klass.cast::<InstanceRefKlass>() };
             instance_klass.oop_iterate(oop, closure);
         } // _ => oop_iterate_slow(oop, closure, tls),
+        _ => {}
     }
+}
+
+#[inline(always)]
+pub fn is_obj_array(oop: Oop ) -> bool {
+    let klass_id = oop.klass.id;
+    klass_id == KlassID::ObjArray
+}
+
+#[inline(always)]
+pub fn obj_array_data(oop: Oop) -> &'static [ObjectReference] {
+    let array = unsafe { oop.as_array_oop::<ObjectReference>() };
+    array.data()
+}
+
+#[inline(always)]
+pub fn is_type_array(oop: Oop ) -> bool {
+    let klass_id = oop.klass.id;
+    klass_id == KlassID::TypeArray
 }
 
 #[inline(always)]
