@@ -339,8 +339,24 @@ void MMTkHeap::print_tracing_info() const {
 // Registering and unregistering an nmethod (compiled code) with the heap.
 // Override with specific mechanism for each specialized heap type.
 
+class MMTkRegisterNMethodOopClosure: public OopClosure {
+  template <class T> void do_oop_work(T* p) {
+    mmtk_add_nmethod_oop((void*) p);
+  }
+public:
+  void do_oop(oop* p)       { do_oop_work(p); }
+  void do_oop(narrowOop* p) { do_oop_work(p); }
+};
+
+
 void MMTkHeap::register_nmethod(nmethod* nm) {
-  CodeCache::register_scavenge_root_nmethod(nm);
+  MMTkRegisterNMethodOopClosure reg_cl;
+  nm->oops_do(&reg_cl);
+  mmtk_register_nmethod((void*) nm);
+}
+
+void MMTkHeap::unregister_nmethod(nmethod* nm) {
+  mmtk_unregister_nmethod((void*) nm);
 }
 
 // Heap verification

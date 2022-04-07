@@ -93,6 +93,11 @@ extern void start_worker(void *tls, void* worker);
 extern size_t mmtk_is_live(void* object);
 extern void* mmtk_get_forwarded_ref(void* object);
 
+
+extern size_t mmtk_add_nmethod_oop(void* object);
+extern size_t mmtk_register_nmethod(void* nm);
+extern size_t mmtk_unregister_nmethod(void* nm);
+
 /**
  * VM Accounting
  */

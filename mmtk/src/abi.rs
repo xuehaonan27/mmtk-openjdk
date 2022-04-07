@@ -236,19 +236,21 @@ pub struct InstanceRefKlass {
     pub instance_klass: InstanceKlass,
 }
 
+static DISCOVERED_OFFSET: spin::Lazy<i32> = spin::Lazy::new(|| {
+    unsafe { ((*UPCALLS).discovered_offset)() }
+});
+
+static REFERENT_OFFSET: spin::Lazy<i32> = spin::Lazy::new(|| {
+    unsafe { ((*UPCALLS).referent_offset)() }
+});
+
 impl InstanceRefKlass {
     #[inline(always)]
     fn referent_offset() -> i32 {
-        lazy_static! {
-            pub static ref REFERENT_OFFSET: i32 = unsafe { ((*UPCALLS).referent_offset)() };
-        }
         *REFERENT_OFFSET
     }
     #[inline(always)]
     fn discovered_offset() -> i32 {
-        lazy_static! {
-            pub static ref DISCOVERED_OFFSET: i32 = unsafe { ((*UPCALLS).discovered_offset)() };
-        }
         *DISCOVERED_OFFSET
     }
     #[inline(always)]

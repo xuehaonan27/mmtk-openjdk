@@ -12,8 +12,11 @@ extern crate libc;
 extern crate mmtk;
 #[macro_use]
 extern crate lazy_static;
+extern crate spin;
 
+use std::collections::HashMap;
 use std::ptr::null_mut;
+use std::sync::atomic::AtomicUsize;
 
 use libc::{c_char, c_void, uintptr_t};
 use mmtk::scheduler::GCWorker;
@@ -22,6 +25,7 @@ use mmtk::util::{Address, ObjectReference};
 use mmtk::vm::VMBinding;
 use mmtk::Mutator;
 use mmtk::MMTK;
+use spin::Mutex;
 mod abi;
 pub mod active_plan;
 pub mod api;
@@ -150,3 +154,6 @@ lazy_static! {
 #[no_mangle]
 pub static MMTK_MARK_COMPACT_HEADER_RESERVED_IN_BYTES: usize =
     mmtk::util::alloc::MarkCompactAllocator::<OpenJDK>::HEADER_RESERVED_IN_BYTES;
+
+static CODE_CACHE_ROOTS: spin::Lazy<Mutex<HashMap<Address, Vec<Address>>>> = spin::Lazy::new(|| Mutex::new(HashMap::new()));
+static TOTAL_SIZE: AtomicUsize = AtomicUsize::new(0);

@@ -15,6 +15,7 @@ use mmtk::MutatorContext;
 use mmtk::MMTK;
 use std::ffi::{CStr, CString};
 use std::lazy::SyncLazy;
+use std::sync::atomic::Ordering;
 
 // Supported barriers:
 static NO_BARRIER: SyncLazy<CString> = SyncLazy::new(|| CString::new("NoBarrier").unwrap());
@@ -304,4 +305,26 @@ pub extern "C" fn mmtk_get_forwarded_ref(object: ObjectReference) -> ObjectRefer
         return object;
     }
     object.get_forwarded_object().unwrap_or(object)
+}
+
+#[thread_local]
+static mut NMETHOD_SLOTS: Vec<Address> = vec![];
+
+#[no_mangle]
+pub unsafe extern "C" fn mmtk_add_nmethod_oop(addr: Address)  {
+    NMETHOD_SLOTS.push(addr)
+}
+#[no_mangle]
+pub unsafe extern "C" fn mmtk_register_nmethod(nm: Address) {
+    if NMETHOD_SLOTS.len() == 0 { return; }
+    let mut slots = vec![];
+    std::mem::swap(&mut slots, &mut NMETHOD_SLOTS);
+    crate::TOTAL_SIZE.fetch_add(slots.len(), Ordering::Relaxed);
+    crate::CODE_CACHE_ROOTS.lock().insert(nm, slots);
+}
+#[no_mangle]
+pub unsafe extern "C" fn mmtk_unregister_nmethod(nm: Address) {
+    if let Some(slots) = crate::CODE_CACHE_ROOTS.lock().remove(&nm) {
+        crate::TOTAL_SIZE.fetch_sub(slots.len(), Ordering::Relaxed);
+    }
 }

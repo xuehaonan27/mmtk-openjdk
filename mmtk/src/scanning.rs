@@ -12,6 +12,23 @@ use mmtk::{Mutator, TransitiveClosure};
 
 pub struct VMScanning {}
 
+pub(crate) fn create_process_edges_work_vec<W: ProcessEdgesWork<VM = OpenJDK>>(
+    buf: Vec<Address>,
+)  {
+    if !buf.is_empty() {
+        let w = W::new(buf, true, &SINGLETON);
+        if W::RC_ROOTS {
+            crate::current_worker().add_work(WorkBucketStage::RCProcessIncs, w);
+        } else {
+            memory_manager::add_work_packet(
+                &SINGLETON,
+                WorkBucketStage::Closure,
+                w,
+            );
+        }
+    }
+}
+
 pub(crate) extern "C" fn create_process_edges_work<W: ProcessEdgesWork<VM = OpenJDK>>(
     ptr: *mut Address,
     length: usize,
@@ -21,7 +38,7 @@ pub(crate) extern "C" fn create_process_edges_work<W: ProcessEdgesWork<VM = Open
         let buf = unsafe { Vec::<Address>::from_raw_parts(ptr, length, capacity) };
         let w = W::new(buf, true, &SINGLETON);
         if W::RC_ROOTS {
-            crate::current_worker().add_work(WorkBucketStage::Unconstrained, w);
+            crate::current_worker().add_work(WorkBucketStage::RCProcessIncs, w);
         } else {
             memory_manager::add_work_packet(
                 &SINGLETON,
@@ -100,7 +117,7 @@ impl Scanning<OpenJDK> for VMScanning {
     fn scan_vm_specific_roots<W: ProcessEdgesWork<VM = OpenJDK>>() {
         memory_manager::add_work_packets(
             &SINGLETON,
-            WorkBucketStage::Unconstrained,
+            WorkBucketStage::RCProcessIncs,
             vec![
                 box ScanUniverseRoots::<W>::new(),
                 box ScanJNIHandlesRoots::<W>::new(),

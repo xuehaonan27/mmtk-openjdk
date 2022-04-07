@@ -22,6 +22,7 @@ codegen-units = 1
 [dependencies]
 libc = "0.2"
 lazy_static = "1.1"
+spin = "0.9.2"
 # Be very careful to commit any changes to the following mmtk dependency, as our CI scripts (including mmtk-core CI)
 # rely on matching these lines to modify them: e.g. comment out the git dependency and use the local path.
 # These changes are safe:
