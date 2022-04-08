@@ -63,7 +63,7 @@ class MMTkForwardClosure : public BasicOopIterateClosure {
     return (oop) (void*) (status << 8 >> 8);
   }
   inline bool is_forwarded(size_t status) const {
-    return (status & (3ull << 56)) != 0;
+    return (status & (0xffull << 56)) != 0;
   }
   virtual void do_oop(oop* slot) {
     // *slot = (oop) mmtk_get_forwarded_ref((void*) *slot);
