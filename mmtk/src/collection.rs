@@ -74,4 +74,10 @@ impl Collection<OpenJDK> for VMCollection {
             ((*UPCALLS).schedule_finalizer)();
         }
     }
+
+    fn update_weak_processor() {
+        unsafe {
+            ((*UPCALLS).update_weak_processor)();
+        }
+    }
 }

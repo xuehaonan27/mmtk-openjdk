@@ -107,6 +107,13 @@ static void mmtk_stop_all_mutators(void *tls, void (*create_stack_scan_work)(voi
   nmethod::oops_do_marking_prologue();
 }
 
+static void mmtk_update_weak_processor() {
+  HandleMark hm;
+  MMTkIsAliveClosure is_alive;
+  MMTkForwardClosure forward;
+  WeakProcessor::weak_oops_do(&is_alive, &forward);
+}
+
 static void mmtk_resume_mutators(void *tls) {
   {
     HandleMark hm;
@@ -385,4 +392,5 @@ OpenJDK_Upcalls mmtk_upcalls = {
   mmtk_schedule_finalizer,
   mmtk_prepare_for_roots_re_scanning,
   mmtk_object_alignment,
+  mmtk_update_weak_processor,
 };
