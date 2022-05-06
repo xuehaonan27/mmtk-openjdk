@@ -266,6 +266,7 @@ static void mmtk_dump_object(void* object) {
 
 static size_t mmtk_get_object_size(void* object) {
   oop o = (oop) object;
+  // Slow-dispatch only. The fast-path code is moved to rust.
   auto klass = o->klass();
   return klass->oop_size(o) << LogHeapWordSize;
 }

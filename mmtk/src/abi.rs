@@ -1,7 +1,7 @@
 use super::UPCALLS;
-use mmtk::util::ObjectReference;
 use mmtk::util::constants::*;
 use mmtk::util::conversions;
+use mmtk::util::ObjectReference;
 use mmtk::util::{Address, OpaquePointer};
 use std::ffi::CStr;
 use std::fmt;
@@ -40,7 +40,7 @@ pub enum KlassID {
 #[repr(C)]
 pub struct Klass {
     vptr: OpaquePointer,
-    #[cfg(all(debug_assertions, not(feature="release_debug_assertions")))]
+    #[cfg(all(debug_assertions, not(feature = "release_debug_assertions")))]
     valid: i32,
     pub layout_helper: i32,
     pub id: KlassID,
@@ -68,24 +68,28 @@ pub struct Klass {
 impl Klass {
     pub const LH_NEUTRAL_VALUE: i32 = 0;
     pub const LH_INSTANCE_SLOW_PATH_BIT: i32 = 0x01;
+    #[allow(clippy::erasing_op)]
     pub const LH_LOG2_ELEMENT_SIZE_SHIFT: i32 = BITS_IN_BYTE as i32 * 0;
-    pub const LH_LOG2_ELEMENT_SIZE_MASK: i32  = BITS_IN_LONG as i32 - 1;
+    pub const LH_LOG2_ELEMENT_SIZE_MASK: i32 = BITS_IN_LONG as i32 - 1;
     pub const LH_HEADER_SIZE_SHIFT: i32 = BITS_IN_BYTE as i32 * 2;
-    pub const LH_HEADER_SIZE_MASK: i32 =  (1 << BITS_IN_BYTE) - 1;
+    pub const LH_HEADER_SIZE_MASK: i32 = (1 << BITS_IN_BYTE) - 1;
     #[inline(always)]
     pub unsafe fn cast<'a, T>(&self) -> &'a T {
         &*(self as *const _ as usize as *const T)
     }
+    /// Force slow-path for instance size calculation?
     #[inline(always)]
-    pub const fn layout_helper_needs_slow_path(lh: i32) -> bool {
+    const fn layout_helper_needs_slow_path(lh: i32) -> bool {
         (lh & Self::LH_INSTANCE_SLOW_PATH_BIT) != 0
     }
+    /// Get log2 array element size
     #[inline(always)]
-    pub const fn layout_helper_log2_element_size(lh: i32) -> i32 {
+    const fn layout_helper_log2_element_size(lh: i32) -> i32 {
         (lh >> Self::LH_LOG2_ELEMENT_SIZE_SHIFT) & Self::LH_LOG2_ELEMENT_SIZE_MASK
     }
+    /// Get array header size
     #[inline(always)]
-    pub const fn layout_helper_header_size(lh: i32) -> i32 {
+    const fn layout_helper_header_size(lh: i32) -> i32 {
         (lh >> Self::LH_HEADER_SIZE_SHIFT) & Self::LH_HEADER_SIZE_MASK
     }
 }
@@ -134,7 +138,7 @@ pub struct InstanceKlass {
     // #if INCLUDE_JVMTI
     pub jvmti_cached_class_field_map: OpaquePointer, // JvmtiCachedClassFieldMap*
     // #endif
-    #[cfg(all(debug_assertions, not(feature="release_debug_assertions")))]
+    #[cfg(all(debug_assertions, not(feature = "release_debug_assertions")))]
     verify_count: i32,
     pub methods: OpaquePointer,                // Array<Method*>*
     pub default_methods: OpaquePointer,        // Array<Method*>*
@@ -236,13 +240,11 @@ pub struct InstanceRefKlass {
     pub instance_klass: InstanceKlass,
 }
 
-static DISCOVERED_OFFSET: spin::Lazy<i32> = spin::Lazy::new(|| {
-    unsafe { ((*UPCALLS).discovered_offset)() }
-});
+static DISCOVERED_OFFSET: spin::Lazy<i32> =
+    spin::Lazy::new(|| unsafe { ((*UPCALLS).discovered_offset)() });
 
-static REFERENT_OFFSET: spin::Lazy<i32> = spin::Lazy::new(|| {
-    unsafe { ((*UPCALLS).referent_offset)() }
-});
+static REFERENT_OFFSET: spin::Lazy<i32> =
+    spin::Lazy::new(|| unsafe { ((*UPCALLS).referent_offset)() });
 
 impl InstanceRefKlass {
     #[inline(always)]
@@ -272,9 +274,7 @@ pub struct OopDesc {
 impl OopDesc {
     #[inline(always)]
     pub fn start(&self) -> Address {
-        unsafe {
-            mem::transmute(self)
-        }
+        unsafe { mem::transmute(self) }
     }
 }
 
@@ -292,18 +292,14 @@ pub type Oop = &'static OopDesc;
 impl const From<ObjectReference> for Oop {
     #[inline(always)]
     fn from(o: ObjectReference) -> Self {
-        unsafe {
-            mem::transmute(o)
-        }
+        unsafe { mem::transmute(o) }
     }
 }
 
 impl const Into<ObjectReference> for &OopDesc {
     #[inline(always)]
     fn into(self) -> ObjectReference {
-        unsafe {
-            mem::transmute::<&OopDesc, _>(self)
-        }
+        unsafe { mem::transmute::<&OopDesc, _>(self) }
     }
 }
 
@@ -318,15 +314,18 @@ impl OopDesc {
         Address::from_ref(self) + offset as isize
     }
 
+    /// Slow-path for calculating object instance size
     #[inline(always)]
     unsafe fn size_slow(&self) -> usize {
         ((*UPCALLS).get_object_size)(self.into())
     }
 
+    /// Calculate object instance size
     #[inline(always)]
     pub unsafe fn size(&self) -> usize {
         let klass = self.klass;
         let lh = klass.layout_helper;
+        // The (scalar) instance size is pre-recorded in the TIB?
         if lh > Klass::LH_NEUTRAL_VALUE {
             if !Klass::layout_helper_needs_slow_path(lh) {
                 lh as _
@@ -335,8 +334,10 @@ impl OopDesc {
             }
         } else if lh <= Klass::LH_NEUTRAL_VALUE {
             if lh < Klass::LH_NEUTRAL_VALUE {
+                // Calculate array size
                 let array_length = self.as_array_oop::<()>().length();
-                let mut size_in_bytes: usize = (array_length as usize) << Klass::layout_helper_log2_element_size(lh);
+                let mut size_in_bytes: usize =
+                    (array_length as usize) << Klass::layout_helper_log2_element_size(lh);
                 size_in_bytes += Klass::layout_helper_header_size(lh) as usize;
                 (size_in_bytes + 0b111) & !0b111
             } else {
@@ -383,7 +384,7 @@ impl<T> ArrayOopDesc<T> {
     pub fn data_range(&self) -> Range<Address> {
         let base = Address::from_ptr(self.base());
         let len = self.length() as usize;
-        base .. (base + (len << BYTES_IN_ADDRESS))
+        base..(base + (len << BYTES_IN_ADDRESS))
     }
 }
 
