@@ -20,6 +20,7 @@ use std::sync::atomic::AtomicUsize;
 
 use libc::{c_char, c_void, uintptr_t};
 use mmtk::util::opaque_pointer::*;
+use mmtk::scheduler::GCWorker;
 use mmtk::util::{Address, ObjectReference};
 use mmtk::vm::VMBinding;
 use mmtk::Mutator;
