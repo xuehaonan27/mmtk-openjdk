@@ -131,7 +131,8 @@ pub extern "C" fn start_worker(tls: VMWorkerThread, worker: *mut GCWorker<OpenJD
     unsafe {
         crate::CURRENT_WORKER = Some(&mut *worker);
     }
-    memory_manager::start_worker::<OpenJDK>(tls, unsafe { worker.as_mut().unwrap() }, &SINGLETON)
+    let mut worker = unsafe { Box::from_raw(worker) };
+    memory_manager::start_worker::<OpenJDK>(tls, &mut worker, &SINGLETON)
 }
 
 #[no_mangle]
