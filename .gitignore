@@ -20,3 +20,4 @@ target/
 /*.so
 
 /repos/mmtk-core
+/repos/openjdk
