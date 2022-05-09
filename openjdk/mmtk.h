@@ -162,7 +162,6 @@ typedef struct {
     size_t (*number_of_mutators)();
     void (*schedule_finalizer)();
     void (*prepare_for_roots_re_scanning)();
-    int32_t (*object_alignment)();
     void (*mmtk_update_weak_processor)();
 } OpenJDK_Upcalls;
 

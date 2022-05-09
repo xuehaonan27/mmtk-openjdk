@@ -91,7 +91,6 @@ pub struct OpenJDK_Upcalls {
     pub number_of_mutators: extern "C" fn() -> usize,
     pub schedule_finalizer: extern "C" fn(),
     pub prepare_for_roots_re_scanning: extern "C" fn(),
-    pub object_alignment: extern "C" fn() -> i32,
     pub update_weak_processor: extern "C" fn(),
 }
 
