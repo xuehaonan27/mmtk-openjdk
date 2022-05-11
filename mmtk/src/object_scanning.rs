@@ -124,14 +124,14 @@ impl OopIterate for InstanceClassLoaderKlass {
 impl OopIterate for ObjArrayKlass {
     #[inline(always)]
     fn oop_iterate(&self, oop: Oop, closure: &mut impl TransitiveClosure) {
-        let array = unsafe { oop.as_array_oop::<Oop>() };
-        for oop in array.data() {
+        let array = unsafe { oop.as_array_oop() };
+        for oop in unsafe { array.data::<Oop>(BasicType::T_OBJECT) } {
             closure.process_edge(Address::from_ref(oop as &Oop));
         }
     }
     #[inline(always)]
     fn is_oop_field(&self, oop: Oop, edge: Address) -> bool {
-        let array = unsafe { oop.as_array_oop::<Oop>() };
+        let array = unsafe { oop.as_array_oop() };
         let data = array.data_range();
         edge >= data.start && edge < data.end
     }
@@ -228,8 +228,10 @@ pub fn is_obj_array(oop: Oop ) -> bool {
 
 #[inline(always)]
 pub fn obj_array_data(oop: Oop) -> &'static [ObjectReference] {
-    let array = unsafe { oop.as_array_oop::<ObjectReference>() };
-    array.data()
+    unsafe {
+        let array = oop.as_array_oop();
+        array.data::<ObjectReference>(BasicType::T_OBJECT)
+    }
 }
 
 #[inline(always)]

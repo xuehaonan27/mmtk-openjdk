@@ -1,19 +1,11 @@
-// specialization is considered as an incomplete feature.
-#![allow(incomplete_features)]
-#![feature(specialization)]
-#![feature(box_syntax)]
-#![feature(vec_into_raw_parts)]
-#![feature(once_cell)]
-#![feature(const_raw_ptr_deref)]
-#![feature(const_trait_impl)]
-#![feature(thread_local)]
-
 extern crate libc;
 extern crate mmtk;
 #[macro_use]
 extern crate lazy_static;
 extern crate spin;
+extern crate once_cell;
 
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::ptr::null_mut;
 use std::sync::atomic::AtomicUsize;
@@ -93,13 +85,16 @@ pub struct OpenJDK_Upcalls {
     pub prepare_for_roots_re_scanning: extern "C" fn(),
     pub update_weak_processor: extern "C" fn(),
 }
-
-#[thread_local]
-pub static mut CURRENT_WORKER: Option<&'static mut GCWorker<OpenJDK>> = None;
+thread_local! {
+    pub static CURRENT_WORKER: RefCell<Option<*mut GCWorker<OpenJDK>>> = RefCell::new(None);
+}
 
 #[inline(always)]
 pub fn current_worker() -> &'static mut GCWorker<OpenJDK> {
-    unsafe { CURRENT_WORKER.as_mut().unwrap() }
+    CURRENT_WORKER.with(|x| {
+        let ptr = x.borrow().unwrap() ;
+        unsafe {&mut *ptr}
+    })
 }
 
 pub static mut UPCALLS: *const OpenJDK_Upcalls = null_mut();

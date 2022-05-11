@@ -365,6 +365,7 @@ dependencies = [
  "lazy_static",
  "libc",
  "mmtk",
+ "once_cell",
  "spin",
 ]
 
@@ -390,9 +391,9 @@ dependencies = [
 
 [[package]]
 name = "once_cell"
-version = "1.6.0"
+version = "1.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4ad167a2f54e832b82dbe003a046280dceffe5227b5f79e08e363a29638cfddd"
+checksum = "87f3e037eac156d1775da914196f0f37741a274155e34a0b7e427c35d2a2ecb9"
 
 [[package]]
 name = "peeking_take_while"

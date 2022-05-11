@@ -14,14 +14,15 @@ use mmtk::AllocationSemantics;
 use mmtk::Mutator;
 use mmtk::MutatorContext;
 use mmtk::MMTK;
+use once_cell::sync;
+use std::cell::RefCell;
 use std::ffi::{CStr, CString};
-use std::lazy::SyncLazy;
 use std::sync::atomic::Ordering;
 
 // Supported barriers:
-static NO_BARRIER: SyncLazy<CString> = SyncLazy::new(|| CString::new("NoBarrier").unwrap());
-static OBJECT_BARRIER: SyncLazy<CString> = SyncLazy::new(|| CString::new("ObjectBarrier").unwrap());
-static FIELD_LOGGING_BARRIER: SyncLazy<CString> = SyncLazy::new(|| CString::new("FieldLoggingBarrier").unwrap());
+static NO_BARRIER: sync::Lazy<CString> = sync::Lazy::new(|| CString::new("NoBarrier").unwrap());
+static OBJECT_BARRIER: sync::Lazy<CString> = sync::Lazy::new(|| CString::new("ObjectBarrier").unwrap());
+static FIELD_LOGGING_BARRIER: sync::Lazy<CString> = sync::Lazy::new(|| CString::new("FieldLoggingBarrier").unwrap());
 
 #[no_mangle]
 pub extern "C" fn mmtk_active_barrier() -> *const c_char {
@@ -135,9 +136,7 @@ pub extern "C" fn start_control_collector(
 // We trust the worker pointer is valid.
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
 pub extern "C" fn start_worker(tls: VMWorkerThread, worker: *mut GCWorker<OpenJDK>) {
-    unsafe {
-        crate::CURRENT_WORKER = Some(&mut *worker);
-    }
+    crate::CURRENT_WORKER.with(|x| x.replace(Some(unsafe { &mut *worker })));
     let mut worker = unsafe { Box::from_raw(worker) };
     memory_manager::start_worker::<OpenJDK>(&SINGLETON, tls, &mut worker)
 }
@@ -323,18 +322,22 @@ pub extern "C" fn mmtk_get_forwarded_ref(object: ObjectReference) -> ObjectRefer
     object.get_forwarded_object().unwrap_or(object)
 }
 
-#[thread_local]
-static mut NMETHOD_SLOTS: Vec<Address> = vec![];
+thread_local! {
+    static NMETHOD_SLOTS: RefCell<Vec<Address>> = RefCell::new(vec![]);
+}
 
 #[no_mangle]
 pub unsafe extern "C" fn mmtk_add_nmethod_oop(addr: Address)  {
-    NMETHOD_SLOTS.push(addr)
+    NMETHOD_SLOTS.with(|x| x.borrow_mut().push(addr))
 }
 #[no_mangle]
 pub unsafe extern "C" fn mmtk_register_nmethod(nm: Address) {
-    if NMETHOD_SLOTS.len() == 0 { return; }
-    let mut slots = vec![];
-    std::mem::swap(&mut slots, &mut NMETHOD_SLOTS);
+    let slots = NMETHOD_SLOTS.with(|x| {
+        if  x.borrow().len() == 0 { return None; }
+        Some(x.replace(vec![]))
+    });
+    if slots.is_none() { return; }
+    let slots = slots.unwrap();
     crate::TOTAL_SIZE.fetch_add(slots.len(), Ordering::Relaxed);
     crate::CODE_CACHE_ROOTS.lock().insert(nm, slots);
 }

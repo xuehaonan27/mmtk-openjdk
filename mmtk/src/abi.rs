@@ -5,25 +5,8 @@ use mmtk::util::ObjectReference;
 use mmtk::util::{Address, OpaquePointer};
 use std::ffi::CStr;
 use std::fmt;
-use std::marker::PhantomData;
 use std::ops::Range;
 use std::{mem, slice};
-
-trait EqualTo<T> {
-    const VALUE: bool;
-}
-
-impl<T, U> EqualTo<U> for T {
-    default const VALUE: bool = false;
-}
-
-impl<T> EqualTo<T> for T {
-    const VALUE: bool = true;
-}
-
-pub const fn type_equal<T, U>() -> bool {
-    <T as EqualTo<U>>::VALUE
-}
 
 #[repr(i32)]
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
@@ -35,6 +18,30 @@ pub enum KlassID {
     InstanceClassLoader,
     TypeArray,
     ObjArray,
+}
+
+#[repr(i32)]
+#[derive(Copy, Clone, PartialEq, Eq, Debug)]
+#[allow(dead_code)]
+#[allow(non_camel_case_types)]
+pub enum BasicType {
+    T_BOOLEAN = 4,
+    T_CHAR = 5,
+    T_FLOAT = 6,
+    T_DOUBLE = 7,
+    T_BYTE = 8,
+    T_SHORT = 9,
+    T_INT = 10,
+    T_LONG = 11,
+    T_OBJECT = 12,
+    T_ARRAY = 13,
+    T_VOID = 14,
+    T_ADDRESS = 15,
+    T_NARROWOOP = 16,
+    T_METADATA = 17,
+    T_NARROWKLASS = 18,
+    T_CONFLICT = 19, // for stack value type with conflicting contents
+    T_ILLEGAL = 99,
 }
 
 #[repr(C)]
@@ -289,14 +296,14 @@ impl fmt::Debug for OopDesc {
 
 pub type Oop = &'static OopDesc;
 
-impl const From<ObjectReference> for Oop {
+impl From<ObjectReference> for Oop {
     #[inline(always)]
     fn from(o: ObjectReference) -> Self {
         unsafe { mem::transmute(o) }
     }
 }
 
-impl const Into<ObjectReference> for &OopDesc {
+impl Into<ObjectReference> for &OopDesc {
     #[inline(always)]
     fn into(self) -> ObjectReference {
         unsafe { mem::transmute::<&OopDesc, _>(self) }
@@ -305,8 +312,8 @@ impl const Into<ObjectReference> for &OopDesc {
 
 impl OopDesc {
     #[inline(always)]
-    pub const unsafe fn as_array_oop<T>(&self) -> ArrayOop<T> {
-        &*(self as *const OopDesc as *const ArrayOopDesc<T>)
+    pub unsafe fn as_array_oop(&self) -> ArrayOop {
+        &*(self as *const OopDesc as *const ArrayOopDesc)
     }
 
     #[inline(always)]
@@ -335,7 +342,7 @@ impl OopDesc {
         } else if lh <= Klass::LH_NEUTRAL_VALUE {
             if lh < Klass::LH_NEUTRAL_VALUE {
                 // Calculate array size
-                let array_length = self.as_array_oop::<()>().length();
+                let array_length = self.as_array_oop().length();
                 let mut size_in_bytes: usize =
                     (array_length as usize) << Klass::layout_helper_log2_element_size(lh);
                 size_in_bytes += Klass::layout_helper_header_size(lh) as usize;
@@ -350,18 +357,22 @@ impl OopDesc {
 }
 
 #[repr(C)]
-pub struct ArrayOopDesc<T>(OopDesc, PhantomData<T>);
+pub struct ArrayOopDesc(OopDesc);
 
-pub type ArrayOop<T> = &'static ArrayOopDesc<T>;
+pub type ArrayOop = &'static ArrayOopDesc;
 
-impl<T> ArrayOopDesc<T> {
-    const ELEMENT_TYPE_SHOULD_BE_ALIGNED: bool = type_equal::<T, f64>() || type_equal::<T, i64>();
+impl ArrayOopDesc {
     const LENGTH_OFFSET: usize = mem::size_of::<Self>();
+
+    fn element_type_should_be_aligned(ty: BasicType) -> bool {
+        ty == BasicType::T_DOUBLE || ty == BasicType::T_LONG
+    }
+
     #[inline(always)]
-    fn header_size() -> usize {
+    fn header_size(ty: BasicType) -> usize {
         let typesize_in_bytes =
             conversions::raw_align_up(Self::LENGTH_OFFSET + BYTES_IN_INT, BYTES_IN_LONG);
-        if Self::ELEMENT_TYPE_SHOULD_BE_ALIGNED {
+        if Self::element_type_should_be_aligned(ty) {
             conversions::raw_align_up(typesize_in_bytes / BYTES_IN_WORD, BYTES_IN_LONG)
         } else {
             typesize_in_bytes / BYTES_IN_WORD
@@ -372,17 +383,21 @@ impl<T> ArrayOopDesc<T> {
         unsafe { *((self as *const _ as *const u8).add(Self::LENGTH_OFFSET) as *const i32) }
     }
     #[inline(always)]
-    fn base(&self) -> *const T {
-        let base_offset_in_bytes = Self::header_size() * BYTES_IN_WORD;
-        unsafe { (self as *const _ as *const u8).add(base_offset_in_bytes) as _ }
+    fn base(&self, ty: BasicType) -> Address {
+        let base_offset_in_bytes = Self::header_size(ty) * BYTES_IN_WORD;
+        Address::from_ptr(unsafe { (self as *const _ as *const u8).add(base_offset_in_bytes) })
     }
+    // This provides an easy way to access the array data in Rust. However, the array data
+    // is Java types, so we have to map Java types to Rust types. The caller needs to guarantee:
+    // 1. <T> matches the actual Java type
+    // 2. <T> matches the argument, BasicType `ty`
     #[inline(always)]
-    pub fn data(&self) -> &[T] {
-        unsafe { slice::from_raw_parts(self.base(), self.length() as _) }
+    pub unsafe fn data<T>(&self, ty: BasicType) -> &[T] {
+        slice::from_raw_parts(self.base(ty).to_ptr(), self.length() as _)
     }
     #[inline(always)]
     pub fn data_range(&self) -> Range<Address> {
-        let base = Address::from_ptr(self.base());
+        let base = self.base(BasicType::T_OBJECT);
         let len = self.length() as usize;
         base..(base + (len << BYTES_IN_ADDRESS))
     }
