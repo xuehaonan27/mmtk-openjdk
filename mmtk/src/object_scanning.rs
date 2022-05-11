@@ -1,27 +1,23 @@
 use super::abi::*;
 use super::UPCALLS;
-use crate::{OpenJDK, SINGLETON};
-use mmtk::scheduler::ProcessEdgesWork;
-use mmtk::scheduler::{GCWorker, WorkBucketStage};
 use mmtk::util::constants::*;
 use mmtk::util::opaque_pointer::*;
 use mmtk::util::{Address, ObjectReference};
-use mmtk::TransitiveClosure;
-use std::marker::PhantomData;
+use mmtk::vm::EdgeVisitor;
 use std::{mem, slice};
 
 trait OopIterate: Sized {
-    fn oop_iterate(&self, oop: Oop, closure: &mut impl TransitiveClosure);
+    fn oop_iterate(&self, oop: Oop, closure: &mut impl EdgeVisitor);
     fn is_oop_field(&self, oop: Oop, edge: Address) -> bool;
 }
 
 impl OopIterate for OopMapBlock {
     #[inline(always)]
-    fn oop_iterate(&self, oop: Oop, closure: &mut impl TransitiveClosure) {
+    fn oop_iterate(&self, oop: Oop, closure: &mut impl EdgeVisitor) {
         let start = oop.get_field_address(self.offset);
         for i in 0..self.count as usize {
             let edge = start + (i << LOG_BYTES_IN_ADDRESS);
-            closure.process_edge(edge);
+            closure.visit_edge(edge);
         }
     }
     #[inline(always)]
@@ -34,7 +30,7 @@ impl OopIterate for OopMapBlock {
 
 impl OopIterate for InstanceKlass {
     #[inline(always)]
-    fn oop_iterate(&self, oop: Oop, closure: &mut impl TransitiveClosure) {
+    fn oop_iterate(&self, oop: Oop, closure: &mut impl EdgeVisitor) {
         let oop_maps = self.nonstatic_oop_maps();
         for map in oop_maps {
             map.oop_iterate(oop, closure)
@@ -54,7 +50,7 @@ impl OopIterate for InstanceKlass {
 
 impl OopIterate for InstanceMirrorKlass {
     #[inline(always)]
-    fn oop_iterate(&self, oop: Oop, closure: &mut impl TransitiveClosure) {
+    fn oop_iterate(&self, oop: Oop, closure: &mut impl EdgeVisitor) {
         self.instance_klass.oop_iterate(oop, closure);
         // if (Devirtualizer::do_metadata(closure)) {
         //     Klass* klass = java_lang_Class::as_Klass(obj);
@@ -88,7 +84,7 @@ impl OopIterate for InstanceMirrorKlass {
         let len = Self::static_oop_field_count(oop);
         let slice = unsafe { slice::from_raw_parts(start, len as _) };
         for oop in slice {
-            closure.process_edge(Address::from_ref(oop as &Oop));
+            closure.visit_edge(Address::from_ref(oop as &Oop));
         }
     }
     #[inline(always)]
@@ -105,7 +101,7 @@ impl OopIterate for InstanceMirrorKlass {
 
 impl OopIterate for InstanceClassLoaderKlass {
     #[inline(always)]
-    fn oop_iterate(&self, oop: Oop, closure: &mut impl TransitiveClosure) {
+    fn oop_iterate(&self, oop: Oop, closure: &mut impl EdgeVisitor) {
         self.instance_klass.oop_iterate(oop, closure);
         // if (Devirtualizer::do_metadata(closure)) {
         //     ClassLoaderData* cld = java_lang_ClassLoader::loader_data(obj);
@@ -123,10 +119,10 @@ impl OopIterate for InstanceClassLoaderKlass {
 
 impl OopIterate for ObjArrayKlass {
     #[inline(always)]
-    fn oop_iterate(&self, oop: Oop, closure: &mut impl TransitiveClosure) {
+    fn oop_iterate(&self, oop: Oop, closure: &mut impl EdgeVisitor) {
         let array = unsafe { oop.as_array_oop() };
         for oop in unsafe { array.data::<Oop>(BasicType::T_OBJECT) } {
-            closure.process_edge(Address::from_ref(oop as &Oop));
+            closure.visit_edge(Address::from_ref(oop as &Oop));
         }
     }
     #[inline(always)]
@@ -139,7 +135,7 @@ impl OopIterate for ObjArrayKlass {
 
 impl OopIterate for TypeArrayKlass {
     #[inline(always)]
-    fn oop_iterate(&self, _oop: Oop, _closure: &mut impl TransitiveClosure) {
+    fn oop_iterate(&self, _oop: Oop, _closure: &mut impl EdgeVisitor) {
         // Performance tweak: We skip processing the klass pointer since all
         // TypeArrayKlasses are guaranteed processed via the null class loader.
     }
@@ -151,12 +147,12 @@ impl OopIterate for TypeArrayKlass {
 
 impl OopIterate for InstanceRefKlass {
     #[inline(always)]
-    fn oop_iterate(&self, oop: Oop, closure: &mut impl TransitiveClosure) {
+    fn oop_iterate(&self, oop: Oop, closure: &mut impl EdgeVisitor) {
         self.instance_klass.oop_iterate(oop, closure);
         let referent_addr = Self::referent_address(oop);
-        closure.process_edge(referent_addr);
+        closure.visit_edge(referent_addr);
         let discovered_addr = Self::discovered_address(oop);
-        closure.process_edge(discovered_addr);
+        closure.visit_edge(discovered_addr);
     }
     #[inline(always)]
     fn is_oop_field(&self, oop: Oop, edge: Address) -> bool {
@@ -176,14 +172,14 @@ impl OopIterate for InstanceRefKlass {
 }
 
 #[allow(unused)]
-fn oop_iterate_slow(oop: Oop, closure: &mut impl TransitiveClosure, tls: OpaquePointer) {
+fn oop_iterate_slow(oop: Oop, closure: &mut impl EdgeVisitor, tls: OpaquePointer) {
     unsafe {
         ((*UPCALLS).scan_object)(closure as *mut _ as _, mem::transmute(oop), tls);
     }
 }
 
 #[inline(always)]
-fn oop_iterate(oop: Oop, closure: &mut impl TransitiveClosure) {
+fn oop_iterate(oop: Oop, closure: &mut impl EdgeVisitor) {
     let klass_id = oop.klass.id;
     debug_assert!(
         klass_id as i32 >= 0 && (klass_id as i32) < 6,
@@ -278,68 +274,11 @@ pub fn is_oop_field(oop: Oop, edge: Address) -> bool {
 }
 
 #[inline]
-pub fn scan_object(
-    object: ObjectReference,
-    closure: &mut impl TransitiveClosure,
-    _tls: VMWorkerThread,
-) {
+pub fn scan_object(object: ObjectReference, closure: &mut impl EdgeVisitor, _tls: VMWorkerThread) {
     // println!("*****scan_object(0x{:x}) -> \n 0x{:x}, 0x{:x} \n",
     //     object,
     //     unsafe { *(object.value() as *const usize) },
     //     unsafe { *((object.value() + 8) as *const usize) }
     // );
     unsafe { oop_iterate(mem::transmute(object), closure) }
-}
-
-pub struct ObjectsClosure<'a, E: ProcessEdgesWork<VM = OpenJDK>>(
-    Vec<Address>,
-    &'a mut GCWorker<OpenJDK>,
-    PhantomData<E>,
-);
-
-impl<'a, E: ProcessEdgesWork<VM = OpenJDK>> TransitiveClosure for ObjectsClosure<'a, E> {
-    #[inline]
-    fn process_edge(&mut self, slot: Address) {
-        if self.0.is_empty() {
-            self.0.reserve(E::CAPACITY);
-        }
-        self.0.push(slot);
-        if self.0.len() >= E::CAPACITY {
-            let mut new_edges = Vec::new();
-            mem::swap(&mut new_edges, &mut self.0);
-            self.1.add_work(
-                WorkBucketStage::Closure,
-                E::new(new_edges, false, &SINGLETON),
-            );
-        }
-    }
-    fn process_node(&mut self, _object: ObjectReference) {
-        unreachable!()
-    }
-}
-
-impl<'a, E: ProcessEdgesWork<VM = OpenJDK>> Drop for ObjectsClosure<'a, E> {
-    #[inline]
-    fn drop(&mut self) {
-        let mut new_edges = Vec::new();
-        mem::swap(&mut new_edges, &mut self.0);
-        self.1.add_work(
-            WorkBucketStage::Closure,
-            E::new(new_edges, false, &SINGLETON),
-        );
-    }
-}
-
-pub fn scan_objects_and_create_edges_work<E: ProcessEdgesWork<VM = OpenJDK>>(
-    objects: &[ObjectReference],
-    worker: &mut GCWorker<OpenJDK>,
-) {
-    let mut closure = ObjectsClosure::<E>(Vec::new(), worker, PhantomData);
-    for object in objects {
-        scan_object(
-            *object,
-            &mut closure,
-            VMWorkerThread(VMThread::UNINITIALIZED),
-        );
-    }
 }
