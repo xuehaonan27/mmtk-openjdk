@@ -249,7 +249,7 @@ fn oop_iterate(oop: Oop, closure: &mut impl EdgeVisitor) {
 }
 
 #[inline(always)]
-pub fn is_obj_array(oop: Oop ) -> bool {
+pub fn is_obj_array(oop: Oop) -> bool {
     let klass_id = oop.klass.id;
     klass_id == KlassID::ObjArray
 }
@@ -263,7 +263,7 @@ pub fn obj_array_data(oop: Oop) -> &'static [ObjectReference] {
 }
 
 #[inline(always)]
-pub fn is_type_array(oop: Oop ) -> bool {
+pub fn is_type_array(oop: Oop) -> bool {
     let klass_id = oop.klass.id;
     klass_id == KlassID::TypeArray
 }

@@ -21,8 +21,10 @@ use std::sync::atomic::Ordering;
 
 // Supported barriers:
 static NO_BARRIER: sync::Lazy<CString> = sync::Lazy::new(|| CString::new("NoBarrier").unwrap());
-static OBJECT_BARRIER: sync::Lazy<CString> = sync::Lazy::new(|| CString::new("ObjectBarrier").unwrap());
-static FIELD_LOGGING_BARRIER: sync::Lazy<CString> = sync::Lazy::new(|| CString::new("FieldLoggingBarrier").unwrap());
+static OBJECT_BARRIER: sync::Lazy<CString> =
+    sync::Lazy::new(|| CString::new("ObjectBarrier").unwrap());
+static FIELD_LOGGING_BARRIER: sync::Lazy<CString> =
+    sync::Lazy::new(|| CString::new("FieldLoggingBarrier").unwrap());
 
 #[no_mangle]
 pub extern "C" fn mmtk_active_barrier() -> *const c_char {
@@ -327,16 +329,20 @@ thread_local! {
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn mmtk_add_nmethod_oop(addr: Address)  {
+pub unsafe extern "C" fn mmtk_add_nmethod_oop(addr: Address) {
     NMETHOD_SLOTS.with(|x| x.borrow_mut().push(addr))
 }
 #[no_mangle]
 pub unsafe extern "C" fn mmtk_register_nmethod(nm: Address) {
     let slots = NMETHOD_SLOTS.with(|x| {
-        if  x.borrow().len() == 0 { return None; }
+        if x.borrow().len() == 0 {
+            return None;
+        }
         Some(x.replace(vec![]))
     });
-    if slots.is_none() { return; }
+    if slots.is_none() {
+        return;
+    }
     let slots = slots.unwrap();
     crate::TOTAL_SIZE.fetch_add(slots.len(), Ordering::Relaxed);
     crate::CODE_CACHE_ROOTS.lock().insert(nm, slots);

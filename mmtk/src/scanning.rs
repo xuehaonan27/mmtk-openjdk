@@ -12,19 +12,13 @@ use mmtk::MutatorContext;
 
 pub struct VMScanning {}
 
-pub(crate) fn create_process_edges_work_vec<W: ProcessEdgesWork<VM = OpenJDK>>(
-    buf: Vec<Address>,
-)  {
+pub(crate) fn create_process_edges_work_vec<W: ProcessEdgesWork<VM = OpenJDK>>(buf: Vec<Address>) {
     if !buf.is_empty() {
         let w = W::new(buf, true, &SINGLETON);
         if W::RC_ROOTS {
             crate::current_worker().add_work(WorkBucketStage::RCProcessIncs, w);
         } else {
-            memory_manager::add_work_packet(
-                &SINGLETON,
-                WorkBucketStage::Closure,
-                w,
-            );
+            memory_manager::add_work_packet(&SINGLETON, WorkBucketStage::Closure, w);
         }
     }
 }
@@ -40,11 +34,7 @@ pub(crate) extern "C" fn create_process_edges_work<W: ProcessEdgesWork<VM = Open
         if W::RC_ROOTS {
             crate::current_worker().add_work(WorkBucketStage::RCProcessIncs, w);
         } else {
-            memory_manager::add_work_packet(
-                &SINGLETON,
-                WorkBucketStage::Closure,
-                w,
-            );
+            memory_manager::add_work_packet(&SINGLETON, WorkBucketStage::Closure, w);
         }
     }
     let (ptr, _, capacity) = {
