@@ -177,39 +177,12 @@ void MMTkBarrierSetC2::expand_allocate(PhaseMacroExpand* x,
     Node* eden_end_adr;
 
     {
-      // Only bump pointer allocator fastpath is implemented.
-      if (selector.tag != TAG_BUMP_POINTER && selector.tag != TAG_MARK_COMPACT && selector.tag != TAG_IMMIX) {
-        fatal("unimplemented allocator fastpath\n");
-      }
+      // Calculate offsets of TLAB top and end
+      MMTkAllocatorOffsets alloc_offsets = get_tlab_top_and_end_offsets(selector);
 
-      // Calculat offsets of top and end. We now assume we are using bump pointer.
-      int allocators_base_offset = in_bytes(JavaThread::third_party_heap_mutator_offset())
-        + in_bytes(byte_offset_of(MMTkMutatorContext, allocators));
-      int tlab_top_offset, tlab_end_offset;
-      if (selector.tag == TAG_IMMIX) {
-        int allocator_base_offset = allocators_base_offset
-          + in_bytes(byte_offset_of(Allocators, immix))
-          + selector.index * sizeof(ImmixAllocator);
-        tlab_top_offset = allocator_base_offset + in_bytes(byte_offset_of(ImmixAllocator, cursor));
-        tlab_end_offset = allocator_base_offset + in_bytes(byte_offset_of(ImmixAllocator, limit));
-      } else if (selector.tag == TAG_BUMP_POINTER) {
-        int allocator_base_offset = allocators_base_offset
-          + in_bytes(byte_offset_of(Allocators, bump_pointer))
-          + selector.index * sizeof(BumpAllocator);
-        tlab_top_offset = allocator_base_offset + in_bytes(byte_offset_of(BumpAllocator, cursor));
-        tlab_end_offset = allocator_base_offset + in_bytes(byte_offset_of(BumpAllocator, limit));
-      } else {
-        // markcompact allocator
-        int allocator_base_offset = allocators_base_offset
-          + in_bytes(byte_offset_of(Allocators, bump_pointer))
-          + selector.index * sizeof(MarkCompactAllocator)
-          + in_bytes(byte_offset_of(MarkCompactAllocator, bump_allocator));
-        tlab_top_offset = allocator_base_offset + in_bytes(byte_offset_of(BumpAllocator, cursor));
-        tlab_end_offset = allocator_base_offset + in_bytes(byte_offset_of(BumpAllocator, limit));
-      }
       Node* thread = x->transform_later(new ThreadLocalNode());
-      eden_top_adr = x->basic_plus_adr(x->top()/*not oop*/, thread, tlab_top_offset);
-      eden_end_adr = x->basic_plus_adr(x->top()/*not oop*/, thread, tlab_end_offset);
+      eden_top_adr = x->basic_plus_adr(x->top()/*not oop*/, thread, alloc_offsets.tlab_top_offset);
+      eden_end_adr = x->basic_plus_adr(x->top()/*not oop*/, thread, alloc_offsets.tlab_end_offset);
     }
 
     // set_eden_pointers(eden_top_adr, eden_end_adr);
@@ -303,8 +276,7 @@ void MMTkBarrierSetC2::expand_allocate(PhaseMacroExpand* x,
     #ifdef MMTK_ENABLE_GLOBAL_ALLOC_BIT
     enable_global_alloc_bit = true;
     #endif
-// #ifdef MMTK_ENABLE_GLOBAL_ALLOC_BIT
-  if(enable_global_alloc_bit || selector.tag == TAG_MARK_COMPACT) {
+  if (enable_global_alloc_bit || selector.tag == TAG_MARK_COMPACT) {
     // set the alloc bit:
     // intptr_t addr = (intptr_t) (void*) fast_oop;
     // uint8_t* meta_addr = (uint8_t*) (ALLOC_BIT_BASE_ADDRESS + (addr >> 6));
@@ -362,7 +334,6 @@ void MMTkBarrierSetC2::expand_allocate(PhaseMacroExpand* x,
 
     fast_oop_rawmem = set_alloc_bit;
   }
-// #endif
 
     InitializeNode* init = alloc->initialization();
     fast_oop_rawmem = x->initialize_object(alloc,

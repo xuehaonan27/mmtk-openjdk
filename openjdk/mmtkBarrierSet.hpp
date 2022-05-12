@@ -43,6 +43,20 @@ const intptr_t SIDE_METADATA_BASE_ADDRESS = (intptr_t) GLOBAL_SIDE_METADATA_VM_B
 
 const intptr_t ALLOC_BIT_BASE_ADDRESS = GLOBAL_ALLOC_BIT_ADDRESS;
 
+struct MMTkAllocatorOffsets {
+  int tlab_top_offset;
+  int tlab_end_offset;
+};
+
+/**
+ * Return the offset (from the start of the mutator) for the TLAB top (cursor)
+ * and end (limit) for an MMTk Allocator.
+ *
+ * @param selector The current MMTk Allocator being used
+ * @return the offsets to the top and end of the TLAB
+ */
+MMTkAllocatorOffsets get_tlab_top_and_end_offsets(AllocatorSelector selector);
+
 class MMTkBarrierSetRuntime: public CHeapObj<mtGC> {
 public:
   virtual void record_modified_node(oop src, ptrdiff_t offset, oop val) {};
