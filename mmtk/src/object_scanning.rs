@@ -8,7 +8,6 @@ use std::{mem, slice};
 
 trait OopIterate: Sized {
     fn oop_iterate(&self, oop: Oop, closure: &mut impl EdgeVisitor);
-    fn is_oop_field(&self, oop: Oop, edge: Address) -> bool;
 }
 
 impl OopIterate for OopMapBlock {
@@ -20,12 +19,6 @@ impl OopIterate for OopMapBlock {
             closure.visit_edge(edge);
         }
     }
-    #[inline(always)]
-    fn is_oop_field(&self, oop: Oop, edge: Address) -> bool {
-        let start = oop.get_field_address(self.offset);
-        let end = start + ((self.count as usize) << LOG_BYTES_IN_ADDRESS);
-        edge >= start && edge < end
-    }
 }
 
 impl OopIterate for InstanceKlass {
@@ -35,16 +28,6 @@ impl OopIterate for InstanceKlass {
         for map in oop_maps {
             map.oop_iterate(oop, closure)
         }
-    }
-    #[inline(always)]
-    fn is_oop_field(&self, oop: Oop, edge: Address) -> bool {
-        let oop_maps = self.nonstatic_oop_maps();
-        for map in oop_maps {
-            if map.is_oop_field(oop, edge) {
-                return true;
-            }
-        }
-        false
     }
 }
 
@@ -87,16 +70,6 @@ impl OopIterate for InstanceMirrorKlass {
             closure.visit_edge(Address::from_ref(oop as &Oop));
         }
     }
-    #[inline(always)]
-    fn is_oop_field(&self, oop: Oop, edge: Address) -> bool {
-        if self.instance_klass.is_oop_field(oop, edge) {
-            return true;
-        }
-        let start = Self::start_of_static_fields(oop);
-        let len = Self::static_oop_field_count(oop);
-        let end = start + (len << LOG_BYTES_IN_ADDRESS);
-        edge >= start && edge < end
-    }
 }
 
 impl OopIterate for InstanceClassLoaderKlass {
@@ -111,10 +84,6 @@ impl OopIterate for InstanceClassLoaderKlass {
         //     }
         // }
     }
-    #[inline(always)]
-    fn is_oop_field(&self, oop: Oop, edge: Address) -> bool {
-        self.instance_klass.is_oop_field(oop, edge)
-    }
 }
 
 impl OopIterate for ObjArrayKlass {
@@ -125,12 +94,6 @@ impl OopIterate for ObjArrayKlass {
             closure.visit_edge(Address::from_ref(oop as &Oop));
         }
     }
-    #[inline(always)]
-    fn is_oop_field(&self, oop: Oop, edge: Address) -> bool {
-        let array = unsafe { oop.as_array_oop() };
-        let data = array.data_range();
-        edge >= data.start && edge < data.end
-    }
 }
 
 impl OopIterate for TypeArrayKlass {
@@ -138,10 +101,6 @@ impl OopIterate for TypeArrayKlass {
     fn oop_iterate(&self, _oop: Oop, _closure: &mut impl EdgeVisitor) {
         // Performance tweak: We skip processing the klass pointer since all
         // TypeArrayKlasses are guaranteed processed via the null class loader.
-    }
-    #[inline(always)]
-    fn is_oop_field(&self, _oop: Oop, _edge: Address) -> bool {
-        false
     }
 }
 
@@ -170,21 +129,6 @@ impl OopIterate for InstanceRefKlass {
         } else {
             Self::process_ref_as_strong(oop, closure);
         }
-    }
-    #[inline(always)]
-    fn is_oop_field(&self, oop: Oop, edge: Address) -> bool {
-        if self.instance_klass.is_oop_field(oop, edge) {
-            return true;
-        }
-        let referent_addr = Self::referent_address(oop);
-        if edge == referent_addr {
-            return true;
-        }
-        let discovered_addr = Self::discovered_address(oop);
-        if edge == discovered_addr {
-            return true;
-        }
-        false
     }
 }
 
@@ -259,49 +203,6 @@ pub fn obj_array_data(oop: Oop) -> &'static [ObjectReference] {
     unsafe {
         let array = oop.as_array_oop();
         array.data::<ObjectReference>(BasicType::T_OBJECT)
-    }
-}
-
-#[inline(always)]
-pub fn is_type_array(oop: Oop) -> bool {
-    let klass_id = oop.klass.id;
-    klass_id == KlassID::TypeArray
-}
-
-#[inline(always)]
-pub fn is_oop_field(oop: Oop, edge: Address) -> bool {
-    let klass_id = oop.klass.id;
-    debug_assert!(
-        klass_id as i32 >= 0 && (klass_id as i32) < 6,
-        "Invalid klass-id: {:x} for oop: {:x}",
-        klass_id as i32,
-        unsafe { mem::transmute::<Oop, ObjectReference>(oop) }
-    );
-    match klass_id {
-        KlassID::Instance => {
-            let instance_klass = unsafe { oop.klass.cast::<InstanceKlass>() };
-            instance_klass.is_oop_field(oop, edge)
-        }
-        KlassID::InstanceClassLoader => {
-            let instance_klass = unsafe { oop.klass.cast::<InstanceClassLoaderKlass>() };
-            instance_klass.is_oop_field(oop, edge)
-        }
-        KlassID::InstanceMirror => {
-            let instance_klass = unsafe { oop.klass.cast::<InstanceMirrorKlass>() };
-            instance_klass.is_oop_field(oop, edge)
-        }
-        KlassID::ObjArray => {
-            let array_klass = unsafe { oop.klass.cast::<ObjArrayKlass>() };
-            array_klass.is_oop_field(oop, edge)
-        }
-        KlassID::TypeArray => {
-            let array_klass = unsafe { oop.klass.cast::<TypeArrayKlass>() };
-            array_klass.is_oop_field(oop, edge)
-        }
-        KlassID::InstanceRef => {
-            let instance_klass = unsafe { oop.klass.cast::<InstanceRefKlass>() };
-            instance_klass.is_oop_field(oop, edge)
-        } // _ => oop_iterate_slow(oop, closure, tls),
     }
 }
 

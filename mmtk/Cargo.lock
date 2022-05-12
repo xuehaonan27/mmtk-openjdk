@@ -46,6 +46,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "atomic_refcell"
+version = "0.1.8"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "73b5e5f48b927f04e952dedc932f31995a65a0bf65ec971c74436e51bf6e970d"
+
+[[package]]
 name = "atty"
 version = "0.2.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -337,11 +343,12 @@ dependencies = [
 
 [[package]]
 name = "mmtk"
-version = "0.8.0"
-source = "git+https://github.com/wenyuzhao/mmtk-core.git?rev=47232c1a0a789edd578d3239a813cdd42b02dd3c#47232c1a0a789edd578d3239a813cdd42b02dd3c"
+version = "0.11.0"
+source = "git+https://github.com/wenyuzhao/mmtk-core.git?rev=cabaaf9cf22c13d3aab7ec60a1a4a27aad75374d#cabaaf9cf22c13d3aab7ec60a1a4a27aad75374d"
 dependencies = [
  "atomic",
  "atomic-traits",
+ "atomic_refcell",
  "crossbeam-deque",
  "crossbeam-queue",
  "custom_derive",
