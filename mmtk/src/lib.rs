@@ -84,6 +84,7 @@ pub struct OpenJDK_Upcalls {
     pub schedule_finalizer: extern "C" fn(),
     pub prepare_for_roots_re_scanning: extern "C" fn(),
     pub update_weak_processor: extern "C" fn(),
+    pub enqueue_references: extern "C" fn(objects: *const ObjectReference, len: usize),
 }
 thread_local! {
     pub static CURRENT_WORKER: RefCell<Option<*mut GCWorker<OpenJDK>>> = RefCell::new(None);
