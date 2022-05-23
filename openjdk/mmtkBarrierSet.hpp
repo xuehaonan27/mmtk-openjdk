@@ -109,8 +109,8 @@ public:
   }
 
   virtual void on_thread_destroy(Thread* thread);
-  virtual void on_thread_attach(JavaThread* thread);
-  virtual void on_thread_detach(JavaThread* thread);
+  virtual void on_thread_attach(Thread* thread);
+  virtual void on_thread_detach(Thread* thread);
 
   // Inform the BarrierSet that the the covered heap region that starts
   // with "base" has been changed to have the given size (possibly from 0,
@@ -154,26 +154,26 @@ public:
     }
 
     template <typename T>
-    static oop oop_atomic_cmpxchg_in_heap(oop new_value, T* addr, oop compare_value) {
+    static oop oop_atomic_cmpxchg_in_heap(T* addr, oop compare_value, oop new_value) {
       UNREACHABLE();
       return NULL;
     }
 
-    static oop oop_atomic_cmpxchg_in_heap_at(oop new_value, oop base, ptrdiff_t offset, oop compare_value) {
+    static oop oop_atomic_cmpxchg_in_heap_at(oop base, ptrdiff_t offset, oop compare_value, oop new_value) {
       runtime()->record_modified_node(base, offset, new_value);
-      oop result = Raw::oop_atomic_cmpxchg_at(new_value, base, offset, compare_value);
+      oop result = Raw::oop_atomic_cmpxchg_at(base, offset, compare_value, new_value);
       return result;
     }
 
     template <typename T>
-    static oop oop_atomic_xchg_in_heap(oop new_value, T* addr) {
+    static oop oop_atomic_xchg_in_heap(T* addr, oop new_value) {
       UNREACHABLE();
       return NULL;
     }
 
-    static oop oop_atomic_xchg_in_heap_at(oop new_value, oop base, ptrdiff_t offset) {
+    static oop oop_atomic_xchg_in_heap_at(oop base, ptrdiff_t offset, oop new_value) {
       runtime()->record_modified_node(base, offset, new_value);
-      oop result = Raw::oop_atomic_xchg_at(new_value, base, offset);
+      oop result = Raw::oop_atomic_xchg_at(base, offset, new_value);
       return result;
     }
 

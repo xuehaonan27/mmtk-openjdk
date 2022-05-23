@@ -98,16 +98,10 @@ impl Scanning<OpenJDK> for VMScanning {
             &SINGLETON,
             WorkBucketStage::RCProcessIncs,
             vec![
-                Box::new(ScanUniverseRoots::<W>::new()),
-                Box::new(ScanJNIHandlesRoots::<W>::new()),
-                Box::new(ScanObjectSynchronizerRoots::<W>::new()),
-                Box::new(ScanManagementRoots::<W>::new()),
-                Box::new(ScanJvmtiExportRoots::<W>::new()),
-                Box::new(ScanAOTLoaderRoots::<W>::new()),
-                Box::new(ScanSystemDictionaryRoots::<W>::new()),
                 Box::new(ScanCodeCacheRoots::<W>::new()),
-                Box::new(ScanStringTableRoots::<W>::new()),
                 Box::new(ScanClassLoaderDataGraphRoots::<W>::new()),
+                Box::new(ScanOopStorageSetRoots::<W>::new()), // FIXME17: Several removed roots are all put to this work packet, may cause slowdown.
+                // Box::new(ScanWeakProcessorRoots::<W>::new()),
             ],
         );
         if !(Self::SCAN_MUTATORS_IN_SAFEPOINT && Self::SINGLE_THREAD_MUTATOR_SCANNING) {

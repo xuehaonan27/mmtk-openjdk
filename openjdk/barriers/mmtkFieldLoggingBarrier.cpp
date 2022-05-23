@@ -234,7 +234,7 @@ void MMTkFieldLoggingBarrierSetC1::record_modified_node(LIRAccess& access, LIR_O
   __ shift_right(result, shift, result, LIR_OprFact::illegalOpr);
   __ logical_and(result, LIR_OprFact::intConst(1), result);
   __ cmp(lir_cond_equal, result, LIR_OprFact::intConst(1));
-  __ branch(lir_cond_equal, LP64_ONLY(T_LONG) NOT_LP64(T_INT), slow);
+  __ branch(lir_cond_equal, slow);
 #else
   __ jump(slow);
 #endif

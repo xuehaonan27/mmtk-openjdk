@@ -26,7 +26,7 @@
 #define MMTK_OPENJDK_MMTK_COLLECTOR_THREAD_HPP
 
 #include "runtime/perfData.hpp"
-#include "runtime/thread.hpp"
+#include "runtime/nonJavaThread.hpp"
 
 class MMTkCollectorThread: public NamedThread {
   void* _context;
@@ -45,6 +45,8 @@ public:
 
   // Entry for starting vm thread
   virtual void run();
+
+  virtual bool is_VM_thread()       const            { return true; }
 };
 
 #endif // MMTK_OPENJDK_MMTK_COLLECTOR_THREAD_HPP

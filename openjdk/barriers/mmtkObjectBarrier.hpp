@@ -136,7 +136,7 @@ public:
   virtual LIR_Opr resolve_address(LIRAccess& access, bool resolve_in_register) {
     DecoratorSet decorators = access.decorators();
     bool needs_patching = (decorators & C1_NEEDS_PATCHING) != 0;
-    bool is_write = (decorators & C1_WRITE_ACCESS) != 0;
+    bool is_write = (decorators & ACCESS_WRITE) != 0;
     bool is_array = (decorators & IS_ARRAY) != 0;
     bool on_anonymous = (decorators & ON_UNKNOWN_OOP_REF) != 0;
     bool precise = is_array || on_anonymous;
@@ -154,21 +154,26 @@ class MMTkObjectBarrierSetC2: public MMTkBarrierSetC2 {
   void record_clone(GraphKit* kit, Node* src, Node* dst, Node* size) const;
 public:
   virtual Node* store_at_resolved(C2Access& access, C2AccessValue& val) const {
-    if (access.is_oop()) record_modified_node(access.kit(), access.base(), access.addr().node(), val.node());
+    if (access.is_oop()) {
+      C2ParseAccess& parse_access = static_cast<C2ParseAccess&>(access);
+      record_modified_node(parse_access.kit(), access.base(), access.addr().node(), val.node());
+    }
     Node* store = BarrierSetC2::store_at_resolved(access, val);
     return store;
   }
-  virtual Node* atomic_cmpxchg_val_at_resolved(C2AtomicAccess& access, Node* expected_val, Node* new_val, const Type* value_type) const {
-    if (access.is_oop()) record_modified_node(access.kit(), access.base(), access.addr().node(), new_val);
+  virtual Node* atomic_cmpxchg_val_at_resolved(C2AtomicParseAccess& access, Node* expected_val, Node* new_val, const Type* value_type) const {
+    if (access.is_oop()) {
+      record_modified_node(access.kit(), access.base(), access.addr().node(), new_val);
+    }
     Node* result = BarrierSetC2::atomic_cmpxchg_val_at_resolved(access, expected_val, new_val, value_type);
     return result;
   }
-  virtual Node* atomic_cmpxchg_bool_at_resolved(C2AtomicAccess& access, Node* expected_val, Node* new_val, const Type* value_type) const {
+  virtual Node* atomic_cmpxchg_bool_at_resolved(C2AtomicParseAccess& access, Node* expected_val, Node* new_val, const Type* value_type) const {
     if (access.is_oop()) record_modified_node(access.kit(), access.base(), access.addr().node(), new_val);
     Node* load_store = BarrierSetC2::atomic_cmpxchg_bool_at_resolved(access, expected_val, new_val, value_type);
     return load_store;
   }
-  virtual Node* atomic_xchg_at_resolved(C2AtomicAccess& access, Node* new_val, const Type* value_type) const {
+  virtual Node* atomic_xchg_at_resolved(C2AtomicParseAccess& access, Node* new_val, const Type* value_type) const {
     if (access.is_oop()) record_modified_node(access.kit(), access.base(), access.addr().node(), new_val);
     Node* result = BarrierSetC2::atomic_xchg_at_resolved(access, new_val, value_type);
     return result;

@@ -26,7 +26,7 @@
 #define MMTK_OPENJDK_MMTK_CONTEXT_THREAD_HPP
 
 #include "runtime/perfData.hpp"
-#include "runtime/thread.hpp"
+#include "runtime/nonJavaThread.hpp"
 
 class MMTkContextThread: public NamedThread {
   void* context_;
@@ -41,6 +41,8 @@ public:
 
   // Entry for starting vm thread
   virtual void run();
+
+  virtual bool is_VM_thread()       const            { return true; }
 };
 
 #endif // MMTK_OPENJDK_MMTK_CONTEXT_THREAD_HPP

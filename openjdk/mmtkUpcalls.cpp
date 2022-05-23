@@ -23,6 +23,7 @@
  */
 
 #include "precompiled.hpp"
+#include "classfile/classLoaderDataGraph.hpp"
 #include "classfile/stringTable.hpp"
 #include "code/nmethod.hpp"
 #include "memory/iterator.inline.hpp"
@@ -33,10 +34,13 @@
 #include "mmtkRootsClosure.hpp"
 #include "mmtkUpcalls.hpp"
 #include "mmtkVMCompanionThread.hpp"
+#include "oops/access.hpp"
+#include "runtime/interfaceSupport.inline.hpp"
 #include "runtime/mutexLocker.hpp"
 #include "runtime/os.hpp"
 #include "runtime/safepoint.hpp"
 #include "runtime/thread.hpp"
+#include "runtime/thread.inline.hpp"
 #include "runtime/threadSMR.hpp"
 #include "runtime/vmThread.hpp"
 #include "gc/shared/weakProcessor.hpp"
@@ -44,6 +48,7 @@
 #include "jfr/jfr.hpp"
 #include "gc/shared/oopStorage.inline.hpp"
 #include "utilities/debug.hpp"
+#include "utilities/exceptions.hpp"
 
 static size_t mmtk_start_the_world_count = 0;
 
@@ -61,7 +66,7 @@ class MMTkForwardClosure : public BasicOopIterateClosure {
     return *((size_t*) (void*) o);
   }
   inline oop extract_forwarding_pointer(size_t status) const {
-    return (oop) (void*) (status << 8 >> 8);
+    return oop((oopDesc*) (status << 8 >> 8));
   }
   inline bool is_forwarded(size_t status) const {
     return (status & (0xffull << 56)) != 0;
@@ -98,6 +103,7 @@ static void mmtk_stop_all_mutators(void *tls, void (*create_stack_scan_work)(voi
   log_debug(gc)("Mutators stopped. Now enumerate threads for scanning...");
   mmtk_report_gc_start();
 
+  nmethod::oops_do_marking_prologue();
   {
     JavaThreadIteratorWithHandle jtiwh;
     while (JavaThread *cur = jtiwh.next()) {
@@ -109,7 +115,7 @@ static void mmtk_stop_all_mutators(void *tls, void (*create_stack_scan_work)(voi
 }
 
 static void mmtk_update_weak_processor() {
-  HandleMark hm;
+  // HandleMark hm(THREAD);
   MMTkIsAliveClosure is_alive;
   MMTkForwardClosure forward;
   WeakProcessor::weak_oops_do(&is_alive, &forward);
@@ -117,7 +123,7 @@ static void mmtk_update_weak_processor() {
 
 static void mmtk_resume_mutators(void *tls) {
   {
-    HandleMark hm;
+    // HandleMark hm(THREAD);
     MMTkIsAliveClosure is_alive;
     MMTkForwardClosure forward;
     WeakProcessor::weak_oops_do(&is_alive, &forward);
@@ -127,6 +133,7 @@ static void mmtk_resume_mutators(void *tls) {
   // BiasedLocking::restore_marks();
   // CodeCache::gc_epilogue();
   // JvmtiExport::gc_epilogue();
+  // ClassLoaderDataGraph::purge(true);
 #if COMPILER2_OR_JVMCI
   DerivedPointerTable::update_pointers();
 #endif
@@ -138,7 +145,7 @@ static void mmtk_resume_mutators(void *tls) {
   log_debug(gc)("Mutators resumed. Now notify any mutators waiting for GC to finish...");
 
   {
-    MutexLockerEx locker(MMTkHeap::heap()->gc_lock(), true);
+    MutexLocker locker(MMTkHeap::heap()->gc_lock());
     mmtk_start_the_world_count++;
     MMTkHeap::heap()->gc_lock()->notify_all();
   }
@@ -282,11 +289,11 @@ static void mmtk_scan_thread_root(ProcessEdgesFn process_edges, void* tls) {
 
 static void mmtk_scan_object(void* trace, void* object, void* tls) {
   MMTkScanObjectClosure cl(trace);
-  ((oop) object)->oop_iterate(&cl);
+  oop((oopDesc*) object)->oop_iterate(&cl);
 }
 
 static void mmtk_dump_object(void* object) {
-  oop o = (oop) object;
+  oop o = oop((oopDesc*) object);
 
   // o->print();
   o->print_value();
@@ -296,7 +303,7 @@ static void mmtk_dump_object(void* object) {
 }
 
 static size_t mmtk_get_object_size(void* object) {
-  oop o = (oop) object;
+  oop o = oop((oopDesc*) object);
   // Slow-dispatch only. The fast-path code is moved to rust.
   auto klass = o->klass();
   return klass->oop_size(o) << LogHeapWordSize;
@@ -308,7 +315,7 @@ static void mmtk_harness_begin() {
   JavaThread* current = ((JavaThread*) Thread::current());
   ThreadInVMfromNative tiv(current);
   mmtk_harness_begin_impl();
-  
+
 }
 
 static void mmtk_harness_end() {
@@ -338,15 +345,15 @@ static size_t compute_klass_mem_layout_checksum() {
 }
 
 static int referent_offset() {
-  return java_lang_ref_Reference::referent_offset;
+  return java_lang_ref_Reference::referent_offset();
 }
 
 static int discovered_offset() {
-  return java_lang_ref_Reference::discovered_offset;
+  return java_lang_ref_Reference::discovered_offset();
 }
 
 static char* dump_object_string(void* object) {
-  oop o = (oop) object;
+  oop o = oop((oopDesc*) object);
   return o->print_value_string();
 }
 
@@ -354,16 +361,9 @@ static void mmtk_schedule_finalizer() {
   MMTkHeap::heap()->schedule_finalizer();
 }
 
-static void mmtk_scan_universe_roots(ProcessEdgesFn process_edges) { MMTkRootsClosure2 cl(process_edges); MMTkHeap::heap()->scan_universe_roots(cl); }
-static void mmtk_scan_jni_handle_roots(ProcessEdgesFn process_edges) { MMTkRootsClosure2 cl(process_edges); MMTkHeap::heap()->scan_jni_handle_roots(cl); }
-static void mmtk_scan_object_synchronizer_roots(ProcessEdgesFn process_edges) { MMTkRootsClosure2 cl(process_edges); MMTkHeap::heap()->scan_object_synchronizer_roots(cl); }
-static void mmtk_scan_management_roots(ProcessEdgesFn process_edges) { MMTkRootsClosure2 cl(process_edges); MMTkHeap::heap()->scan_management_roots(cl); }
-static void mmtk_scan_jvmti_export_roots(ProcessEdgesFn process_edges) { MMTkRootsClosure2 cl(process_edges); MMTkHeap::heap()->scan_jvmti_export_roots(cl); }
-static void mmtk_scan_aot_loader_roots(ProcessEdgesFn process_edges) { MMTkRootsClosure2 cl(process_edges); MMTkHeap::heap()->scan_aot_loader_roots(cl); }
-static void mmtk_scan_system_dictionary_roots(ProcessEdgesFn process_edges) { MMTkRootsClosure2 cl(process_edges); MMTkHeap::heap()->scan_system_dictionary_roots(cl); }
 static void mmtk_scan_code_cache_roots(ProcessEdgesFn process_edges) { MMTkRootsClosure2 cl(process_edges); MMTkHeap::heap()->scan_code_cache_roots(cl); }
-static void mmtk_scan_string_table_roots(ProcessEdgesFn process_edges) { MMTkRootsClosure2 cl(process_edges); MMTkHeap::heap()->scan_string_table_roots(cl); }
 static void mmtk_scan_class_loader_data_graph_roots(ProcessEdgesFn process_edges) { MMTkRootsClosure2 cl(process_edges); MMTkHeap::heap()->scan_class_loader_data_graph_roots(cl); }
+static void mmtk_scan_oop_storage_set_roots(ProcessEdgesFn process_edges) { MMTkRootsClosure2 cl(process_edges); MMTkHeap::heap()->scan_oop_storage_set_roots(cl); }
 static void mmtk_scan_weak_processor_roots(ProcessEdgesFn process_edges) { MMTkRootsClosure2 cl(process_edges); MMTkHeap::heap()->scan_weak_processor_roots(cl); }
 static void mmtk_scan_vm_thread_roots(ProcessEdgesFn process_edges) { MMTkRootsClosure2 cl(process_edges); MMTkHeap::heap()->scan_vm_thread_roots(cl); }
 
@@ -387,15 +387,15 @@ static void mmtk_enqueue_references(void** objects, size_t len) {
 
   oop prev = NULL;
   for (size_t i = 0; i < len; i++) {
-    oop reff = (oop) objects[i];
+    oop reff = oop((oopDesc*) objects[i]);
     if (prev != NULL) {
-      HeapAccess<AS_NO_KEEPALIVE>::oop_store_at(prev, java_lang_ref_Reference::discovered_offset, reff);
+      HeapAccess<AS_NO_KEEPALIVE>::oop_store_at(prev, java_lang_ref_Reference::discovered_offset(), reff);
     }
     prev = reff;
   }
 
   oop old = Universe::swap_reference_pending_list(prev);
-  HeapAccess<AS_NO_KEEPALIVE>::oop_store_at(prev, java_lang_ref_Reference::discovered_offset, old);
+  HeapAccess<AS_NO_KEEPALIVE>::oop_store_at(prev, java_lang_ref_Reference::discovered_offset(), old);
   assert(Universe::has_reference_pending_list(), "Reference pending list is empty after swap");
 }
 
@@ -425,16 +425,9 @@ OpenJDK_Upcalls mmtk_upcalls = {
   dump_object_string,
   mmtk_scan_thread_roots,
   mmtk_scan_thread_root,
-  mmtk_scan_universe_roots,
-  mmtk_scan_jni_handle_roots,
-  mmtk_scan_object_synchronizer_roots,
-  mmtk_scan_management_roots,
-  mmtk_scan_jvmti_export_roots,
-  mmtk_scan_aot_loader_roots,
-  mmtk_scan_system_dictionary_roots,
   mmtk_scan_code_cache_roots,
-  mmtk_scan_string_table_roots,
   mmtk_scan_class_loader_data_graph_roots,
+  mmtk_scan_oop_storage_set_roots,
   mmtk_scan_weak_processor_roots,
   mmtk_scan_vm_thread_roots,
   mmtk_number_of_mutators,

@@ -30,6 +30,7 @@
 #include "oops/oop.inline.hpp"
 #include "prims/jvmtiImpl.hpp"
 #include "runtime/interfaceSupport.inline.hpp"
+#include "runtime/java.hpp"
 #include "runtime/javaCalls.hpp"
 #include "runtime/mutex.hpp"
 #include "runtime/mutexLocker.hpp"
@@ -45,14 +46,12 @@ MMTkFinalizerThread* MMTkFinalizerThread::instance = NULL;
 void MMTkFinalizerThread::initialize() {
   EXCEPTION_MARK;
 
-  HandleMark hm;
-
   const char* name = "MMTk Finalizer Thread";
   Handle string = java_lang_String::create_from_str(name, CHECK);
 
   // Initialize thread_oop to put it into the system threadGroup
   Handle thread_group (THREAD, Universe::system_thread_group());
-  Handle thread_oop = JavaCalls::construct_new_instance(SystemDictionary::Thread_klass(),
+  Handle thread_oop = JavaCalls::construct_new_instance(vmClasses::Thread_klass(),
                                                         vmSymbols::threadgroup_string_void_signature(),
                                                         thread_group,
                                                         string,
@@ -88,9 +87,9 @@ void MMTkFinalizerThread::finalizer_thread_entry(JavaThread* thread, TRAPS) {
     // Wait until scheduled
     {
       ThreadBlockInVM tbivm(thread);
-      MutexLockerEx mu(this_thread->m, Mutex::_no_safepoint_check_flag);
+      MonitorLocker ml(this_thread->m, Mutex::_no_safepoint_check_flag);
       while (!this_thread->is_scheduled) {
-        this_thread->m->wait(Mutex::_no_safepoint_check_flag);
+          ml.wait();
       }
       this_thread->is_scheduled = false; // Consume this request so we can accept the next.
     }
@@ -99,14 +98,14 @@ void MMTkFinalizerThread::finalizer_thread_entry(JavaThread* thread, TRAPS) {
     while (true) {
       void* obj_ref = get_finalized_object();
       if (obj_ref != NULL) {
-        instanceOop obj = (instanceOop) obj_ref;
+        instanceOop obj = instanceOop((instanceOopDesc*) obj_ref);
 
         // Invoke finalize()
         {
-          HandleMark hm;
+          HandleMark hm(this_thread);
           JavaValue ret(T_VOID);
           instanceHandle handle_obj(this_thread, obj);
-          TempNewSymbol finalize_method = SymbolTable::new_symbol("finalize", this_thread);
+          TempNewSymbol finalize_method = SymbolTable::new_symbol("finalize");
           Symbol* sig = vmSymbols::void_method_signature();
 
           JavaCalls::call_virtual(&ret, handle_obj, obj->klass(), finalize_method, sig, this_thread);
@@ -125,7 +124,7 @@ MMTkFinalizerThread::MMTkFinalizerThread(ThreadFunction entry_point) : JavaThrea
 
 void MMTkFinalizerThread::schedule() {
   assert(!Thread::current()->is_Java_thread(), "Supposed to be called by GC thread. Actually called by JavaThread.");
-  MutexLockerEx mu(this->m, Mutex::_no_safepoint_check_flag);
+  MutexLocker mu(this->m, Mutex::_no_safepoint_check_flag);
   if (!this->is_scheduled) {
     this->is_scheduled = true;
     this->m->notify();

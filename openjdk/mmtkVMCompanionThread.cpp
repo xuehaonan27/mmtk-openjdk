@@ -44,16 +44,14 @@ MMTkVMCompanionThread::~MMTkVMCompanionThread() {
 }
 
 void MMTkVMCompanionThread::run() {
-  this->initialize_named_thread();
-
   for (;;) {
     // Wait for suspend request
     log_trace(gc)("MMTkVMCompanionThread: Waiting for suspend request...");
     {
-      MutexLockerEx locker(_lock, Mutex::_no_safepoint_check_flag);
+      MutexLocker locker(_lock, Mutex::_no_safepoint_check_flag);
       assert(_reached_state == _threads_resumed, "Threads should be running at this moment.");
       while (_desired_state != _threads_suspended) {
-        _lock->wait(true);
+        _lock->wait_without_safepoint_check();
       }
       assert(_reached_state == _threads_resumed, "Threads should still be running at this moment.");
     }
@@ -70,7 +68,7 @@ void MMTkVMCompanionThread::run() {
     // Tell the waiter thread that the world has resumed.
     log_trace(gc)("MMTkVMCompanionThread: Notifying threads resumption...");
     {
-      MutexLockerEx locker(_lock, Mutex::_no_safepoint_check_flag);
+      MutexLocker locker(_lock, Mutex::_no_safepoint_check_flag);
       assert(_desired_state == _threads_resumed, "start-the-world should be requested.");
       assert(_reached_state == _threads_suspended, "Threads should still be suspended at this moment.");
       _reached_state = _threads_resumed;
@@ -96,18 +94,18 @@ void MMTkVMCompanionThread::run() {
 // in the background. The caller may call the wait_for_reached method to block
 // until the desired state is reached.
 void MMTkVMCompanionThread::request(stw_state desired_state, bool wait_until_reached) {
-  assert(!Thread::current()->is_VM_thread(), "Requests can only be made by GC threads. Found VM thread.");
+  // assert(!Thread::current()->is_VM_thread(), "Requests can only be made by GC threads. Found VM thread.");
   assert(Thread::current() != this, "Requests can only be made by GC threads. Found companion thread.");
   assert(!Thread::current()->is_Java_thread(), "Requests can only be made by GC threads. Found Java thread.");
 
-  MutexLockerEx locker(_lock, Mutex::_no_safepoint_check_flag);
+  MutexLocker locker(_lock, Mutex::_no_safepoint_check_flag);
   assert(_desired_state != desired_state, "State %d already requested.", desired_state);
   _desired_state = desired_state;
   _lock->notify_all();
 
   if (wait_until_reached) {
     while (_reached_state != desired_state) {
-      _lock->wait(true);
+      _lock->wait_without_safepoint_check();
     }
   }
 }
@@ -119,11 +117,11 @@ void MMTkVMCompanionThread::wait_for_reached(stw_state desired_state) {
   assert(Thread::current() != this, "Supposed to be called by GC threads. Found companion thread.");
   assert(!Thread::current()->is_Java_thread(), "Supposed to be called by GC threads. Found Java thread.");
 
-  MutexLockerEx locker(_lock, Mutex::_no_safepoint_check_flag);
+  MutexLocker locker(_lock, Mutex::_no_safepoint_check_flag);
   assert(_desired_state == desired_state, "State %d not requested.", desired_state);
 
   while (_reached_state != desired_state) {
-    _lock->wait(true);
+    _lock->wait_without_safepoint_check();
   }
 }
 
@@ -132,7 +130,7 @@ void MMTkVMCompanionThread::wait_for_reached(stw_state desired_state) {
 void MMTkVMCompanionThread::reach_suspended_and_wait_for_resume() {
   assert(Thread::current()->is_VM_thread(), "reach_suspended_and_wait_for_resume can only be executed by the VM thread");
 
-  MutexLockerEx locker(_lock, Mutex::_no_safepoint_check_flag);
+  MutexLocker locker(_lock, Mutex::_no_safepoint_check_flag);
 
   // Tell the waiter thread that the world has stopped.
   _reached_state = _threads_suspended;
@@ -140,6 +138,6 @@ void MMTkVMCompanionThread::reach_suspended_and_wait_for_resume() {
 
   // Wait until resume-the-world is requested
   while (_desired_state != _threads_resumed) {
-    _lock->wait(true);
+    _lock->wait_without_safepoint_check();
   }
 }
