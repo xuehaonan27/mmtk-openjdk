@@ -103,7 +103,6 @@ static void mmtk_stop_all_mutators(void *tls, void (*create_stack_scan_work)(voi
   log_debug(gc)("Mutators stopped. Now enumerate threads for scanning...");
   mmtk_report_gc_start();
 
-  nmethod::oops_do_marking_prologue();
   {
     JavaThreadIteratorWithHandle jtiwh;
     while (JavaThread *cur = jtiwh.next()) {
@@ -115,7 +114,7 @@ static void mmtk_stop_all_mutators(void *tls, void (*create_stack_scan_work)(voi
 }
 
 static void mmtk_update_weak_processor() {
-  // HandleMark hm(THREAD);
+    HandleMark hm(Thread::current());
   MMTkIsAliveClosure is_alive;
   MMTkForwardClosure forward;
   WeakProcessor::weak_oops_do(&is_alive, &forward);
@@ -123,7 +122,7 @@ static void mmtk_update_weak_processor() {
 
 static void mmtk_resume_mutators(void *tls) {
   {
-    // HandleMark hm(THREAD);
+    HandleMark hm(Thread::current());
     MMTkIsAliveClosure is_alive;
     MMTkForwardClosure forward;
     WeakProcessor::weak_oops_do(&is_alive, &forward);

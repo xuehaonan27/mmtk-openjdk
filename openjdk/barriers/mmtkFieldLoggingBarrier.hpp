@@ -275,7 +275,7 @@ public:
     bool tightly_coupled_alloc = (decorators & C2_TIGHTLY_COUPLED_ALLOC) != 0;
     bool in_heap = (decorators & IN_HEAP) != 0;
     bool anonymous = (decorators & ON_UNKNOWN_OOP_REF) != 0;
-    if (access.is_oop() && !tightly_coupled_alloc && !(!in_heap && !anonymous)) {
+    if (access.is_oop() && !tightly_coupled_alloc && !(!in_heap && !anonymous) && access.is_parse_access()) {
       C2ParseAccess& parse_access = static_cast<C2ParseAccess&>(access);
       record_modified_node(parse_access.kit(), access.base(), access.addr().node(), val.node());
     }
