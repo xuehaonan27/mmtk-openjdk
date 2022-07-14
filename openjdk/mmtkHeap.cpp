@@ -340,12 +340,8 @@ void MMTkHeap::print_tracing_info() const {
 }
 
 
-// An object is scavengable if its location may move during a scavenge.
-// (A scavenge is a GC which is not a full GC.)
-// bool MMTkHeap::is_scavengable(oop obj) {return true;}
 // Registering and unregistering an nmethod (compiled code) with the heap.
 // Override with specific mechanism for each specialized heap type.
-
 class MMTkRegisterNMethodOopClosure: public OopClosure {
   template <class T> void do_oop_work(T* p) {
     mmtk_add_nmethod_oop((void*) p);
@@ -357,8 +353,10 @@ public:
 
 
 void MMTkHeap::register_nmethod(nmethod* nm) {
+  // Scan and report pointers in this nmethod
   MMTkRegisterNMethodOopClosure reg_cl;
   nm->oops_do(&reg_cl);
+  // Register the nmethod
   mmtk_register_nmethod((void*) nm);
 }
 
@@ -368,10 +366,6 @@ void MMTkHeap::unregister_nmethod(nmethod* nm) {
 
 // Heap verification
 void MMTkHeap::verify(VerifyOption option) {}
-
-void MMTkHeap::scan_static_roots(OopClosure& cl) {
-}
-
 
 void MMTkHeap::scan_universe_roots(OopClosure& cl) {
   Universe::oops_do(&cl);
@@ -396,7 +390,7 @@ void MMTkHeap::scan_system_dictionary_roots(OopClosure& cl) {
 }
 void MMTkHeap::scan_code_cache_roots(OopClosure& cl) {
   MarkingCodeBlobClosure cb_cl(&cl, false);
-  CodeCache::scavenge_root_nmethods_do(&cb_cl);
+  CodeCache::blobs_do(&cb_cl);
 }
 void MMTkHeap::scan_string_table_roots(OopClosure& cl) {
   StringTable::oops_do(&cl);
@@ -411,33 +405,6 @@ void MMTkHeap::scan_weak_processor_roots(OopClosure& cl) {
 void MMTkHeap::scan_vm_thread_roots(OopClosure& cl) {
   ResourceMark rm;
   VMThread::vm_thread()->oops_do(&cl, NULL);
-}
-
-void MMTkHeap::scan_global_roots(OopClosure& cl) {
-  ResourceMark rm;
-
-  CodeBlobToOopClosure cb_cl(&cl, true);
-  CLDToOopClosure cld_cl(&cl, false);
-
-  Universe::oops_do(&cl);
-  JNIHandles::oops_do(&cl);
-  ObjectSynchronizer::oops_do(&cl);
-  Management::oops_do(&cl);
-  JvmtiExport::oops_do(&cl);
-  AOTLoader::oops_do(&cl);
-  SystemDictionary::oops_do(&cl);
-  {
-    MutexLockerEx lock(CodeCache_lock, Mutex::_no_safepoint_check_flag);
-    CodeCache::blobs_do(&cb_cl);
-  }
-
-  OopStorage::ParState<false, false> _par_state_string(StringTable::weak_storage());
-  StringTable::possibly_parallel_oops_do(&_par_state_string, &cl);
-
-  // if (!_root_tasks->is_task_claimed(MMTk_ClassLoaderDataGraph_oops_do)) ClassLoaderDataGraph::roots_cld_do(&cld_cl, &cld_cl);
-  ClassLoaderDataGraph::cld_do(&cld_cl);
-
-  WeakProcessor::oops_do(&cl); // (really needed???)
 }
 
 void MMTkHeap::scan_thread_roots(OopClosure& cl) {
@@ -487,12 +454,6 @@ HeapWord* MMTkHeap::mem_allocate(size_t size, bool* gc_overhead_limit_was_exceed
 
 HeapWord* MMTkHeap::mem_allocate_nonmove(size_t size, bool* gc_overhead_limit_was_exceeded) {
   return Thread::current()->third_party_heap_mutator.alloc(size << LogHeapWordSize, AllocatorLos);
-}
-
-void (*MMTkHeap::_create_stack_scan_work)(void*) = NULL;
-
-void MMTkHeap::report_java_thread_yield(JavaThread* thread) {
-  if (_create_stack_scan_work != NULL) _create_stack_scan_work((void*) &thread->third_party_heap_mutator);
 }
 
 /*

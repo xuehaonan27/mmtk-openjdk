@@ -188,6 +188,7 @@ public:
   // Override with specific mechanism for each specialized heap type.
   virtual void register_nmethod(nmethod* nm);
   virtual void unregister_nmethod(nmethod* nm);
+
   // Heap verification
   void verify(VerifyOption option);
 
@@ -195,8 +196,6 @@ public:
 
   void scan_roots(OopClosure& cl);
 
-  void scan_static_roots(OopClosure& cl);
-  void scan_global_roots(OopClosure& cl);
   void scan_thread_roots(OopClosure& cl);
 
   void scan_universe_roots(OopClosure& cl);
@@ -211,10 +210,6 @@ public:
   void scan_class_loader_data_graph_roots(OopClosure& cl);
   void scan_weak_processor_roots(OopClosure& cl);
   void scan_vm_thread_roots(OopClosure& cl);
-
-  virtual void report_java_thread_yield(JavaThread* thread);
-
-  static void (*_create_stack_scan_work)(void* mutator);
 
   jlong _last_gc_time;
 };

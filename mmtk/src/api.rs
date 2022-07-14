@@ -332,31 +332,49 @@ pub extern "C" fn mmtk_get_forwarded_ref(object: ObjectReference) -> ObjectRefer
 }
 
 thread_local! {
+    /// Cache all the pointers reported by the current thread.
     static NMETHOD_SLOTS: RefCell<Vec<Address>> = RefCell::new(vec![]);
 }
 
+/// Report a list of pointers in nmethod to mmtk.
 #[no_mangle]
-pub unsafe extern "C" fn mmtk_add_nmethod_oop(addr: Address) {
+pub extern "C" fn mmtk_add_nmethod_oop(addr: Address) {
     NMETHOD_SLOTS.with(|x| x.borrow_mut().push(addr))
 }
+
+/// Register a nmethod.
+/// The c++ part of the binding should scan the nmethod and report all the pointers to mmtk first, before calling this function.
+/// This function will transfer all the locally cached pointers of this nmethod to the global storage.
 #[no_mangle]
-pub unsafe extern "C" fn mmtk_register_nmethod(nm: Address) {
+pub extern "C" fn mmtk_register_nmethod(nm: Address) {
     let slots = NMETHOD_SLOTS.with(|x| {
         if x.borrow().len() == 0 {
             return None;
         }
         Some(x.replace(vec![]))
     });
-    if slots.is_none() {
-        return;
-    }
-    let slots = slots.unwrap();
-    crate::TOTAL_SIZE.fetch_add(slots.len(), Ordering::Relaxed);
-    crate::CODE_CACHE_ROOTS.lock().insert(nm, slots);
+    let slots = match slots {
+        Some(slots) => slots,
+        _ => return,
+    };
+    let mut roots = crate::CODE_CACHE_ROOTS.lock().unwrap();
+    // Relaxed add instead of `fetch_add`, since we've already acquired the lock.
+    crate::CODE_CACHE_ROOTS_SIZE.store(
+        crate::CODE_CACHE_ROOTS_SIZE.load(Ordering::Relaxed) + slots.len(),
+        Ordering::Relaxed,
+    );
+    roots.insert(nm, slots);
 }
+
+/// Unregister a nmethod.
 #[no_mangle]
-pub unsafe extern "C" fn mmtk_unregister_nmethod(nm: Address) {
-    if let Some(slots) = crate::CODE_CACHE_ROOTS.lock().remove(&nm) {
-        crate::TOTAL_SIZE.fetch_sub(slots.len(), Ordering::Relaxed);
+pub extern "C" fn mmtk_unregister_nmethod(nm: Address) {
+    let mut roots = crate::CODE_CACHE_ROOTS.lock().unwrap();
+    if let Some(slots) = roots.remove(&nm) {
+        // Relaxed sub instead of `fetch_sub`, since we've already acquired the lock.
+        crate::CODE_CACHE_ROOTS_SIZE.store(
+            crate::CODE_CACHE_ROOTS_SIZE.load(Ordering::Relaxed) - slots.len(),
+            Ordering::Relaxed,
+        );
     }
 }
