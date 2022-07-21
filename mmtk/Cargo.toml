@@ -75,25 +75,3 @@ instrumentation = ["mmtk/instrumentation"]
 log_gc = ["mmtk/log_gc"]
 log_stages = ["mmtk/log_stages"]
 log_work_packets = ["mmtk/log_work_packets"]
-
-ix_block_only = ["mmtk/ix_block_only"]
-ix_defrag = ["mmtk/ix_defrag"]
-
-lxr_heap_health_guided_gc = ["mmtk/lxr_heap_health_guided_gc"]
-
-# Non-moving, Non-concurrent LXR
-lxr_basic = ["mmtk/lxr_basic"]
-# LXR (Concurrent marking)
-lxr_cm = ["mmtk/lxr_cm"]
-# LXR (Lazy RC processing)
-lxr_lazy = ["mmtk/lxr_lazy"]
-# LXR (Concurrent)
-lxr_conc = ["mmtk/lxr_conc"]
-# LXR (Evacuation)
-lxr_nevac = ["mmtk/lxr_nevac"]
-lxr_evac = ["mmtk/lxr_evac"]
-# LXR (Block only)
-lxr_block = ["mmtk/lxr_block"]
-lxr_rc_only = ["mmtk/lxr_rc_only"]
-# LXR (Default config with full features)
-lxr = ["mmtk/lxr"]
