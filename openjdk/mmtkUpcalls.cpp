@@ -46,6 +46,8 @@
 static volatile size_t mmtk_start_the_world_count = 0;
 
 static void mmtk_stop_all_mutators(void *tls, bool scan_mutators_in_safepoint, MutatorClosure closure) {
+
+  printf("mmtk_stop_all_mutators\n");
   ClassLoaderDataGraph::clear_claimed_marks();
   CodeCache::gc_prologue();
 #if COMPILER2_OR_JVMCI
@@ -62,11 +64,12 @@ static void mmtk_stop_all_mutators(void *tls, bool scan_mutators_in_safepoint, M
       closure.invoke((void*)&cur->third_party_heap_mutator);
     }
   }
-  log_debug(gc)("Finished enumerating threads.");
+  printf("Finished enumerating threads.\n");
   nmethod::oops_do_marking_prologue();
 }
 
 static void mmtk_resume_mutators(void *tls) {
+  printf("mmtk_resume_mutators\n");
   nmethod::oops_do_marking_epilogue();
   // ClassLoaderDataGraph::purge();
   CodeCache::gc_epilogue();
@@ -80,7 +83,7 @@ static void mmtk_resume_mutators(void *tls) {
   // otherwise, mutators might see a stale value
   Atomic::inc(&mmtk_start_the_world_count);
 
-  log_debug(gc)("Requesting the VM to resume all mutators...");
+  printf("Requesting the VM to resume all mutators...\n");
   MMTkHeap::heap()->companion_thread()->request(MMTkVMCompanionThread::_threads_resumed, true);
   log_debug(gc)("Mutators resumed. Now notify any mutators waiting for GC to finish...");
 
@@ -212,6 +215,7 @@ static void mmtk_reset_mutator_iterator() {
 
 
 static void mmtk_scan_all_thread_roots(EdgesClosure closure) {
+  guarantee(false, "unreachable");
   MMTkRootsClosure2 cl(closure);
   MMTkHeap::heap()->scan_thread_roots(cl);
 }
@@ -224,6 +228,7 @@ static void mmtk_scan_thread_roots(EdgesClosure closure, void* tls) {
 }
 
 static void mmtk_scan_object(void* trace, void* object, void* tls) {
+  guarantee(false, "unreachable");
   MMTkScanObjectClosure cl(trace);
   ((oop) object)->oop_iterate(&cl);
 }
@@ -321,6 +326,7 @@ static void mmtk_prepare_for_roots_re_scanning() {
 }
 
 static void mmtk_enqueue_references(void** objects, size_t len) {
+  guarantee(false, "unreachable");
   if (len == 0) {
     return;
   }
@@ -339,6 +345,14 @@ static void mmtk_enqueue_references(void** objects, size_t len) {
   oop old = Universe::swap_reference_pending_list(prev);
   HeapAccess<AS_NO_KEEPALIVE>::oop_store_at(prev, java_lang_ref_Reference::discovered_offset, old);
   assert(Universe::has_reference_pending_list(), "Reference pending list is empty after swap");
+}
+
+static void* mmtk_compressed_klass_base() {
+  return (void*) Universe::narrow_klass_base();
+}
+
+static size_t mmtk_compressed_klass_shift() {
+  return (size_t) Universe::narrow_klass_shift();
 }
 
 OpenJDK_Upcalls mmtk_upcalls = {
@@ -379,5 +393,7 @@ OpenJDK_Upcalls mmtk_upcalls = {
   mmtk_number_of_mutators,
   mmtk_schedule_finalizer,
   mmtk_prepare_for_roots_re_scanning,
-  mmtk_enqueue_references
+  mmtk_enqueue_references,
+  mmtk_compressed_klass_base,
+  mmtk_compressed_klass_shift,
 };

@@ -71,8 +71,6 @@ MMTkHeap::MMTkHeap(MMTkCollectorPolicy* policy) : CollectedHeap(), _last_gc_time
 
 jint MMTkHeap::initialize() {
   assert(!UseTLAB , "should disable UseTLAB");
-  assert(!UseCompressedOops , "should disable CompressedOops");
-  assert(!UseCompressedClassPointers , "should disable UseCompressedClassPointers");
   const size_t heap_size = collector_policy()->max_heap_byte_size();
   //  printf("policy max heap size %zu, min heap size %zu\n", heap_size, collector_policy()->min_heap_byte_size());
 
@@ -105,10 +103,15 @@ jint MMTkHeap::initialize() {
 
   _start = (HeapWord*) starting_heap_address();
   _end = (HeapWord*) last_heap_address();
-  //  printf("start: %p, end: %p\n", _start, _end);
+  printf("start: %p, end: %p, base: %p\n", _start, _end, (void*) (intptr_t(_start) - 4096));
 
-  initialize_reserved_region(_start, _end);
+  Universe::set_narrow_oop_base((address) (intptr_t(_start)));
+  Universe::set_narrow_oop_shift(LogMinObjAlignmentInBytes);
 
+  initialize_reserved_region((HeapWord*) (intptr_t(_start) + (1ull << 30)), _end);
+
+
+   printf("compressed oops: base=%p, shift=%zu\n", Universe::narrow_oop_base(), Universe::narrow_oop_shift());
 
   MMTkBarrierSet* const barrier_set = new MMTkBarrierSet(reserved_region());
   //barrier_set->initialize();
@@ -277,18 +280,16 @@ void MMTkHeap::safe_object_iterate(ObjectClosure* cl) { //not sure..many depende
 }
 
 HeapWord* MMTkHeap::block_start(const void* addr) const {//OK
-  guarantee(false, "block start not supported");
-  return NULL;
+  return (HeapWord*) starting_heap_address();
 }
 
 size_t MMTkHeap::block_size(const HeapWord* addr) const { //OK
-  guarantee(false, "block size not supported");
-  return 0;
+  return size_t(last_heap_address()) - size_t(starting_heap_address());
 }
 
 bool MMTkHeap::block_is_obj(const HeapWord* addr) const { //OK
-  guarantee(false, "block is obj not supported");
-  return false;
+  // guarantee(false, "block is obj not supported");
+  return size_t(addr) >= size_t(starting_heap_address()) && size_t(addr) < size_t(last_heap_address());
 }
 
 jlong MMTkHeap::millis_since_last_gc() {//later when gc is implemented in rust

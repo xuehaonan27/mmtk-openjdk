@@ -59,7 +59,7 @@ void MMTkVMCompanionThread::run() {
     }
 
     // Let the VM thread stop the world.
-    log_trace(gc)("MMTkVMCompanionThread: Letting VMThread execute VM op...");
+    printf("MMTkVMCompanionThread: Letting VMThread execute VM op...\n");
     VM_MMTkSTWOperation op(this);
     // VMThread::execute() is blocking. The companion thread will be blocked
     // here waiting for the VM thread to execute op, and the VM thread will
@@ -68,7 +68,7 @@ void MMTkVMCompanionThread::run() {
     VMThread::execute(&op);
 
     // Tell the waiter thread that the world has resumed.
-    log_trace(gc)("MMTkVMCompanionThread: Notifying threads resumption...");
+    printf("MMTkVMCompanionThread: Notifying threads resumption...\n");
     {
       MutexLockerEx locker(_lock, Mutex::_no_safepoint_check_flag);
       assert(_desired_state == _threads_resumed, "start-the-world should be requested.");

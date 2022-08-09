@@ -7,6 +7,11 @@ use std::ffi::CStr;
 use std::fmt;
 use std::{mem, slice};
 
+lazy_static! {
+    static ref COMPRESSED_KLASS_BASE: Address = unsafe { ((*UPCALLS).compressed_klass_base)() };
+    static ref COMPRESSED_KLASS_SHIFT: usize = unsafe { ((*UPCALLS).compressed_klass_shift)() };
+}
+
 #[repr(i32)]
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
 #[allow(dead_code)]
@@ -277,13 +282,30 @@ impl InstanceRefKlass {
 #[repr(C)]
 pub struct OopDesc {
     pub mark: usize,
-    pub klass: &'static Klass,
 }
 
 impl OopDesc {
+    pub fn header_size() -> usize {
+        12 // 8 byte mark word + 4 byte compressed klass
+    }
     #[inline(always)]
     pub fn start(&self) -> Address {
         unsafe { mem::transmute(self) }
+    }
+    #[inline(always)]
+    pub fn klass(&self) -> &'static Klass {
+        let compressed = unsafe { (self.start() + std::mem::size_of::<usize>()).load::<u32>() };
+        let addr =
+            unsafe { *COMPRESSED_KLASS_BASE + ((compressed as usize) << *COMPRESSED_KLASS_SHIFT) };
+        // println!(
+        //     "oop({:?}) klass: c={:x} base={:?} shift={:?} addr={:?}",
+        //     self.start(),
+        //     compressed,
+        //     *COMPRESSED_KLASS_BASE,
+        //     *COMPRESSED_KLASS_SHIFT,
+        //     addr,
+        // );
+        unsafe { &*addr.to_ptr::<Klass>() }
     }
 }
 
@@ -297,6 +319,15 @@ impl fmt::Debug for OopDesc {
 }
 
 pub type Oop = &'static OopDesc;
+
+#[repr(transparent)]
+pub struct NarrowOop(u32);
+
+impl NarrowOop {
+    pub fn slot(&self) -> Address {
+        Address::from_ref(self)
+    }
+}
 
 /// Convert ObjectReference to Oop
 impl From<ObjectReference> for &OopDesc {
@@ -332,29 +363,30 @@ impl OopDesc {
     /// Calculate object instance size
     #[inline(always)]
     pub unsafe fn size(&self) -> usize {
-        let klass = self.klass;
-        let lh = klass.layout_helper;
-        // The (scalar) instance size is pre-recorded in the TIB?
-        if lh > Klass::LH_NEUTRAL_VALUE {
-            if !Klass::layout_helper_needs_slow_path(lh) {
-                lh as _
-            } else {
-                self.size_slow()
-            }
-        } else if lh <= Klass::LH_NEUTRAL_VALUE {
-            if lh < Klass::LH_NEUTRAL_VALUE {
-                // Calculate array size
-                let array_length = self.as_array_oop().length();
-                let mut size_in_bytes: usize =
-                    (array_length as usize) << Klass::layout_helper_log2_element_size(lh);
-                size_in_bytes += Klass::layout_helper_header_size(lh) as usize;
-                (size_in_bytes + 0b111) & !0b111
-            } else {
-                self.size_slow()
-            }
-        } else {
-            unreachable!()
-        }
+        self.size_slow()
+        // let klass = self.klass();
+        // let lh = klass.layout_helper;
+        // // The (scalar) instance size is pre-recorded in the TIB?
+        // if lh > Klass::LH_NEUTRAL_VALUE {
+        //     if !Klass::layout_helper_needs_slow_path(lh) {
+        //         lh as _
+        //     } else {
+        //         self.size_slow()
+        //     }
+        // } else if lh <= Klass::LH_NEUTRAL_VALUE {
+        //     if lh < Klass::LH_NEUTRAL_VALUE {
+        //         // Calculate array size
+        //         let array_length = self.as_array_oop().length();
+        //         let mut size_in_bytes: usize =
+        //             (array_length as usize) << Klass::layout_helper_log2_element_size(lh);
+        //         size_in_bytes += Klass::layout_helper_header_size(lh) as usize;
+        //         (size_in_bytes + 0b111) & !0b111
+        //     } else {
+        //         self.size_slow()
+        //     }
+        // } else {
+        //     unreachable!()
+        // }
     }
 }
 
@@ -364,7 +396,9 @@ pub struct ArrayOopDesc(OopDesc);
 pub type ArrayOop = &'static ArrayOopDesc;
 
 impl ArrayOopDesc {
-    const LENGTH_OFFSET: usize = mem::size_of::<Self>();
+    fn length_offset() -> usize {
+        OopDesc::header_size()
+    }
 
     fn element_type_should_be_aligned(ty: BasicType) -> bool {
         ty == BasicType::T_DOUBLE || ty == BasicType::T_LONG
@@ -372,7 +406,7 @@ impl ArrayOopDesc {
 
     fn header_size(ty: BasicType) -> usize {
         let typesize_in_bytes =
-            conversions::raw_align_up(Self::LENGTH_OFFSET + BYTES_IN_INT, BYTES_IN_LONG);
+            conversions::raw_align_up(Self::length_offset() + BYTES_IN_INT, BYTES_IN_LONG);
         if Self::element_type_should_be_aligned(ty) {
             conversions::raw_align_up(typesize_in_bytes / BYTES_IN_WORD, BYTES_IN_LONG)
         } else {
@@ -380,7 +414,7 @@ impl ArrayOopDesc {
         }
     }
     fn length(&self) -> i32 {
-        unsafe { *((self as *const _ as *const u8).add(Self::LENGTH_OFFSET) as *const i32) }
+        unsafe { *((self as *const _ as *const u8).add(Self::length_offset()) as *const i32) }
     }
     fn base(&self, ty: BasicType) -> Address {
         let base_offset_in_bytes = Self::header_size(ty) * BYTES_IN_WORD;

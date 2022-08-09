@@ -15,7 +15,7 @@ impl OopIterate for OopMapBlock {
     fn oop_iterate(&self, oop: Oop, closure: &mut impl EdgeVisitor) {
         let start = oop.get_field_address(self.offset);
         for i in 0..self.count as usize {
-            let edge = start + (i << LOG_BYTES_IN_ADDRESS);
+            let edge = start + (i << 2);
             closure.visit_edge(edge);
         }
     }
@@ -63,11 +63,11 @@ impl OopIterate for InstanceMirrorKlass {
         // }
 
         // static fields
-        let start: *const Oop = Self::start_of_static_fields(oop).to_ptr::<Oop>();
+        let start: *const NarrowOop = Self::start_of_static_fields(oop).to_ptr::<NarrowOop>();
         let len = Self::static_oop_field_count(oop);
         let slice = unsafe { slice::from_raw_parts(start, len as _) };
-        for oop in slice {
-            closure.visit_edge(Address::from_ref(oop as &Oop));
+        for narrow_oop in slice {
+            closure.visit_edge(narrow_oop.slot());
         }
     }
 }
@@ -90,8 +90,8 @@ impl OopIterate for ObjArrayKlass {
     #[inline]
     fn oop_iterate(&self, oop: Oop, closure: &mut impl EdgeVisitor) {
         let array = unsafe { oop.as_array_oop() };
-        for oop in unsafe { array.data::<Oop>(BasicType::T_OBJECT) } {
-            closure.visit_edge(Address::from_ref(oop as &Oop));
+        for narrow_oop in unsafe { array.data::<NarrowOop>(BasicType::T_OBJECT) } {
+            closure.visit_edge(narrow_oop.slot());
         }
     }
 }
@@ -112,6 +112,7 @@ impl OopIterate for InstanceRefKlass {
         self.instance_klass.oop_iterate(oop, closure);
 
         if Self::should_scan_weak_refs() {
+            unreachable!();
             let reference = ObjectReference::from(oop);
             match self.instance_klass.reference_type {
                 ReferenceType::None => {
@@ -156,36 +157,38 @@ fn oop_iterate_slow(oop: Oop, closure: &mut impl EdgeVisitor, tls: OpaquePointer
 
 #[inline]
 fn oop_iterate(oop: Oop, closure: &mut impl EdgeVisitor) {
-    let klass_id = oop.klass.id;
+    let klass = oop.klass();
+    let klass_id = oop.klass().id;
     debug_assert!(
         klass_id as i32 >= 0 && (klass_id as i32) < 6,
         "Invalid klass-id: {:x} for oop: {:x}",
         klass_id as i32,
         unsafe { mem::transmute::<Oop, ObjectReference>(oop) }
     );
+    // println!("type {:?}", klass_id);
     match klass_id {
         KlassID::Instance => {
-            let instance_klass = unsafe { oop.klass.cast::<InstanceKlass>() };
+            let instance_klass = unsafe { klass.cast::<InstanceKlass>() };
             instance_klass.oop_iterate(oop, closure);
         }
         KlassID::InstanceClassLoader => {
-            let instance_klass = unsafe { oop.klass.cast::<InstanceClassLoaderKlass>() };
+            let instance_klass = unsafe { klass.cast::<InstanceClassLoaderKlass>() };
             instance_klass.oop_iterate(oop, closure);
         }
         KlassID::InstanceMirror => {
-            let instance_klass = unsafe { oop.klass.cast::<InstanceMirrorKlass>() };
+            let instance_klass = unsafe { klass.cast::<InstanceMirrorKlass>() };
             instance_klass.oop_iterate(oop, closure);
         }
         KlassID::ObjArray => {
-            let array_klass = unsafe { oop.klass.cast::<ObjArrayKlass>() };
+            let array_klass = unsafe { klass.cast::<ObjArrayKlass>() };
             array_klass.oop_iterate(oop, closure);
         }
         KlassID::TypeArray => {
-            let array_klass = unsafe { oop.klass.cast::<TypeArrayKlass>() };
+            let array_klass = unsafe { klass.cast::<TypeArrayKlass>() };
             array_klass.oop_iterate(oop, closure);
         }
         KlassID::InstanceRef => {
-            let instance_klass = unsafe { oop.klass.cast::<InstanceRefKlass>() };
+            let instance_klass = unsafe { klass.cast::<InstanceRefKlass>() };
             instance_klass.oop_iterate(oop, closure);
         } // _ => oop_iterate_slow(oop, closure, tls),
     }
@@ -193,6 +196,7 @@ fn oop_iterate(oop: Oop, closure: &mut impl EdgeVisitor) {
 
 #[inline]
 pub fn scan_object(object: ObjectReference, closure: &mut impl EdgeVisitor, _tls: VMWorkerThread) {
+    // println!("Scan {:?}", object);
     // println!("*****scan_object(0x{:x}) -> \n 0x{:x}, 0x{:x} \n",
     //     object,
     //     unsafe { *(object.value() as *const usize) },
