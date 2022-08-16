@@ -261,13 +261,21 @@ pub struct InstanceRefKlass {
 impl InstanceRefKlass {
     fn referent_offset() -> i32 {
         lazy_static! {
-            pub static ref REFERENT_OFFSET: i32 = unsafe { ((*UPCALLS).referent_offset)() };
+            pub static ref REFERENT_OFFSET: i32 = unsafe {
+                let referent_offset = ((*UPCALLS).referent_offset)();
+                println!("referent_offset 0x{:x}", referent_offset);
+                referent_offset
+            };
         }
         *REFERENT_OFFSET
     }
     fn discovered_offset() -> i32 {
         lazy_static! {
-            pub static ref DISCOVERED_OFFSET: i32 = unsafe { ((*UPCALLS).discovered_offset)() };
+            pub static ref DISCOVERED_OFFSET: i32 = unsafe {
+                let discovered_offset = ((*UPCALLS).discovered_offset)();
+                println!("discovered_offset 0x{:x}", discovered_offset);
+                discovered_offset
+            };
         }
         *DISCOVERED_OFFSET
     }
@@ -282,30 +290,29 @@ impl InstanceRefKlass {
 #[repr(C)]
 pub struct OopDesc {
     pub mark: usize,
+    klass: &'static Klass,
 }
 
 impl OopDesc {
-    pub fn header_size() -> usize {
-        12 // 8 byte mark word + 4 byte compressed klass
-    }
     #[inline(always)]
     pub fn start(&self) -> Address {
         unsafe { mem::transmute(self) }
     }
     #[inline(always)]
     pub fn klass(&self) -> &'static Klass {
-        let compressed = unsafe { (self.start() + std::mem::size_of::<usize>()).load::<u32>() };
-        let addr =
-            unsafe { *COMPRESSED_KLASS_BASE + ((compressed as usize) << *COMPRESSED_KLASS_SHIFT) };
-        // println!(
-        //     "oop({:?}) klass: c={:x} base={:?} shift={:?} addr={:?}",
-        //     self.start(),
-        //     compressed,
-        //     *COMPRESSED_KLASS_BASE,
-        //     *COMPRESSED_KLASS_SHIFT,
-        //     addr,
-        // );
-        unsafe { &*addr.to_ptr::<Klass>() }
+        self.klass
+        // let compressed = unsafe { (self.start() + std::mem::size_of::<usize>()).load::<u32>() };
+        // let addr =
+        //     unsafe { *COMPRESSED_KLASS_BASE + ((compressed as usize) << *COMPRESSED_KLASS_SHIFT) };
+        // // println!(
+        // //     "oop({:?}) klass: c={:x} base={:?} shift={:?} addr={:?}",
+        // //     self.start(),
+        // //     compressed,
+        // //     *COMPRESSED_KLASS_BASE,
+        // //     *COMPRESSED_KLASS_SHIFT,
+        // //     addr,
+        // // );
+        // unsafe { &*addr.to_ptr::<Klass>() }
     }
 }
 
@@ -397,7 +404,11 @@ pub type ArrayOop = &'static ArrayOopDesc;
 
 impl ArrayOopDesc {
     fn length_offset() -> usize {
-        OopDesc::header_size()
+        lazy_static! {
+            static ref OOP_ARRAY_LENGTH_OFFSET_IN_BYTES: usize =
+                unsafe { ((*UPCALLS).oop_array_length_offset_in_bytes)() };
+        }
+        *OOP_ARRAY_LENGTH_OFFSET_IN_BYTES
     }
 
     fn element_type_should_be_aligned(ty: BasicType) -> bool {
@@ -417,8 +428,14 @@ impl ArrayOopDesc {
         unsafe { *((self as *const _ as *const u8).add(Self::length_offset()) as *const i32) }
     }
     fn base(&self, ty: BasicType) -> Address {
-        let base_offset_in_bytes = Self::header_size(ty) * BYTES_IN_WORD;
-        Address::from_ptr(unsafe { (self as *const _ as *const u8).add(base_offset_in_bytes) })
+        debug_assert_eq!(ty, BasicType::T_OBJECT);
+        lazy_static! {
+            static ref OOP_ARRAY_BASE_OFFSET_IN_BYTES: usize =
+                unsafe { ((*UPCALLS).oop_array_base_offset_in_bytes)() };
+        }
+        Address::from_ptr(unsafe {
+            (self as *const _ as *const u8).add(*OOP_ARRAY_BASE_OFFSET_IN_BYTES)
+        })
     }
     // This provides an easy way to access the array data in Rust. However, the array data
     // is Java types, so we have to map Java types to Rust types. The caller needs to guarantee:

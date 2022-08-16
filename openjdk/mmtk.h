@@ -164,6 +164,8 @@ typedef struct {
     void (*enqueue_references)(void** objects, size_t len);
     void* (*compressed_klass_base)();
     size_t (*compressed_klass_shift)();
+    size_t (*oop_array_base_offset_in_bytes)();
+    size_t (*oop_array_length_offset_in_bytes)();
 } OpenJDK_Upcalls;
 
 extern void openjdk_gc_init(OpenJDK_Upcalls *calls);

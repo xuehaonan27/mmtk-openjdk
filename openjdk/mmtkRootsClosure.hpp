@@ -16,14 +16,18 @@ class MMTkRootsClosure2 : public OopClosure {
   size_t _cursor;
 
   template <class T>
-  void do_oop_work(T* p) {
+  void do_oop_work(T* p, bool narrow) {
     T heap_oop = RawAccess<>::oop_load(p);
-    if (!CompressedOops::is_null(heap_oop)) {
+    // if (!CompressedOops::is_null(heap_oop)) {
+      if (narrow) {
+        guarantee((uintptr_t(p) & (1ull << 63)) == 0, "test");
+        p = (T*) (uintptr_t(p) | (1ull << 63));
+      }
       _buffer[_cursor++] = (void*) p;
       if (_cursor >= _cap) {
         flush();
       }
-    }
+    // }
   }
 
   void flush() {
@@ -49,28 +53,28 @@ public:
     }
   }
 
-  virtual void do_oop(oop* p)       { do_oop_work(p); }
-  virtual void do_oop(narrowOop* p) { do_oop_work(p); }
+  virtual void do_oop(oop* p)       { do_oop_work(p, false); }
+  virtual void do_oop(narrowOop* p) { do_oop_work(p, true);  }
 };
 
 class MMTkScanObjectClosure : public BasicOopIterateClosure {
-  void* _trace;
+  void (*_trace)(void* edge);
   CLDToOopClosure follow_cld_closure;
 
   template <class T>
-  void do_oop_work(T* p) {
-    // oop ref = (void*) oopDesc::decode_heap_oop(oopDesc::load_heap_oop(p));
-    // process_edge(_trace, (void*) p);
+  void do_oop_work(T* p, bool narrow) {
+    if (narrow) {
+      guarantee((uintptr_t(p) & (1ull << 63)) == 0, "test");
+      p = (T*) (uintptr_t(p) | (1ull << 63));
+    }
+    _trace((void*) p);
   }
 
 public:
-  MMTkScanObjectClosure(void* trace): _trace(trace), follow_cld_closure(this, false) {}
+  MMTkScanObjectClosure(void* trace): _trace((void (*)(void*)) trace), follow_cld_closure(this, false) {}
 
-  virtual void do_oop(oop* p)       { do_oop_work(p); }
-  virtual void do_oop(narrowOop* p) {
-    // printf("narrowoop edge %p -> %d %p %p\n", (void*) p, *p, *((void**) p), (void*) oopDesc::load_decode_heap_oop(p));
-    do_oop_work(p);
-  }
+  virtual void do_oop(oop* p)       {  do_oop_work(p, false); }
+  virtual void do_oop(narrowOop* p) { do_oop_work(p, true); }
 
   virtual bool do_metadata() {
     return true;

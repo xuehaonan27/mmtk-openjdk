@@ -96,6 +96,8 @@ pub struct OpenJDK_Upcalls {
     pub enqueue_references: extern "C" fn(objects: *const ObjectReference, len: usize),
     pub compressed_klass_base: extern "C" fn() -> Address,
     pub compressed_klass_shift: extern "C" fn() -> usize,
+    pub oop_array_base_offset_in_bytes: extern "C" fn() -> usize,
+    pub oop_array_length_offset_in_bytes: extern "C" fn() -> usize,
 }
 
 pub static mut UPCALLS: *const OpenJDK_Upcalls = null_mut();

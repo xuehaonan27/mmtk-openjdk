@@ -228,7 +228,6 @@ static void mmtk_scan_thread_roots(EdgesClosure closure, void* tls) {
 }
 
 static void mmtk_scan_object(void* trace, void* object, void* tls) {
-  guarantee(false, "unreachable");
   MMTkScanObjectClosure cl(trace);
   ((oop) object)->oop_iterate(&cl);
 }
@@ -238,7 +237,7 @@ static void mmtk_dump_object(void* object) {
 
   // o->print();
   o->print_value();
-  printf("\n");
+  // printf("\n");
 
   // o->print_address();
 }
@@ -246,8 +245,8 @@ static void mmtk_dump_object(void* object) {
 static size_t mmtk_get_object_size(void* object) {
   oop o = (oop) object;
   // Slow-dispatch only. The fast-path code is moved to rust.
-  auto klass = o->klass();
-  return klass->oop_size(o) << LogHeapWordSize;
+  // auto klass = o->klass();
+  return o->size() << LogHeapWordSize;
 }
 
 static void mmtk_harness_begin() {
@@ -293,8 +292,9 @@ static int discovered_offset() {
 }
 
 static char* dump_object_string(void* object) {
+  ResourceMark rm;
   oop o = (oop) object;
-  return o->print_value_string();
+  return o->print_string();
 }
 
 static void mmtk_schedule_finalizer() {
@@ -355,6 +355,14 @@ static size_t mmtk_compressed_klass_shift() {
   return (size_t) Universe::narrow_klass_shift();
 }
 
+static size_t mmtk_oop_array_base_offset_in_bytes() {
+  return size_t(arrayOopDesc::base_offset_in_bytes(T_OBJECT));
+}
+
+static size_t mmtk_oop_array_length_offset_in_bytes() {
+  return size_t(arrayOopDesc::length_offset_in_bytes());
+}
+
 OpenJDK_Upcalls mmtk_upcalls = {
   mmtk_stop_all_mutators,
   mmtk_resume_mutators,
@@ -396,4 +404,6 @@ OpenJDK_Upcalls mmtk_upcalls = {
   mmtk_enqueue_references,
   mmtk_compressed_klass_base,
   mmtk_compressed_klass_shift,
+  mmtk_oop_array_base_offset_in_bytes,
+  mmtk_oop_array_length_offset_in_bytes,
 };

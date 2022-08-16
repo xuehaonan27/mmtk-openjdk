@@ -98,10 +98,16 @@ impl ObjectModel<OpenJDK> for VMObjectModel {
         unsafe { std::ptr::copy_nonoverlapping::<u8>(src.to_ptr(), dst.to_mut_ptr(), bytes) }
         let to_obj = unsafe { dst.to_object_reference() };
         copy_context.post_copy(to_obj, bytes, copy);
+        unsafe {
+            let a = dst;
+            debug_assert_ne!(a, Address::from_usize(0x20000000000));
+            debug_assert!(a < Address::from_usize(0x200c0000000));
+        }
         to_obj
     }
 
     fn copy_to(from: ObjectReference, to: ObjectReference, region: Address) -> Address {
+        unreachable!();
         let need_copy = from != to;
         let bytes = unsafe { ((*UPCALLS).get_object_size)(from) };
         if need_copy {

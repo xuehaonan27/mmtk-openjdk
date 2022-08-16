@@ -345,7 +345,7 @@ class MMTkRegisterNMethodOopClosure: public OopClosure {
   }
 public:
   void do_oop(oop* p)       { do_oop_work(p); }
-  void do_oop(narrowOop* p) { do_oop_work(p); }
+  void do_oop(narrowOop* p) { guarantee(false, "unreachable"); }
 };
 
 
