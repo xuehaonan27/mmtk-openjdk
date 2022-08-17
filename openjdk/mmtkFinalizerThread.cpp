@@ -100,7 +100,6 @@ void MMTkFinalizerThread::finalizer_thread_entry(JavaThread* thread, TRAPS) {
       void* obj_ref = get_finalized_object();
       if (obj_ref != NULL) {
         instanceOop obj = (instanceOop) obj_ref;
-        // printf("finalize %p\n", obj);
 
         // Invoke finalize()
         {
@@ -112,7 +111,6 @@ void MMTkFinalizerThread::finalizer_thread_entry(JavaThread* thread, TRAPS) {
 
           JavaCalls::call_virtual(&ret, handle_obj, obj->klass(), finalize_method, sig, this_thread);
         }
-        // printf("finalize done %p\n", obj);
       } else {
         break;
       }

@@ -1,10 +1,8 @@
 use super::abi::*;
 use super::UPCALLS;
-use mmtk::util::constants::*;
 use mmtk::util::opaque_pointer::*;
 use mmtk::util::{Address, ObjectReference};
 use mmtk::vm::EdgeVisitor;
-use std::ffi::CStr;
 use std::{mem, slice};
 
 trait OopIterate: Sized {
@@ -113,7 +111,6 @@ impl OopIterate for InstanceRefKlass {
         self.instance_klass.oop_iterate(oop, closure);
 
         if Self::should_scan_weak_refs() {
-            unreachable!();
             let reference = ObjectReference::from(oop);
             match self.instance_klass.reference_type {
                 ReferenceType::None => {

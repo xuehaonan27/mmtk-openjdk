@@ -261,21 +261,13 @@ pub struct InstanceRefKlass {
 impl InstanceRefKlass {
     fn referent_offset() -> i32 {
         lazy_static! {
-            pub static ref REFERENT_OFFSET: i32 = unsafe {
-                let referent_offset = ((*UPCALLS).referent_offset)();
-                println!("referent_offset 0x{:x}", referent_offset);
-                referent_offset
-            };
+            pub static ref REFERENT_OFFSET: i32 = unsafe { ((*UPCALLS).referent_offset)() };
         }
         *REFERENT_OFFSET
     }
     fn discovered_offset() -> i32 {
         lazy_static! {
-            pub static ref DISCOVERED_OFFSET: i32 = unsafe {
-                let discovered_offset = ((*UPCALLS).discovered_offset)();
-                println!("discovered_offset 0x{:x}", discovered_offset);
-                discovered_offset
-            };
+            pub static ref DISCOVERED_OFFSET: i32 = unsafe { ((*UPCALLS).discovered_offset)() };
         }
         *DISCOVERED_OFFSET
     }
@@ -300,19 +292,10 @@ impl OopDesc {
     }
     #[inline(always)]
     pub fn klass(&self) -> &'static Klass {
-        self.klass
-        // let compressed = unsafe { (self.start() + std::mem::size_of::<usize>()).load::<u32>() };
-        // let addr =
-        //     unsafe { *COMPRESSED_KLASS_BASE + ((compressed as usize) << *COMPRESSED_KLASS_SHIFT) };
-        // // println!(
-        // //     "oop({:?}) klass: c={:x} base={:?} shift={:?} addr={:?}",
-        // //     self.start(),
-        // //     compressed,
-        // //     *COMPRESSED_KLASS_BASE,
-        // //     *COMPRESSED_KLASS_SHIFT,
-        // //     addr,
-        // // );
-        // unsafe { &*addr.to_ptr::<Klass>() }
+        // self.klass
+        let compressed = unsafe { (self.start() + std::mem::size_of::<usize>()).load::<u32>() };
+        let addr = *COMPRESSED_KLASS_BASE + ((compressed as usize) << *COMPRESSED_KLASS_SHIFT);
+        unsafe { &*addr.to_ptr::<Klass>() }
     }
 }
 
@@ -370,30 +353,29 @@ impl OopDesc {
     /// Calculate object instance size
     #[inline(always)]
     pub unsafe fn size(&self) -> usize {
-        self.size_slow()
-        // let klass = self.klass();
-        // let lh = klass.layout_helper;
-        // // The (scalar) instance size is pre-recorded in the TIB?
-        // if lh > Klass::LH_NEUTRAL_VALUE {
-        //     if !Klass::layout_helper_needs_slow_path(lh) {
-        //         lh as _
-        //     } else {
-        //         self.size_slow()
-        //     }
-        // } else if lh <= Klass::LH_NEUTRAL_VALUE {
-        //     if lh < Klass::LH_NEUTRAL_VALUE {
-        //         // Calculate array size
-        //         let array_length = self.as_array_oop().length();
-        //         let mut size_in_bytes: usize =
-        //             (array_length as usize) << Klass::layout_helper_log2_element_size(lh);
-        //         size_in_bytes += Klass::layout_helper_header_size(lh) as usize;
-        //         (size_in_bytes + 0b111) & !0b111
-        //     } else {
-        //         self.size_slow()
-        //     }
-        // } else {
-        //     unreachable!()
-        // }
+        let klass = self.klass();
+        let lh = klass.layout_helper;
+        // The (scalar) instance size is pre-recorded in the TIB?
+        if lh > Klass::LH_NEUTRAL_VALUE {
+            if !Klass::layout_helper_needs_slow_path(lh) {
+                lh as _
+            } else {
+                self.size_slow()
+            }
+        } else if lh <= Klass::LH_NEUTRAL_VALUE {
+            if lh < Klass::LH_NEUTRAL_VALUE {
+                // Calculate array size
+                let array_length = self.as_array_oop().length();
+                let mut size_in_bytes: usize =
+                    (array_length as usize) << Klass::layout_helper_log2_element_size(lh);
+                size_in_bytes += Klass::layout_helper_header_size(lh) as usize;
+                (size_in_bytes + 0b111) & !0b111
+            } else {
+                self.size_slow()
+            }
+        } else {
+            unreachable!()
+        }
     }
 }
 
