@@ -156,79 +156,49 @@ fn oop_iterate_slow(oop: Oop, process_edge: extern "C" fn(Address), tls: OpaqueP
     }
 }
 
-static mut FIELDS: Vec<Address> = Vec::new();
-
 #[inline]
 fn oop_iterate(oop: Oop, closure: &mut impl EdgeVisitor) {
-    unsafe {
-        FIELDS = Vec::new();
-    }
-    extern "C" fn report_edge(a: Address) {
-        unsafe { FIELDS.push(a) }
-    }
-    oop_iterate_slow(oop, report_edge, OpaquePointer::UNINITIALIZED);
-    unsafe {
-        for e in &FIELDS {
-            closure.visit_edge(*e)
+    let klass_id = oop.klass().id;
+    debug_assert!(
+        klass_id as i32 >= 0 && (klass_id as i32) < 6,
+        "Invalid klass-id: {:x} for oop: {:x}",
+        klass_id as i32,
+        unsafe { mem::transmute::<Oop, ObjectReference>(oop) }
+    );
+    match klass_id {
+        KlassID::Instance => {
+            let instance_klass = unsafe { oop.klass().cast::<InstanceKlass>() };
+            instance_klass.oop_iterate(oop, closure);
         }
+        KlassID::InstanceClassLoader => {
+            let instance_klass = unsafe { oop.klass().cast::<InstanceClassLoaderKlass>() };
+            instance_klass.oop_iterate(oop, closure);
+        }
+        KlassID::InstanceMirror => {
+            let instance_klass = unsafe { oop.klass().cast::<InstanceMirrorKlass>() };
+            instance_klass.oop_iterate(oop, closure);
+        }
+        KlassID::ObjArray => {
+            let array_klass = unsafe { oop.klass().cast::<ObjArrayKlass>() };
+            array_klass.oop_iterate(oop, closure);
+        }
+        KlassID::TypeArray => {
+            let array_klass = unsafe { oop.klass().cast::<TypeArrayKlass>() };
+            array_klass.oop_iterate(oop, closure);
+        }
+        KlassID::InstanceRef => {
+            let instance_klass = unsafe { oop.klass().cast::<InstanceRefKlass>() };
+            instance_klass.oop_iterate(oop, closure);
+        } // _ => oop_iterate_slow(oop, closure, tls),
     }
-    // let klass = oop.klass();
-    // let klass_id = oop.klass().id;
-    // debug_assert!(
-    //     klass_id as i32 >= 0 && (klass_id as i32) < 6,
-    //     "Invalid klass-id: {:x} for oop: {:x}",
-    //     klass_id as i32,
-    //     unsafe { mem::transmute::<Oop, ObjectReference>(oop) }
-    // );
-    // unsafe {
-    //     ((*UPCALLS).dump_object)(mem::transmute(oop));
-    // }
-    // // println!("oop {:?}", unsafe {
-    // //     let c_string = ((*UPCALLS).dump_object)(mem::transmute(oop));
-    // //     let c_str: &CStr = unsafe { CStr::from_ptr(c_string) };
-    // //     c_str
-    // // });
-    // match klass_id {
-    //     KlassID::Instance => {
-    //         let instance_klass = unsafe { klass.cast::<InstanceKlass>() };
-    //         instance_klass.oop_iterate(oop, closure);
-    //     }
-    //     KlassID::InstanceClassLoader => {
-    //         let instance_klass = unsafe { klass.cast::<InstanceClassLoaderKlass>() };
-    //         instance_klass.oop_iterate(oop, closure);
-    //     }
-    //     KlassID::InstanceMirror => {
-    //         let instance_klass = unsafe { klass.cast::<InstanceMirrorKlass>() };
-    //         instance_klass.oop_iterate(oop, closure);
-    //     }
-    //     KlassID::ObjArray => {
-    //         let array_klass = unsafe { klass.cast::<ObjArrayKlass>() };
-    //         array_klass.oop_iterate(oop, closure);
-    //     }
-    //     KlassID::TypeArray => {
-    //         let array_klass = unsafe { klass.cast::<TypeArrayKlass>() };
-    //         array_klass.oop_iterate(oop, closure);
-    //     }
-    //     KlassID::InstanceRef => {
-    //         let instance_klass = unsafe { klass.cast::<InstanceRefKlass>() };
-    //         instance_klass.oop_iterate(oop, closure);
-    //     } // _ => oop_iterate_slow(oop, closure, tls),
-    // }
 }
 
 #[inline]
-pub fn scan_object<T: EdgeVisitor>(object: ObjectReference, closure: &mut T, _tls: VMWorkerThread) {
-    // println!(
-    //     "Scan {:?} (klass={:?} id={:?})",
-    //     object,
-    //     unsafe { (object.to_address() + 8usize).load::<Address>() },
-    //     unsafe { mem::transmute::<_, Oop>(object).klass().id }
-    // );
+pub fn scan_object(object: ObjectReference, closure: &mut impl EdgeVisitor, _tls: VMWorkerThread) {
     // println!("*****scan_object(0x{:x}) -> \n 0x{:x}, 0x{:x} \n",
     //     object,
     //     unsafe { *(object.value() as *const usize) },
     //     unsafe { *((object.value() + 8) as *const usize) }
     // );
-    let closure = unsafe { &mut *(closure as *mut T) };
     unsafe { oop_iterate(mem::transmute(object), closure) }
 }

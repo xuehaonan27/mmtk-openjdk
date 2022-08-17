@@ -46,8 +46,6 @@
 static volatile size_t mmtk_start_the_world_count = 0;
 
 static void mmtk_stop_all_mutators(void *tls, bool scan_mutators_in_safepoint, MutatorClosure closure) {
-
-  printf("mmtk_stop_all_mutators\n");
   ClassLoaderDataGraph::clear_claimed_marks();
   CodeCache::gc_prologue();
 #if COMPILER2_OR_JVMCI
@@ -64,12 +62,11 @@ static void mmtk_stop_all_mutators(void *tls, bool scan_mutators_in_safepoint, M
       closure.invoke((void*)&cur->third_party_heap_mutator);
     }
   }
-  printf("Finished enumerating threads.\n");
+  log_debug(gc)("Finished enumerating threads.");
   nmethod::oops_do_marking_prologue();
 }
 
 static void mmtk_resume_mutators(void *tls) {
-  printf("mmtk_resume_mutators\n");
   nmethod::oops_do_marking_epilogue();
   // ClassLoaderDataGraph::purge();
   CodeCache::gc_epilogue();
@@ -87,7 +84,7 @@ static void mmtk_resume_mutators(void *tls) {
   // otherwise, mutators might see a stale value
   Atomic::inc(&mmtk_start_the_world_count);
 
-  printf("Requesting the VM to resume all mutators...\n");
+  log_debug(gc)("Requesting the VM to resume all mutators...");
   MMTkHeap::heap()->companion_thread()->request(MMTkVMCompanionThread::_threads_resumed, true);
   log_debug(gc)("Mutators resumed. Now notify any mutators waiting for GC to finish...");
 
@@ -219,7 +216,6 @@ static void mmtk_reset_mutator_iterator() {
 
 
 static void mmtk_scan_all_thread_roots(EdgesClosure closure) {
-  guarantee(false, "unreachable");
   MMTkRootsClosure2 cl(closure);
   MMTkHeap::heap()->scan_thread_roots(cl);
 }
@@ -241,7 +237,7 @@ static void mmtk_dump_object(void* object) {
 
   // o->print();
   o->print_value();
-  // printf("\n");
+  printf("\n");
 
   // o->print_address();
 }
@@ -296,9 +292,8 @@ static int discovered_offset() {
 }
 
 static char* dump_object_string(void* object) {
-  ResourceMark rm;
   oop o = (oop) object;
-  return o->print_string();
+  return o->print_value_string();
 }
 
 static void mmtk_schedule_finalizer() {
@@ -330,7 +325,6 @@ static void mmtk_prepare_for_roots_re_scanning() {
 }
 
 static void mmtk_enqueue_references(void** objects, size_t len) {
-  guarantee(false, "unreachable");
   if (len == 0) {
     return;
   }
