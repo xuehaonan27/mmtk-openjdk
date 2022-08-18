@@ -14,7 +14,7 @@ impl OopIterate for OopMapBlock {
     fn oop_iterate(&self, oop: Oop, closure: &mut impl EdgeVisitor) {
         let start = oop.get_field_address(self.offset);
         for i in 0..self.count as usize {
-            let edge = start + (i << 2);
+            let edge = start + (i << crate::log_bytes_in_oop());
             closure.visit_edge(edge);
         }
     }
@@ -62,11 +62,20 @@ impl OopIterate for InstanceMirrorKlass {
         // }
 
         // static fields
-        let start: *const NarrowOop = Self::start_of_static_fields(oop).to_ptr::<NarrowOop>();
+        let start = Self::start_of_static_fields(oop);
         let len = Self::static_oop_field_count(oop);
-        let slice = unsafe { slice::from_raw_parts(start, len as _) };
-        for narrow_oop in slice {
-            closure.visit_edge(narrow_oop.slot());
+        if *crate::USE_COMPRESSED_OOPS {
+            let start: *const NarrowOop = start.to_ptr::<NarrowOop>();
+            let slice = unsafe { slice::from_raw_parts(start, len as _) };
+            for narrow_oop in slice {
+                closure.visit_edge(narrow_oop.slot());
+            }
+        } else {
+            let start: *const Oop = start.to_ptr::<Oop>();
+            let slice = unsafe { slice::from_raw_parts(start, len as _) };
+            for oop in slice {
+                closure.visit_edge(Address::from_ref(oop as &Oop));
+            }
         }
     }
 }
@@ -89,8 +98,14 @@ impl OopIterate for ObjArrayKlass {
     #[inline]
     fn oop_iterate(&self, oop: Oop, closure: &mut impl EdgeVisitor) {
         let array = unsafe { oop.as_array_oop() };
-        for narrow_oop in unsafe { array.data::<NarrowOop>(BasicType::T_OBJECT) } {
-            closure.visit_edge(narrow_oop.slot());
+        if *crate::USE_COMPRESSED_OOPS {
+            for narrow_oop in unsafe { array.data::<NarrowOop>(BasicType::T_OBJECT) } {
+                closure.visit_edge(narrow_oop.slot());
+            }
+        } else {
+            for oop in unsafe { array.data::<Oop>(BasicType::T_OBJECT) } {
+                closure.visit_edge(Address::from_ref(oop as &Oop));
+            }
         }
     }
 }
@@ -147,9 +162,9 @@ impl InstanceRefKlass {
 }
 
 #[allow(unused)]
-fn oop_iterate_slow(oop: Oop, process_edge: extern "C" fn(Address), tls: OpaquePointer) {
+fn oop_iterate_slow(oop: Oop, closure: &mut impl EdgeVisitor, tls: OpaquePointer) {
     unsafe {
-        ((*UPCALLS).scan_object)(process_edge as _, mem::transmute(oop), tls);
+        ((*UPCALLS).scan_object)(closure as *mut _ as _, mem::transmute(oop), tls);
     }
 }
 

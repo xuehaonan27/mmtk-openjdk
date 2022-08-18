@@ -353,14 +353,6 @@ static size_t mmtk_compressed_klass_shift() {
   return (size_t) Universe::narrow_klass_shift();
 }
 
-static size_t mmtk_oop_array_base_offset_in_bytes() {
-  return size_t(arrayOopDesc::base_offset_in_bytes(T_OBJECT));
-}
-
-static size_t mmtk_oop_array_length_offset_in_bytes() {
-  return size_t(arrayOopDesc::length_offset_in_bytes());
-}
-
 OpenJDK_Upcalls mmtk_upcalls = {
   mmtk_stop_all_mutators,
   mmtk_resume_mutators,
@@ -402,6 +394,4 @@ OpenJDK_Upcalls mmtk_upcalls = {
   mmtk_enqueue_references,
   mmtk_compressed_klass_base,
   mmtk_compressed_klass_shift,
-  mmtk_oop_array_base_offset_in_bytes,
-  mmtk_oop_array_length_offset_in_bytes,
 };

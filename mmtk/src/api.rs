@@ -204,6 +204,11 @@ pub extern "C" fn handle_user_collection_request(tls: VMMutatorThread) {
 }
 
 #[no_mangle]
+pub extern "C" fn mmtk_use_compressed_ptrs() -> bool {
+    *crate::USE_COMPRESSED_OOPS
+}
+
+#[no_mangle]
 pub extern "C" fn is_in_mmtk_spaces(object: ObjectReference) -> bool {
     memory_manager::is_in_mmtk_spaces(object)
 }

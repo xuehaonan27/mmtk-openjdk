@@ -96,8 +96,6 @@ pub struct OpenJDK_Upcalls {
     pub enqueue_references: extern "C" fn(objects: *const ObjectReference, len: usize),
     pub compressed_klass_base: extern "C" fn() -> Address,
     pub compressed_klass_shift: extern "C" fn() -> usize,
-    pub oop_array_base_offset_in_bytes: extern "C" fn() -> usize,
-    pub oop_array_length_offset_in_bytes: extern "C" fn() -> usize,
 }
 
 pub static mut UPCALLS: *const OpenJDK_Upcalls = null_mut();
@@ -113,6 +111,25 @@ pub static GLOBAL_SIDE_METADATA_VM_BASE_ADDRESS: uintptr_t =
 #[no_mangle]
 pub static GLOBAL_ALLOC_BIT_ADDRESS: uintptr_t =
     crate::mmtk::util::metadata::side_metadata::ALLOC_SIDE_METADATA_ADDR.as_usize();
+
+static mut LOG_BYTES_IN_OOP: usize = 3;
+
+#[inline(always)]
+fn log_bytes_in_oop() -> usize {
+    unsafe { LOG_BYTES_IN_OOP }
+}
+
+lazy_static! {
+    static ref USE_COMPRESSED_OOPS: bool = {
+        let enable = std::env::var("MMTK_COMPRESSED_PTRS")
+            .map(|s| s.trim() != "0" || s.trim() != "false")
+            .unwrap_or(false);
+        if enable {
+            unsafe { LOG_BYTES_IN_OOP = 2 }
+        }
+        enable
+    };
+}
 
 #[derive(Default)]
 pub struct OpenJDK;

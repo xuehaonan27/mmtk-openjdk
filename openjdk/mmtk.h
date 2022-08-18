@@ -164,14 +164,14 @@ typedef struct {
     void (*enqueue_references)(void** objects, size_t len);
     void* (*compressed_klass_base)();
     size_t (*compressed_klass_shift)();
-    size_t (*oop_array_base_offset_in_bytes)();
-    size_t (*oop_array_length_offset_in_bytes)();
 } OpenJDK_Upcalls;
 
 extern void openjdk_gc_init(OpenJDK_Upcalls *calls);
 extern bool openjdk_is_gc_initialized();
 
 extern bool mmtk_set_heap_size(size_t size);
+
+extern bool mmtk_use_compressed_ptrs();
 
 extern size_t used_bytes();
 extern void* starting_heap_address();
