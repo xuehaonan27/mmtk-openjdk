@@ -299,7 +299,6 @@ size_t MMTkHeap::block_size(const HeapWord* addr) const { //OK
 }
 
 bool MMTkHeap::block_is_obj(const HeapWord* addr) const { //OK
-  // guarantee(false, "block is obj not supported");
   return size_t(addr) >= size_t(starting_heap_address()) && size_t(addr) < size_t(last_heap_address());
 }
 
