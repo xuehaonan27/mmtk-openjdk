@@ -74,10 +74,6 @@ static void mmtk_resume_mutators(void *tls) {
 #if COMPILER2_OR_JVMCI
   DerivedPointerTable::update_pointers();
 #endif
-  {
-    CodeBlobFixRelocationClosure cb_cl;
-    CodeCache::blobs_do(&cb_cl);
-  }
 
   // Note: we don't have to hold gc_lock to increment the counter.
   // The increment has to be done before mutators can be resumed
@@ -353,6 +349,10 @@ static size_t mmtk_compressed_klass_shift() {
   return (size_t) Universe::narrow_klass_shift();
 }
 
+static void nmethod_fix_relocation(void* nm) {
+  ((nmethod*) nm)->fix_oop_relocations();
+}
+
 OpenJDK_Upcalls mmtk_upcalls = {
   mmtk_stop_all_mutators,
   mmtk_resume_mutators,
@@ -394,4 +394,5 @@ OpenJDK_Upcalls mmtk_upcalls = {
   mmtk_enqueue_references,
   mmtk_compressed_klass_base,
   mmtk_compressed_klass_shift,
+  nmethod_fix_relocation,
 };
