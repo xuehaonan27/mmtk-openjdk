@@ -1,3 +1,5 @@
+use std::sync::atomic::Ordering;
+
 use super::{OpenJDK, UPCALLS};
 use mmtk::scheduler::*;
 use mmtk::vm::RootsWorkFactory;
@@ -53,23 +55,15 @@ impl<F: RootsWorkFactory> ScanCodeCacheRoots<F> {
 
 impl<F: RootsWorkFactory> GCWork<OpenJDK> for ScanCodeCacheRoots<F> {
     fn do_work(&mut self, _worker: &mut GCWorker<OpenJDK>, _mmtk: &'static MMTK<OpenJDK>) {
-        let use_compressed_ptrs = *crate::USE_COMPRESSED_OOPS;
         // Collect all the cached roots
-        for (nmethod, roots) in (*crate::CODE_CACHE_ROOTS.lock().unwrap()).iter() {
-            let edges = roots.clone();
-            let nmethod = *nmethod;
-            // Create work packet
-            if use_compressed_ptrs {
-                self.factory.create_process_edge_roots_work_with_finalizer(
-                    edges,
-                    Box::new(move || unsafe {
-                        ((*UPCALLS).nmethod_fix_relocation)(nmethod);
-                    }),
-                );
-            } else {
-                self.factory.create_process_edge_roots_work(edges);
+        let mut edges = Vec::with_capacity(crate::CODE_CACHE_ROOTS_SIZE.load(Ordering::Relaxed));
+        for roots in (*crate::CODE_CACHE_ROOTS.lock().unwrap()).values() {
+            for r in roots {
+                edges.push(*r)
             }
         }
+        // Create work packet
+        self.factory.create_process_edge_roots_work(edges);
         // Use the following code to scan CodeCache directly, instead of scanning the "remembered set".
         // unsafe {
         //     ((*UPCALLS).scan_code_cache_roots)(create_process_edges_work::<E> as _);
