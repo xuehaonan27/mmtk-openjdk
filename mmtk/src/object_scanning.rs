@@ -1,6 +1,5 @@
 use super::abi::*;
 use super::{OpenJDKEdge, UPCALLS};
-use mmtk::util::constants::*;
 use mmtk::util::opaque_pointer::*;
 use mmtk::util::{Address, ObjectReference};
 use mmtk::vm::EdgeVisitor;

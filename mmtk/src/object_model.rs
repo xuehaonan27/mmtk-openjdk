@@ -5,7 +5,6 @@ use crate::abi::Oop;
 use crate::{vm_metadata, OpenJDK};
 use mmtk::util::alloc::fill_alignment_gap;
 use mmtk::util::copy::*;
-use mmtk::util::heap::layout::vm_layout_constants::HEAP_START;
 use mmtk::util::metadata::header_metadata::HeaderMetadataSpec;
 use mmtk::util::{Address, ObjectReference};
 use mmtk::vm::*;
@@ -22,47 +21,6 @@ impl ObjectModel<OpenJDK> for VMObjectModel {
         vm_metadata::FORWARDING_BITS_METADATA_SPEC;
     const LOCAL_MARK_BIT_SPEC: VMLocalMarkBitSpec = vm_metadata::MARKING_METADATA_SPEC;
     const LOCAL_LOS_MARK_NURSERY_SPEC: VMLocalLOSMarkNurserySpec = vm_metadata::LOS_METADATA_SPEC;
-
-    #[inline(always)]
-    fn load_reference_field(slot: Address, root: bool) -> ObjectReference {
-        if *crate::USE_COMPRESSED_OOPS {
-            let narrow_root = slot.as_usize() & (1usize << 63) != 0;
-            let slot = unsafe { Address::from_usize(slot.as_usize() << 1 >> 1) };
-            if root && !narrow_root {
-                unsafe { slot.load::<ObjectReference>() }
-            } else {
-                debug_assert!(root || !narrow_root);
-                let v = unsafe { slot.load::<u32>() };
-                if v == 0 {
-                    ObjectReference::NULL
-                } else {
-                    unsafe { (HEAP_START + ((v as usize) << 3) - 4096).to_object_reference() }
-                }
-            }
-        } else {
-            unsafe { slot.load() }
-        }
-    }
-
-    #[inline(always)]
-    fn store_reference_field(slot: Address, object: ObjectReference, root: bool) {
-        if *crate::USE_COMPRESSED_OOPS {
-            let narrow_root = slot.as_usize() & (1usize << 63) != 0;
-            let slot = unsafe { Address::from_usize(slot.as_usize() << 1 >> 1) };
-            if root && !narrow_root {
-                unsafe { slot.store(object) }
-            } else {
-                debug_assert!(root || !narrow_root);
-                if object.is_null() {
-                    unsafe { slot.store(0u32) };
-                } else {
-                    unsafe { slot.store(((object.to_address() - HEAP_START + 4096) >> 3) as u32) }
-                }
-            }
-        } else {
-            unsafe { slot.store(object) }
-        }
-    }
 
     #[inline(always)]
     fn load_metadata(
