@@ -11,8 +11,10 @@ use std::sync::Mutex;
 
 use libc::{c_char, c_void, uintptr_t};
 use mmtk::util::alloc::AllocationError;
+use mmtk::util::heap::layout::vm_layout_constants::HEAP_START;
 use mmtk::util::opaque_pointer::*;
 use mmtk::util::{Address, ObjectReference};
+use mmtk::vm::edge_shape::Edge;
 use mmtk::vm::VMBinding;
 use mmtk::MMTKBuilder;
 use mmtk::Mutator;
@@ -136,12 +138,66 @@ lazy_static! {
 #[derive(Default)]
 pub struct OpenJDK;
 
+/// The type of edges in OpenJDK.
+#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
+#[repr(transparent)]
+pub struct OpenJDKEdge(pub Address);
+
+impl OpenJDKEdge {
+    const MASK: usize = 1usize << 63;
+
+    const fn is_compressed(&self) -> bool {
+        self.0.as_usize() & Self::MASK != 0
+    }
+
+    const fn untagged_address(&self) -> Address {
+        unsafe { Address::from_usize(self.0.as_usize() << 1 >> 1) }
+    }
+
+    pub const fn as_compressed(&self) -> Self {
+        unsafe { Self(Address::from_usize(self.0.as_usize() | Self::MASK)) }
+    }
+}
+
+impl Edge for OpenJDKEdge {
+    /// Load object reference from the edge.
+    fn load(&self) -> ObjectReference {
+        let slot = self.untagged_address();
+        if self.is_compressed() {
+            let v = unsafe { slot.load::<u32>() as usize };
+            if v == 0 {
+                ObjectReference::NULL
+            } else {
+                unsafe { (HEAP_START - 4096 + (v << 3)).to_object_reference() }
+            }
+        } else {
+            unsafe { slot.load::<ObjectReference>() }
+        }
+    }
+
+    /// Store the object reference `object` into the edge.
+    fn store(&self, object: ObjectReference) {
+        let slot = self.untagged_address();
+        if self.is_compressed() {
+            if object.is_null() {
+                unsafe { slot.store(0u32) };
+            } else {
+                unsafe { slot.store(((object.to_address() - HEAP_START + 4096) >> 3) as u32) }
+            }
+        } else {
+            unsafe { slot.store(object) }
+        }
+    }
+}
+
 impl VMBinding for OpenJDK {
     type VMObjectModel = object_model::VMObjectModel;
     type VMScanning = scanning::VMScanning;
     type VMCollection = collection::VMCollection;
     type VMActivePlan = active_plan::VMActivePlan;
     type VMReferenceGlue = reference_glue::VMReferenceGlue;
+
+    type VMEdge = OpenJDKEdge;
 }
 
 use std::sync::atomic::AtomicBool;
