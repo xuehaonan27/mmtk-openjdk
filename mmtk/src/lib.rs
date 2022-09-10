@@ -11,7 +11,7 @@ use std::sync::Mutex;
 
 use libc::{c_char, c_void, uintptr_t};
 use mmtk::util::alloc::AllocationError;
-use mmtk::util::heap::layout::vm_layout_constants::HEAP_START;
+use mmtk::util::heap::layout::vm_layout_constants::VM_LAYOUT_CONSTANTS;
 use mmtk::util::opaque_pointer::*;
 use mmtk::util::{Address, ObjectReference};
 use mmtk::vm::edge_shape::Edge;
@@ -168,7 +168,7 @@ impl Edge for OpenJDKEdge {
             if v == 0 {
                 ObjectReference::NULL
             } else {
-                unsafe { (HEAP_START - 4096 + (v << 3)).to_object_reference() }
+                unsafe { (VM_LAYOUT_CONSTANTS.heap_start - 4096 + (v << 3)).to_object_reference() }
             }
         } else {
             unsafe { slot.load::<ObjectReference>() }
@@ -182,7 +182,11 @@ impl Edge for OpenJDKEdge {
             if object.is_null() {
                 unsafe { slot.store(0u32) };
             } else {
-                unsafe { slot.store(((object.to_address() - HEAP_START + 4096) >> 3) as u32) }
+                unsafe {
+                    slot.store(
+                        ((object.to_address() - VM_LAYOUT_CONSTANTS.heap_start + 4096) >> 3) as u32,
+                    )
+                }
             }
         } else {
             unsafe { slot.store(object) }
@@ -208,7 +212,10 @@ pub static MMTK_INITIALIZED: AtomicBool = AtomicBool::new(false);
 lazy_static! {
     pub static ref BUILDER: Mutex<MMTKBuilder> = Mutex::new(MMTKBuilder::new());
     pub static ref SINGLETON: MMTK<OpenJDK> = {
-        let builder = BUILDER.lock().unwrap();
+        let mut builder = BUILDER.lock().unwrap();
+        if *USE_COMPRESSED_OOPS {
+            builder.set_option("use_35bit_address_space", "true");
+        }
         assert!(!MMTK_INITIALIZED.load(Ordering::Relaxed));
         let ret = mmtk::memory_manager::mmtk_init(&builder);
         MMTK_INITIALIZED.store(true, std::sync::atomic::Ordering::SeqCst);
