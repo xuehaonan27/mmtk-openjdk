@@ -111,7 +111,7 @@ jint MMTkHeap::initialize() {
 
   _start = (HeapWord*) starting_heap_address();
   _end = (HeapWord*) last_heap_address();
-  //  printf("start: %p, end: %p\n", _start, _end);
+   printf("start: %p, end: %p\n", _start, _end);
   if (compressed_oops) {
     Universe::set_narrow_oop_base((address) (intptr_t(_start) - 4096));
     Universe::set_narrow_oop_shift(LogMinObjAlignmentInBytes);
