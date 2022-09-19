@@ -19,7 +19,7 @@ class MMTkRootsClosure2 : public OopClosure {
   void do_oop_work(T* p, bool narrow) {
     T heap_oop = RawAccess<>::oop_load(p);
     if (!CompressedOops::is_null(heap_oop)) {
-      if (narrow) {
+      if (UseCompressedOops && !narrow) {
         guarantee((uintptr_t(p) & (1ull << 63)) == 0, "test");
         p = (T*) (uintptr_t(p) | (1ull << 63));
       }
@@ -63,7 +63,7 @@ class MMTkScanObjectClosure : public BasicOopIterateClosure {
 
   template <class T>
   void do_oop_work(T* p, bool narrow) {
-    if (narrow) {
+    if (UseCompressedOops && !narrow) {
       guarantee((uintptr_t(p) & (1ull << 63)) == 0, "test");
       p = (T*) (uintptr_t(p) | (1ull << 63));
     }

@@ -6,15 +6,24 @@ use mmtk::vm::EdgeVisitor;
 use std::{mem, slice};
 
 trait OopIterate: Sized {
-    fn oop_iterate(&self, oop: Oop, closure: &mut impl EdgeVisitor<OpenJDKEdge>);
+    fn oop_iterate<C: EdgeVisitor<OpenJDKEdge>, const COMPRESSED: bool>(
+        &self,
+        oop: Oop,
+        closure: &mut C,
+    );
 }
 
 impl OopIterate for OopMapBlock {
     #[inline]
-    fn oop_iterate(&self, oop: Oop, closure: &mut impl EdgeVisitor<OpenJDKEdge>) {
+    fn oop_iterate<C: EdgeVisitor<OpenJDKEdge>, const COMPRESSED: bool>(
+        &self,
+        oop: Oop,
+        closure: &mut C,
+    ) {
+        let log_bytes_in_oop = if COMPRESSED { 2 } else { 3 };
         let start = oop.get_field_address(self.offset);
         for i in 0..self.count as usize {
-            let edge = OpenJDKEdge(start + (i << crate::log_bytes_in_oop()));
+            let edge = OpenJDKEdge(start + (i << log_bytes_in_oop));
             closure.visit_edge(edge);
         }
     }
@@ -22,18 +31,27 @@ impl OopIterate for OopMapBlock {
 
 impl OopIterate for InstanceKlass {
     #[inline]
-    fn oop_iterate(&self, oop: Oop, closure: &mut impl EdgeVisitor<OpenJDKEdge>) {
+    fn oop_iterate<C: EdgeVisitor<OpenJDKEdge>, const COMPRESSED: bool>(
+        &self,
+        oop: Oop,
+        closure: &mut C,
+    ) {
         let oop_maps = self.nonstatic_oop_maps();
         for map in oop_maps {
-            map.oop_iterate(oop, closure)
+            map.oop_iterate::<C, COMPRESSED>(oop, closure)
         }
     }
 }
 
 impl OopIterate for InstanceMirrorKlass {
     #[inline]
-    fn oop_iterate(&self, oop: Oop, closure: &mut impl EdgeVisitor<OpenJDKEdge>) {
-        self.instance_klass.oop_iterate(oop, closure);
+    fn oop_iterate<C: EdgeVisitor<OpenJDKEdge>, const COMPRESSED: bool>(
+        &self,
+        oop: Oop,
+        closure: &mut C,
+    ) {
+        self.instance_klass
+            .oop_iterate::<C, COMPRESSED>(oop, closure);
         // if (Devirtualizer::do_metadata(closure)) {
         //     Klass* klass = java_lang_Class::as_Klass(obj);
         //     // We'll get NULL for primitive mirrors.
@@ -82,8 +100,13 @@ impl OopIterate for InstanceMirrorKlass {
 
 impl OopIterate for InstanceClassLoaderKlass {
     #[inline]
-    fn oop_iterate(&self, oop: Oop, closure: &mut impl EdgeVisitor<OpenJDKEdge>) {
-        self.instance_klass.oop_iterate(oop, closure);
+    fn oop_iterate<C: EdgeVisitor<OpenJDKEdge>, const COMPRESSED: bool>(
+        &self,
+        oop: Oop,
+        closure: &mut C,
+    ) {
+        self.instance_klass
+            .oop_iterate::<C, COMPRESSED>(oop, closure);
         // if (Devirtualizer::do_metadata(closure)) {
         //     ClassLoaderData* cld = java_lang_ClassLoader::loader_data(obj);
         //     // cld can be null if we have a non-registered class loader.
@@ -96,9 +119,13 @@ impl OopIterate for InstanceClassLoaderKlass {
 
 impl OopIterate for ObjArrayKlass {
     #[inline]
-    fn oop_iterate(&self, oop: Oop, closure: &mut impl EdgeVisitor<OpenJDKEdge>) {
+    fn oop_iterate<C: EdgeVisitor<OpenJDKEdge>, const COMPRESSED: bool>(
+        &self,
+        oop: Oop,
+        closure: &mut C,
+    ) {
         let array = unsafe { oop.as_array_oop() };
-        if *crate::USE_COMPRESSED_OOPS {
+        if COMPRESSED {
             for narrow_oop in unsafe { array.data::<NarrowOop>(BasicType::T_OBJECT) } {
                 closure.visit_edge(OpenJDKEdge(narrow_oop.slot()));
             }
@@ -112,7 +139,11 @@ impl OopIterate for ObjArrayKlass {
 
 impl OopIterate for TypeArrayKlass {
     #[inline]
-    fn oop_iterate(&self, _oop: Oop, _closure: &mut impl EdgeVisitor<OpenJDKEdge>) {
+    fn oop_iterate<C: EdgeVisitor<OpenJDKEdge>, const COMPRESSED: bool>(
+        &self,
+        _oop: Oop,
+        _closure: &mut C,
+    ) {
         // Performance tweak: We skip processing the klass pointer since all
         // TypeArrayKlasses are guaranteed processed via the null class loader.
     }
@@ -120,10 +151,15 @@ impl OopIterate for TypeArrayKlass {
 
 impl OopIterate for InstanceRefKlass {
     #[inline]
-    fn oop_iterate(&self, oop: Oop, closure: &mut impl EdgeVisitor<OpenJDKEdge>) {
+    fn oop_iterate<C: EdgeVisitor<OpenJDKEdge>, const COMPRESSED: bool>(
+        &self,
+        oop: Oop,
+        closure: &mut C,
+    ) {
         use crate::abi::*;
         use crate::api::{add_phantom_candidate, add_soft_candidate, add_weak_candidate};
-        self.instance_klass.oop_iterate(oop, closure);
+        self.instance_klass
+            .oop_iterate::<C, COMPRESSED>(oop, closure);
 
         if Self::should_scan_weak_refs() {
             let reference = ObjectReference::from(oop);
@@ -169,7 +205,7 @@ fn oop_iterate_slow(oop: Oop, closure: &mut impl EdgeVisitor<OpenJDKEdge>, tls: 
 }
 
 #[inline]
-fn oop_iterate(oop: Oop, closure: &mut impl EdgeVisitor<OpenJDKEdge>) {
+fn oop_iterate<C: EdgeVisitor<OpenJDKEdge>, const COMPRESSED: bool>(oop: Oop, closure: &mut C) {
     let klass_id = oop.klass().id;
     debug_assert!(
         klass_id as i32 >= 0 && (klass_id as i32) < 6,
@@ -180,49 +216,36 @@ fn oop_iterate(oop: Oop, closure: &mut impl EdgeVisitor<OpenJDKEdge>) {
     match klass_id {
         KlassID::Instance => {
             let instance_klass = unsafe { oop.klass().cast::<InstanceKlass>() };
-            instance_klass.oop_iterate(oop, closure);
+            instance_klass.oop_iterate::<C, COMPRESSED>(oop, closure);
         }
         KlassID::InstanceClassLoader => {
             let instance_klass = unsafe { oop.klass().cast::<InstanceClassLoaderKlass>() };
-            instance_klass.oop_iterate(oop, closure);
+            instance_klass.oop_iterate::<C, COMPRESSED>(oop, closure);
         }
         KlassID::InstanceMirror => {
             let instance_klass = unsafe { oop.klass().cast::<InstanceMirrorKlass>() };
-            instance_klass.oop_iterate(oop, closure);
+            instance_klass.oop_iterate::<C, COMPRESSED>(oop, closure);
         }
         KlassID::ObjArray => {
             let array_klass = unsafe { oop.klass().cast::<ObjArrayKlass>() };
-            array_klass.oop_iterate(oop, closure);
+            array_klass.oop_iterate::<C, COMPRESSED>(oop, closure);
         }
         KlassID::TypeArray => {
             let array_klass = unsafe { oop.klass().cast::<TypeArrayKlass>() };
-            array_klass.oop_iterate(oop, closure);
+            array_klass.oop_iterate::<C, COMPRESSED>(oop, closure);
         }
         KlassID::InstanceRef => {
             let instance_klass = unsafe { oop.klass().cast::<InstanceRefKlass>() };
-            instance_klass.oop_iterate(oop, closure);
+            instance_klass.oop_iterate::<C, COMPRESSED>(oop, closure);
         } // _ => oop_iterate_slow(oop, closure, tls),
     }
 }
 
 #[inline]
-pub fn scan_object(
+pub fn scan_object<C: EdgeVisitor<OpenJDKEdge>, const COMPRESSED: bool>(
     object: ObjectReference,
-    closure: &mut impl EdgeVisitor<OpenJDKEdge>,
+    closure: &mut C,
     _tls: VMWorkerThread,
 ) {
-    // println!("*****scan_object(0x{:x}) -> \n 0x{:x}, 0x{:x} \n",
-    //     object,
-    //     unsafe { *(object.value() as *const usize) },
-    //     unsafe { *((object.value() + 8) as *const usize) }
-    // );
-    if *crate::USE_COMPRESSED_OOPS {
-        unsafe {
-            oop_iterate(mem::transmute(object), &mut |edge: OpenJDKEdge| {
-                closure.visit_edge(edge.as_compressed())
-            })
-        }
-    } else {
-        unsafe { oop_iterate(mem::transmute(object), closure) }
-    }
+    unsafe { oop_iterate::<C, COMPRESSED>(mem::transmute(object), closure) }
 }

@@ -116,22 +116,11 @@ pub static GLOBAL_SIDE_METADATA_VM_BASE_ADDRESS: uintptr_t =
 pub static GLOBAL_ALLOC_BIT_ADDRESS: uintptr_t =
     crate::mmtk::util::metadata::side_metadata::ALLOC_SIDE_METADATA_ADDR.as_usize();
 
-static mut LOG_BYTES_IN_OOP: usize = 3;
-
-#[inline(always)]
-fn log_bytes_in_oop() -> usize {
-    unsafe { LOG_BYTES_IN_OOP }
-}
-
 lazy_static! {
     static ref USE_COMPRESSED_OOPS: bool = {
-        let enable = std::env::var("MMTK_COMPRESSED_PTRS")
+        std::env::var("MMTK_COMPRESSED_PTRS")
             .map(|s| s.trim() != "0" || s.trim() != "false")
-            .unwrap_or(false);
-        if enable {
-            unsafe { LOG_BYTES_IN_OOP = 2 }
-        }
-        enable
+            .unwrap_or(false)
     };
 }
 
@@ -147,49 +136,88 @@ impl OpenJDKEdge {
     const MASK: usize = 1usize << 63;
 
     const fn is_compressed(&self) -> bool {
-        self.0.as_usize() & Self::MASK != 0
+        self.0.as_usize() & Self::MASK == 0
     }
 
     const fn untagged_address(&self) -> Address {
         unsafe { Address::from_usize(self.0.as_usize() << 1 >> 1) }
     }
-
-    pub const fn as_compressed(&self) -> Self {
-        unsafe { Self(Address::from_usize(self.0.as_usize() | Self::MASK)) }
-    }
 }
 
 impl Edge for OpenJDKEdge {
     /// Load object reference from the edge.
-    fn load(&self) -> ObjectReference {
-        let slot = self.untagged_address();
-        if self.is_compressed() {
-            let v = unsafe { slot.load::<u32>() as usize };
+    #[inline(always)]
+    fn load<const ROOT: bool, const COMPRESSED: bool>(&self) -> ObjectReference {
+        if cfg!(debug_assertions) {
+            if !ROOT {
+                if *USE_COMPRESSED_OOPS {
+                    assert!(self.is_compressed())
+                } else {
+                    assert!(!self.is_compressed())
+                }
+            } else {
+                if !*USE_COMPRESSED_OOPS {
+                    assert!(!self.is_compressed())
+                }
+            }
+        }
+        if ROOT && COMPRESSED {
+            let slot = self.untagged_address();
+            if self.is_compressed() {
+                let v = unsafe { slot.load::<u32>() as usize };
+                if v == 0 {
+                    ObjectReference::NULL
+                } else {
+                    unsafe {
+                        (VM_LAYOUT_CONSTANTS.heap_start - 4096 + (v << 3)).to_object_reference()
+                    }
+                }
+            } else {
+                unsafe { slot.load::<ObjectReference>() }
+            }
+        } else if COMPRESSED {
+            let v = unsafe { self.0.load::<u32>() as usize };
             if v == 0 {
                 ObjectReference::NULL
             } else {
                 unsafe { (VM_LAYOUT_CONSTANTS.heap_start - 4096 + (v << 3)).to_object_reference() }
             }
         } else {
-            unsafe { slot.load::<ObjectReference>() }
+            unsafe { self.0.load::<ObjectReference>() }
         }
     }
 
     /// Store the object reference `object` into the edge.
-    fn store(&self, object: ObjectReference) {
-        let slot = self.untagged_address();
-        if self.is_compressed() {
+    #[inline(always)]
+    fn store<const ROOT: bool, const COMPRESSED: bool>(&self, object: ObjectReference) {
+        if ROOT && COMPRESSED {
+            let slot = self.untagged_address();
+            if self.is_compressed() {
+                if object.is_null() {
+                    unsafe { slot.store(0u32) };
+                } else {
+                    unsafe {
+                        slot.store(
+                            ((object.to_address() - VM_LAYOUT_CONSTANTS.heap_start + 4096) >> 3)
+                                as u32,
+                        )
+                    }
+                }
+            } else {
+                unsafe { slot.store(object) }
+            }
+        } else if COMPRESSED {
             if object.is_null() {
-                unsafe { slot.store(0u32) };
+                unsafe { self.0.store(0u32) };
             } else {
                 unsafe {
-                    slot.store(
+                    self.0.store(
                         ((object.to_address() - VM_LAYOUT_CONSTANTS.heap_start + 4096) >> 3) as u32,
                     )
                 }
             }
         } else {
-            unsafe { slot.store(object) }
+            unsafe { self.0.store(object) }
         }
     }
 }

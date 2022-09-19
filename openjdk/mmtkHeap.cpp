@@ -351,7 +351,7 @@ void MMTkHeap::print_tracing_info() const {
 // Override with specific mechanism for each specialized heap type.
 class MMTkRegisterNMethodOopClosure: public OopClosure {
   template <class T> void do_oop_work(T* p, bool narrow) {
-    if (narrow) {
+    if (UseCompressedOops && !narrow) {
       guarantee((uintptr_t(p) & (1ull << 63)) == 0, "test");
       p = (T*) (uintptr_t(p) | (1ull << 63));
     }

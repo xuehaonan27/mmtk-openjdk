@@ -157,4 +157,8 @@ impl ObjectModel<OpenJDK> for VMObjectModel {
             ((*UPCALLS).dump_object)(object);
         }
     }
+
+    fn compressed_pointers_enabled() -> bool {
+        *crate::USE_COMPRESSED_OOPS
+    }
 }
