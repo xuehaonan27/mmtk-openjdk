@@ -46,20 +46,12 @@ impl Scanning<OpenJDK> for VMScanning {
     const SCAN_MUTATORS_IN_SAFEPOINT: bool = false;
     const SINGLE_THREAD_MUTATOR_SCANNING: bool = false;
 
-    fn scan_objects<EV: EdgeVisitor<OpenJDKEdge>>(
+    fn scan_object<EV: EdgeVisitor<OpenJDKEdge>, const COMPRESSED: bool>(
         tls: VMWorkerThread,
-        objects: &[ObjectReference],
+        object: ObjectReference,
         edge_visitor: &mut EV,
     ) {
-        if *crate::USE_COMPRESSED_OOPS {
-            for o in objects {
-                crate::object_scanning::scan_object::<EV, true>(*o, edge_visitor, tls)
-            }
-        } else {
-            for o in objects {
-                crate::object_scanning::scan_object::<EV, false>(*o, edge_visitor, tls)
-            }
-        }
+        crate::object_scanning::scan_object::<EV, COMPRESSED>(object, edge_visitor, tls);
     }
 
     fn notify_initial_thread_scan_complete(_partial_scan: bool, _tls: VMWorkerThread) {
