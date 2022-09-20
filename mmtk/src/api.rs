@@ -1,4 +1,6 @@
 use crate::OpenJDK;
+use crate::OpenJDKEdge;
+use crate::OpenJDKEdgeRange;
 use crate::OpenJDK_Upcalls;
 use crate::BUILDER;
 use crate::SINGLETON;
@@ -324,7 +326,7 @@ pub extern "C" fn mmtk_object_reference_write_pre(
 ) {
     mutator
         .barrier()
-        .object_reference_write_pre(src, slot, target);
+        .object_reference_write_pre(src, OpenJDKEdge(slot), target);
 }
 
 /// Full post barrier
@@ -337,7 +339,7 @@ pub extern "C" fn mmtk_object_reference_write_post(
 ) {
     mutator
         .barrier()
-        .object_reference_write_post(src, slot, target);
+        .object_reference_write_post(src, OpenJDKEdge(slot), target);
 }
 
 /// Barrier slow-path call
@@ -350,7 +352,7 @@ pub extern "C" fn mmtk_object_reference_write_slow(
 ) {
     mutator
         .barrier()
-        .object_reference_write_slow(src, slot, target);
+        .object_reference_write_slow(src, OpenJDKEdge(slot), target);
 }
 
 /// Array-copy pre-barrier
@@ -362,9 +364,16 @@ pub extern "C" fn mmtk_array_copy_pre(
     count: usize,
 ) {
     let bytes = count << LOG_BYTES_IN_ADDRESS;
-    mutator
-        .barrier()
-        .memory_region_copy_pre(src..src + bytes, dst..dst + bytes);
+    mutator.barrier().memory_region_copy_pre(
+        OpenJDKEdgeRange {
+            start: OpenJDKEdge(src),
+            end: OpenJDKEdge(src + bytes),
+        },
+        OpenJDKEdgeRange {
+            start: OpenJDKEdge(dst),
+            end: OpenJDKEdge(dst + bytes),
+        },
+    );
 }
 
 /// Array-copy post-barrier
@@ -376,9 +385,16 @@ pub extern "C" fn mmtk_array_copy_post(
     count: usize,
 ) {
     let bytes = count << LOG_BYTES_IN_ADDRESS;
-    mutator
-        .barrier()
-        .memory_region_copy_post(src..src + bytes, dst..dst + bytes);
+    mutator.barrier().memory_region_copy_post(
+        OpenJDKEdgeRange {
+            start: OpenJDKEdge(src),
+            end: OpenJDKEdge(src + bytes),
+        },
+        OpenJDKEdgeRange {
+            start: OpenJDKEdge(dst),
+            end: OpenJDKEdge(dst + bytes),
+        },
+    );
 }
 
 // finalization

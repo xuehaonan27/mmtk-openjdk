@@ -5,17 +5,17 @@ extern crate lazy_static;
 extern crate once_cell;
 
 use std::collections::HashMap;
-use std::ops::Range;
 use std::ptr::null_mut;
 use std::sync::atomic::AtomicUsize;
 use std::sync::Mutex;
 
 use libc::{c_char, c_void, uintptr_t};
 use mmtk::util::alloc::AllocationError;
+use mmtk::util::constants::{BYTES_IN_ADDRESS, LOG_BYTES_IN_ADDRESS};
 use mmtk::util::heap::layout::vm_layout_constants::VM_LAYOUT_CONSTANTS;
 use mmtk::util::opaque_pointer::*;
 use mmtk::util::{Address, ObjectReference};
-use mmtk::vm::edge_shape::Edge;
+use mmtk::vm::edge_shape::{Edge, MemorySlice};
 use mmtk::vm::VMBinding;
 use mmtk::MMTKBuilder;
 use mmtk::Mutator;
@@ -154,11 +154,11 @@ impl Edge for OpenJDKEdge {
                 if *USE_COMPRESSED_OOPS {
                     assert!(self.is_compressed())
                 } else {
-                    assert!(!self.is_compressed())
+                    assert!(self.0.as_usize() & Self::MASK == 0)
                 }
             } else {
                 if !*USE_COMPRESSED_OOPS {
-                    assert!(!self.is_compressed())
+                    assert!(self.0.as_usize() & Self::MASK == 0)
                 }
             }
         }
@@ -223,6 +223,73 @@ impl Edge for OpenJDKEdge {
     }
 }
 
+#[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
+pub struct OpenJDKEdgeRange {
+    pub start: OpenJDKEdge,
+    pub end: OpenJDKEdge,
+}
+
+/// Iterate edges within `Range<Address>`.
+pub struct AddressRangeIterator {
+    cursor: Address,
+    limit: Address,
+}
+
+impl Iterator for AddressRangeIterator {
+    type Item = OpenJDKEdge;
+
+    #[inline]
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.cursor >= self.limit {
+            None
+        } else {
+            let edge = self.cursor;
+            self.cursor += BYTES_IN_ADDRESS;
+            Some(OpenJDKEdge(edge))
+        }
+    }
+}
+
+impl MemorySlice for OpenJDKEdgeRange {
+    type Edge = OpenJDKEdge;
+    type EdgeIterator = AddressRangeIterator;
+
+    #[inline]
+    fn iter_edges(&self) -> Self::EdgeIterator {
+        AddressRangeIterator {
+            cursor: self.start.0,
+            limit: self.end.0,
+        }
+    }
+
+    #[inline]
+    fn start(&self) -> Address {
+        self.start.0
+    }
+
+    #[inline]
+    fn bytes(&self) -> usize {
+        self.end.0 - self.start.0
+    }
+
+    #[inline]
+    fn copy(src: &Self, tgt: &Self) {
+        debug_assert_eq!(src.bytes(), tgt.bytes());
+        debug_assert_eq!(
+            src.bytes() & ((1 << LOG_BYTES_IN_ADDRESS) - 1),
+            0,
+            "bytes are not a multiple of words"
+        );
+        // Raw memory copy
+        unsafe {
+            let words = tgt.bytes() >> LOG_BYTES_IN_ADDRESS;
+            let src = src.start().to_ptr::<usize>();
+            let tgt = tgt.start().to_mut_ptr::<usize>();
+            std::ptr::copy(src, tgt, words)
+        }
+    }
+}
+
 impl VMBinding for OpenJDK {
     type VMObjectModel = object_model::VMObjectModel;
     type VMScanning = scanning::VMScanning;
@@ -231,7 +298,7 @@ impl VMBinding for OpenJDK {
     type VMReferenceGlue = reference_glue::VMReferenceGlue;
 
     type VMEdge = OpenJDKEdge;
-    type VMMemorySlice = Range<Address>;
+    type VMMemorySlice = OpenJDKEdgeRange;
 }
 
 use std::sync::atomic::AtomicBool;
