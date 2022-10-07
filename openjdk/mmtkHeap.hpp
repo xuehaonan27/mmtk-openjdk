@@ -89,6 +89,7 @@ public:
   const char* name() const {
     return "MMTk";
   }
+  static const char* version();
 
   size_t capacity() const;
   size_t used() const;

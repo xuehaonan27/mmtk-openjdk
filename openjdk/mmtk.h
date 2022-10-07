@@ -29,6 +29,8 @@ inline bool disable_fast_alloc() {
 }
 extern const size_t MMTK_MARK_COMPACT_HEADER_RESERVED_IN_BYTES;
 
+extern const char* get_mmtk_version();
+
 /**
  * Allocation
  */
