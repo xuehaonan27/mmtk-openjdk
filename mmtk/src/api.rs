@@ -297,6 +297,16 @@ pub extern "C" fn process_bulk(options: *const c_char) -> bool {
 }
 
 #[no_mangle]
+pub extern "C" fn mmtk_narrow_oop_base() -> Address {
+    unsafe { crate::BASE }
+}
+
+#[no_mangle]
+pub extern "C" fn mmtk_narrow_oop_shift() -> usize {
+    unsafe { crate::SHIFT }
+}
+
+#[no_mangle]
 pub extern "C" fn starting_heap_address() -> Address {
     memory_manager::starting_heap_address()
 }

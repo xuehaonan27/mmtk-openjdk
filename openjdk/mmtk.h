@@ -188,6 +188,8 @@ extern bool openjdk_is_gc_initialized();
 extern bool mmtk_set_heap_size(size_t size);
 
 extern bool mmtk_use_compressed_ptrs();
+extern void* mmtk_narrow_oop_base();
+extern size_t mmtk_narrow_oop_shift();
 
 extern size_t used_bytes();
 extern void* starting_heap_address();

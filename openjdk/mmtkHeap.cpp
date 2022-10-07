@@ -111,10 +111,11 @@ jint MMTkHeap::initialize() {
 
   _start = (HeapWord*) starting_heap_address();
   _end = (HeapWord*) last_heap_address();
-   printf("start: %p, end: %p\n", _start, _end);
+  printf("start: %p, end: %p\n", _start, _end);
   if (compressed_oops) {
-    Universe::set_narrow_oop_base((address) (intptr_t(_start) - 4096));
-    Universe::set_narrow_oop_shift(LogMinObjAlignmentInBytes);
+    Universe::set_narrow_oop_base((address) mmtk_narrow_oop_base());
+    Universe::set_narrow_oop_shift(mmtk_narrow_oop_shift());
+    printf("narrow_oop_mode: %s\n", Universe::narrow_oop_mode_to_string(Universe::narrow_oop_mode()));
   }
 
   initialize_reserved_region(_start, _end);

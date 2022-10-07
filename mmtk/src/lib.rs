@@ -125,6 +125,45 @@ lazy_static! {
     };
 }
 
+static mut BASE: Address = Address::ZERO;
+static mut SHIFT: usize = 0;
+
+fn compress(o: ObjectReference) -> u32 {
+    if o.is_null() {
+        0u32
+    } else {
+        unsafe { ((o.to_address() - BASE) >> SHIFT) as u32 }
+    }
+}
+
+fn decompress(v: u32) -> ObjectReference {
+    if v == 0 {
+        ObjectReference::NULL
+    } else {
+        unsafe { (BASE + ((v as usize) << SHIFT)).to_object_reference() }
+    }
+}
+
+fn initialize_compressed_oops() {
+    let heap_end = VM_LAYOUT_CONSTANTS.heap_end.as_usize();
+    if heap_end <= (4usize << 30) {
+        unsafe {
+            BASE = Address::ZERO;
+            SHIFT = 0;
+        }
+    } else if heap_end <= (32usize << 30) {
+        unsafe {
+            BASE = Address::ZERO;
+            SHIFT = 3;
+        }
+    } else {
+        unsafe {
+            BASE = VM_LAYOUT_CONSTANTS.heap_start - 4096;
+            SHIFT = 3;
+        }
+    }
+}
+
 #[derive(Default)]
 pub struct OpenJDK;
 
@@ -165,24 +204,12 @@ impl Edge for OpenJDKEdge {
         if ROOT && COMPRESSED {
             let slot = self.untagged_address();
             if self.is_compressed() {
-                let v = unsafe { slot.load::<u32>() as usize };
-                if v == 0 {
-                    ObjectReference::NULL
-                } else {
-                    unsafe {
-                        (VM_LAYOUT_CONSTANTS.heap_start - 4096 + (v << 3)).to_object_reference()
-                    }
-                }
+                decompress(unsafe { slot.load::<u32>() })
             } else {
                 unsafe { slot.load::<ObjectReference>() }
             }
         } else if COMPRESSED {
-            let v = unsafe { self.0.load::<u32>() as usize };
-            if v == 0 {
-                ObjectReference::NULL
-            } else {
-                unsafe { (VM_LAYOUT_CONSTANTS.heap_start - 4096 + (v << 3)).to_object_reference() }
-            }
+            decompress(unsafe { self.0.load::<u32>() })
         } else {
             unsafe { self.0.load::<ObjectReference>() }
         }
@@ -194,29 +221,12 @@ impl Edge for OpenJDKEdge {
         if ROOT && COMPRESSED {
             let slot = self.untagged_address();
             if self.is_compressed() {
-                if object.is_null() {
-                    unsafe { slot.store(0u32) };
-                } else {
-                    unsafe {
-                        slot.store(
-                            ((object.to_address() - VM_LAYOUT_CONSTANTS.heap_start + 4096) >> 3)
-                                as u32,
-                        )
-                    }
-                }
+                unsafe { slot.store(compress(object)) }
             } else {
                 unsafe { slot.store(object) }
             }
         } else if COMPRESSED {
-            if object.is_null() {
-                unsafe { self.0.store(0u32) };
-            } else {
-                unsafe {
-                    self.0.store(
-                        ((object.to_address() - VM_LAYOUT_CONSTANTS.heap_start + 4096) >> 3) as u32,
-                    )
-                }
-            }
+            unsafe { self.0.store(compress(object)) }
         } else {
             unsafe { self.0.store(object) }
         }
@@ -312,10 +322,14 @@ lazy_static! {
         let mut builder = BUILDER.lock().unwrap();
         if *USE_COMPRESSED_OOPS {
             builder.set_option("use_35bit_address_space", "true");
+            builder.set_option("use_35bit_address_space", "true");
         }
         assert!(!MMTK_INITIALIZED.load(Ordering::Relaxed));
         let ret = mmtk::memory_manager::mmtk_init(&builder);
         MMTK_INITIALIZED.store(true, std::sync::atomic::Ordering::SeqCst);
+        if *USE_COMPRESSED_OOPS {
+            initialize_compressed_oops();
+        }
         *ret
     };
 }
