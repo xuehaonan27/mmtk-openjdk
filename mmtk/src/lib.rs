@@ -7,6 +7,7 @@ extern crate spin;
 
 use std::cell::RefCell;
 use std::collections::HashMap;
+use std::ops::Range;
 use std::ptr::null_mut;
 use std::sync::atomic::AtomicUsize;
 use std::sync::Mutex;
@@ -151,6 +152,7 @@ impl VMBinding for OpenJDK {
     type VMReferenceGlue = reference_glue::VMReferenceGlue;
 
     type VMEdge = OpenJDKEdge;
+    type VMMemorySlice = Range<Address>;
 }
 
 use std::sync::atomic::AtomicBool;

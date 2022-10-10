@@ -2,124 +2,77 @@
 #include "mmtkObjectBarrier.hpp"
 #include "runtime/interfaceSupport.inline.hpp"
 
-void MMTkObjectBarrierSetRuntime::record_modified_node_slow(void* src, void* slot, void* val) {
-  ::mmtk_object_reference_write((MMTk_Mutator) &Thread::current()->third_party_heap_mutator, src, slot, val);
-}
-
-void MMTkObjectBarrierSetRuntime::record_clone_slow(void* src, void* dst, size_t size) {
-  ::mmtk_object_reference_clone((MMTk_Mutator) &Thread::current()->third_party_heap_mutator, src, dst, size);
-}
-
-void MMTkObjectBarrierSetRuntime::record_modified_node(oop src, ptrdiff_t offset, oop val) {
+void MMTkObjectBarrierSetRuntime::object_reference_write_post(oop src, oop* slot, oop target) const {
 #if MMTK_ENABLE_BARRIER_FASTPATH
-    intptr_t addr = (intptr_t) (void*) src;
-    uint8_t* meta_addr = (uint8_t*) (SIDE_METADATA_BASE_ADDRESS + (addr >> 6));
-    intptr_t shift = (addr >> 3) & 0b111;
-    uint8_t byte_val = *meta_addr;
-    if (((byte_val >> shift) & 1) == 1) {
-      record_modified_node_slow((void*) src, (void*) (((intptr_t) (void*) src) + offset), (void*) val);
-    }
-#else
-    record_modified_node_slow((void*) src, (void*) (((intptr_t) (void*) src) + offset), (void*) val);
-#endif
-}
-
-void MMTkObjectBarrierSetRuntime::record_clone(oop src, oop dst, size_t size) {
-#if MMTK_ENABLE_BARRIER_FASTPATH
-  intptr_t addr = (intptr_t) (void*) dst;
+  intptr_t addr = (intptr_t) (void*) src;
   uint8_t* meta_addr = (uint8_t*) (SIDE_METADATA_BASE_ADDRESS + (addr >> 6));
   intptr_t shift = (addr >> 3) & 0b111;
   uint8_t byte_val = *meta_addr;
   if (((byte_val >> shift) & 1) == 1) {
-    record_clone_slow((void*) src, (void*) dst, size);
+    // MMTkObjectBarrierSetRuntime::object_reference_write_pre_slow()((void*) src);
+    object_reference_write_slow_call((void*) src, (void*) slot, (void*) target);
   }
 #else
-  record_clone_slow((void*) src, (void*) dst, size);
-#endif
-}
-
-void MMTkObjectBarrierSetRuntime::record_arraycopy(arrayOop src_obj, size_t src_offset_in_bytes, oop* src_raw, arrayOop dst_obj, size_t dst_offset_in_bytes, oop* dst_raw, size_t length) {
-#if MMTK_ENABLE_BARRIER_FASTPATH
-  intptr_t addr = (intptr_t) (void*) dst_obj;
-  uint8_t* meta_addr = (uint8_t*) (SIDE_METADATA_BASE_ADDRESS + (addr >> 6));
-  intptr_t shift = (addr >> 3) & 0b111;
-  uint8_t byte_val = *meta_addr;
-  if (((byte_val >> shift) & 1) == 1) {
-    ::mmtk_object_reference_arraycopy((MMTk_Mutator) &Thread::current()->third_party_heap_mutator, (void*) src_obj, src_offset_in_bytes, (void*) dst_obj, dst_offset_in_bytes, length);
-  }
-#else
-  ::mmtk_object_reference_arraycopy((MMTk_Mutator) &Thread::current()->third_party_heap_mutator, (void*) src_obj, src_offset_in_bytes, (void*) dst_obj, dst_offset_in_bytes, length);
+  object_reference_write_post_call((void*) src, (void*) slot, (void*) target);
 #endif
 }
 
 #define __ masm->
 
-void MMTkObjectBarrierSetAssembler::oop_store_at(MacroAssembler* masm, DecoratorSet decorators, BasicType type, Address dst, Register val, Register tmp1, Register tmp2) {
-  bool in_heap = (decorators & IN_HEAP) != 0;
-  bool as_normal = (decorators & AS_NORMAL) != 0;
-  assert((decorators & IS_DEST_UNINITIALIZED) == 0, "unsupported");
-
-  if (!in_heap || val == noreg) {
-    BarrierSetAssembler::store_at(masm, decorators, type, dst, val, tmp1, tmp2);
-    return;
-  }
-
-  record_modified_node(masm, dst, val, tmp1, tmp2);
-
-  BarrierSetAssembler::store_at(masm, decorators, type, dst, val, tmp1, tmp2);
-}
-
-void MMTkObjectBarrierSetAssembler::record_modified_node(MacroAssembler* masm, Address dst, Register val, Register tmp1, Register tmp2) {
+void MMTkObjectBarrierSetAssembler::object_reference_write_post(MacroAssembler* masm, DecoratorSet decorators, Address dst, Register val, Register tmp1, Register tmp2) const {
+  if (can_remove_barrier(decorators, val, /* skip_const_null */ true)) return;
 #if MMTK_ENABLE_BARRIER_FASTPATH
-  Label done;
+Label done;
 
   Register tmp3 = rscratch1;
   Register tmp4 = rscratch2;
-  Register tmp5 = tmp1 == dst.base() || tmp1 == dst.index() ? tmp2 : tmp1;
+  Register obj = dst.base();
+  assert_different_registers(obj, tmp2, tmp3);
+  assert_different_registers(tmp4, rcx);
 
-  // tmp5 = load-byte (SIDE_METADATA_BASE_ADDRESS + (obj >> 6));
-  __ movptr(tmp3, dst.base());
+  // tmp2 = load-byte (SIDE_METADATA_BASE_ADDRESS + (obj >> 6));
+  __ movptr(tmp3, obj);
   __ shrptr(tmp3, 6);
-  __ movptr(tmp5, SIDE_METADATA_BASE_ADDRESS);
-  __ movb(tmp5, Address(tmp5, tmp3));
+  __ movptr(tmp2, SIDE_METADATA_BASE_ADDRESS);
+  __ movb(tmp2, Address(tmp2, tmp3));
   // tmp3 = (obj >> 3) & 7
-  __ movptr(tmp3, dst.base());
+  __ movptr(tmp3, obj);
   __ shrptr(tmp3, 3);
   __ andptr(tmp3, 7);
-  // tmp5 = tmp5 >> tmp3
+  // tmp2 = tmp2 >> tmp3
   __ movptr(tmp4, rcx);
   __ movl(rcx, tmp3);
-  __ shrptr(tmp5);
+  __ shrptr(tmp2);
   __ movptr(rcx, tmp4);
-  // if ((tmp5 & 1) == 0) goto slowpath;
-  __ andptr(tmp5, 1);
-  __ cmpptr(tmp5, 1);
+  // if ((tmp2 & 1) == 1) goto slowpath;
+  __ andptr(tmp2, 1);
+  __ cmpptr(tmp2, 1);
   __ jcc(Assembler::notEqual, done);
 
-  __ pusha();
-  __ movptr(c_rarg0, dst.base());
+  __ movptr(c_rarg0, obj);
   __ lea(c_rarg1, dst);
-  if (val == noreg) {
-    __ movptr(c_rarg2, (int32_t) NULL_WORD);
-  } else {
-    __ movptr(c_rarg2, val);
-  }
-  __ call_VM_leaf_base(CAST_FROM_FN_PTR(address, MMTkObjectBarrierSetRuntime::record_modified_node_slow), 3);
-  __ popa();
+  __ movptr(c_rarg2, val == noreg ?  (int32_t) NULL_WORD : val);
+  __ call_VM_leaf_base(FN_ADDR(MMTkBarrierSetRuntime::object_reference_write_slow_call), 3);
 
   __ bind(done);
 #else
-  __ pusha();
-  __ movptr(c_rarg0, dst.base());
+  __ movptr(c_rarg0, obj);
   __ lea(c_rarg1, dst);
-  if (val == noreg) {
-    __ movptr(c_rarg2, (int32_t) NULL_WORD);
-  } else {
-    __ movptr(c_rarg2, val);
-  }
-  __ call_VM_leaf_base(CAST_FROM_FN_PTR(address, MMTkObjectBarrierSetRuntime::record_modified_node_slow), 3);
-  __ popa();
+  __ movptr(c_rarg2, val == noreg ?  (int32_t) NULL_WORD : val);
+  __ call_VM_leaf_base(FN_ADDR(MMTkBarrierSetRuntime::object_reference_write_post_call), 3);
 #endif
+}
+
+void MMTkObjectBarrierSetAssembler::arraycopy_epilogue(MacroAssembler* masm, DecoratorSet decorators, BasicType type, Register src, Register dst, Register count) {
+  const bool dest_uninitialized = (decorators & IS_DEST_UNINITIALIZED) != 0;
+  if ((type == T_OBJECT || type == T_ARRAY) && !dest_uninitialized) {
+    __ pusha();
+    __ movptr(c_rarg0, src);
+    __ movptr(c_rarg1, dst);
+    __ movptr(c_rarg2, count);
+    __ call_VM_leaf_base(FN_ADDR(MMTkBarrierSetRuntime::object_reference_array_copy_post_call), 3);
+    __ popa();
+  }
 }
 
 #undef __
@@ -130,7 +83,7 @@ void MMTkObjectBarrierSetAssembler::record_modified_node(MacroAssembler* masm, A
 #define __ gen->lir()->
 #endif
 
-void MMTkObjectBarrierSetC1::record_modified_node(LIRAccess& access, LIR_Opr src, LIR_Opr slot, LIR_Opr new_val) {
+void MMTkObjectBarrierSetC1::object_reference_write_post(LIRAccess& access, LIR_Opr src, LIR_Opr slot, LIR_Opr new_val) const {
   LIRGenerator* gen = access.gen();
   DecoratorSet decorators = access.decorators();
   if ((decorators & IN_HEAP) == 0) return;
@@ -174,35 +127,31 @@ void MMTkObjectBarrierSetC1::record_modified_node(LIRAccess& access, LIR_Opr src
     new_val = new_val_reg;
   }
   assert(new_val->is_register(), "must be a register at this point");
-  CodeStub* slow = new MMTkObjectBarrierStub(src, slot, new_val);
+  CodeStub* slow = new MMTkC1BarrierStub(src, slot, new_val);
 
 #if MMTK_ENABLE_BARRIER_FASTPATH
   LIR_Opr addr = src;
   // uint8_t* meta_addr = (uint8_t*) (SIDE_METADATA_BASE_ADDRESS + (addr >> 6));
   LIR_Opr offset = gen->new_pointer_register();
   __ move(addr, offset);
-  __ shift_right(offset, 6, offset);
+  __ unsigned_shift_right(offset, 6, offset);
   LIR_Opr base = gen->new_pointer_register();
   __ move(LIR_OprFact::longConst(SIDE_METADATA_BASE_ADDRESS), base);
   LIR_Address* meta_addr = new LIR_Address(base, offset, T_BYTE);
-  // intptr_t shift = (addr >> 3) & 0b111;
-  LIR_Opr shift_long = gen->new_pointer_register();
-  __ move(addr, shift_long);
-  __ shift_right(shift_long, 3, shift_long);
-  __ logical_and(shift_long, LIR_OprFact::longConst(0b111), shift_long);
-  LIR_Opr shift_int = gen->new_register(T_INT);
-  __ convert(Bytecodes::_l2i, shift_long, shift_int);
-  LIR_Opr shift = LIRGenerator::shiftCountOpr();
-  __ move(shift_int, shift);
   // uint8_t byte_val = *meta_addr;
   LIR_Opr byte_val = gen->new_register(T_INT);
   __ move(meta_addr, byte_val);
+  // intptr_t shift = (addr >> 3) & 0b111;
+  LIR_Opr shift = gen->new_register(T_INT);
+  __ move(addr, shift);
+  __ unsigned_shift_right(shift, 3, shift);
+  __ logical_and(shift, LIR_OprFact::intConst(0b111), shift);
   // if (((byte_val >> shift) & 1) == 1) slow;
   LIR_Opr result = byte_val;
-  __ shift_right(result, shift, result, LIR_OprFact::illegalOpr);
+  __ unsigned_shift_right(result, shift, result, LIR_OprFact::illegalOpr);
   __ logical_and(result, LIR_OprFact::intConst(1), result);
   __ cmp(lir_cond_equal, result, LIR_OprFact::intConst(1));
-  __ branch(lir_cond_equal, LP64_ONLY(T_LONG) NOT_LP64(T_INT), slow);
+  __ branch(lir_cond_equal, T_BYTE, slow);
 #else
   __ jump(slow);
 #endif
@@ -214,7 +163,8 @@ void MMTkObjectBarrierSetC1::record_modified_node(LIRAccess& access, LIR_Opr src
 
 #define __ ideal.
 
-void MMTkObjectBarrierSetC2::record_modified_node(GraphKit* kit, Node* src, Node* slot, Node* val) const {
+void MMTkObjectBarrierSetC2::object_reference_write_post(GraphKit* kit, Node* src, Node* slot, Node* val) const {
+  if (can_remove_barrier(kit, &kit->gvn(), src, slot, val, /* skip_const_null */ true)) return;
 
   MMTkIdealKit ideal(kit, true);
 
@@ -232,16 +182,14 @@ void MMTkObjectBarrierSetC2::record_modified_node(GraphKit* kit, Node* src, Node
 
   __ if_then(result, BoolTest::ne, zero, unlikely); {
     const TypeFunc* tf = __ func_type(TypeOopPtr::BOTTOM, TypeOopPtr::BOTTOM, TypeOopPtr::BOTTOM);
-    Node* x = __ make_leaf_call(tf, CAST_FROM_FN_PTR(address, MMTkObjectBarrierSetRuntime::record_modified_node_slow), "record_modified_node", src, slot, val);
+    Node* x = __ make_leaf_call(tf, FN_ADDR(MMTkBarrierSetRuntime::object_reference_write_slow_call), "mmtk_barrier_call", src, slot, val);
   } __ end_if();
 #else
   const TypeFunc* tf = __ func_type(TypeOopPtr::BOTTOM, TypeOopPtr::BOTTOM, TypeOopPtr::BOTTOM);
-  Node* x = __ make_leaf_call(tf, CAST_FROM_FN_PTR(address, MMTkObjectBarrierSetRuntime::record_modified_node_slow), "record_modified_node", src, slot, val);
+  Node* x = __ make_leaf_call(tf, FN_ADDR(MMTkBarrierSetRuntime::object_reference_write_post_call), "mmtk_barrier_call", src, slot, val);
 #endif
 
   kit->final_sync(ideal); // Final sync IdealKit and GraphKit.
 }
-
-void MMTkObjectBarrierSetC2::record_clone(GraphKit* kit, Node* src, Node* dst, Node* size) const {}
 
 #undef __

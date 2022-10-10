@@ -9,6 +9,7 @@ use mmtk::plan::BarrierSelector;
 use mmtk::scheduler::GCController;
 use mmtk::scheduler::GCWorker;
 use mmtk::util::alloc::AllocatorSelector;
+use mmtk::util::constants::LOG_BYTES_IN_ADDRESS;
 use mmtk::util::opaque_pointer::*;
 use mmtk::util::{Address, ObjectReference};
 use mmtk::AllocationSemantics;
@@ -311,36 +312,71 @@ pub extern "C" fn executable() -> bool {
     true
 }
 
+/// Full pre barrier
 #[no_mangle]
-pub extern "C" fn mmtk_object_reference_write(
+pub extern "C" fn mmtk_object_reference_write_pre(
     mutator: &'static mut Mutator<OpenJDK>,
     src: ObjectReference,
     slot: Address,
-    val: ObjectReference,
+    target: ObjectReference,
 ) {
-    mutator.object_reference_write(src, slot, val);
+    mutator
+        .barrier()
+        .object_reference_write_pre(src, slot, target);
 }
 
+/// Full post barrier
 #[no_mangle]
-pub extern "C" fn mmtk_object_reference_arraycopy(
+pub extern "C" fn mmtk_object_reference_write_post(
     mutator: &'static mut Mutator<OpenJDK>,
     src: ObjectReference,
-    src_offset: usize,
-    dst: ObjectReference,
-    dst_offset: usize,
-    len: usize,
+    slot: Address,
+    target: ObjectReference,
 ) {
-    mutator.object_reference_arraycopy(src, src_offset, dst, dst_offset, len);
+    mutator
+        .barrier()
+        .object_reference_write_post(src, slot, target);
 }
 
+/// Barrier slow-path call
 #[no_mangle]
-pub extern "C" fn mmtk_object_reference_clone(
+pub extern "C" fn mmtk_object_reference_write_slow(
     mutator: &'static mut Mutator<OpenJDK>,
     src: ObjectReference,
-    dst: ObjectReference,
-    _size: usize,
+    slot: Address,
+    target: ObjectReference,
 ) {
-    mutator.object_reference_clone(src, dst);
+    mutator
+        .barrier()
+        .object_reference_write_slow(src, slot, target);
+}
+
+/// Array-copy pre-barrier
+#[no_mangle]
+pub extern "C" fn mmtk_array_copy_pre(
+    mutator: &'static mut Mutator<OpenJDK>,
+    src: Address,
+    dst: Address,
+    count: usize,
+) {
+    let bytes = count << LOG_BYTES_IN_ADDRESS;
+    mutator
+        .barrier()
+        .memory_region_copy_pre(src..src + bytes, dst..dst + bytes);
+}
+
+/// Array-copy post-barrier
+#[no_mangle]
+pub extern "C" fn mmtk_array_copy_post(
+    mutator: &'static mut Mutator<OpenJDK>,
+    src: Address,
+    dst: Address,
+    count: usize,
+) {
+    let bytes = count << LOG_BYTES_IN_ADDRESS;
+    mutator
+        .barrier()
+        .memory_region_copy_post(src..src + bytes, dst..dst + bytes);
 }
 
 // finalization

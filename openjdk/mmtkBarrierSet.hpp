@@ -57,14 +57,37 @@ struct MMTkAllocatorOffsets {
  */
 MMTkAllocatorOffsets get_tlab_top_and_end_offsets(AllocatorSelector selector);
 
+#define FN_ADDR(function) CAST_FROM_FN_PTR(address, function)
+
 class MMTkBarrierSetRuntime: public CHeapObj<mtGC> {
 public:
-  virtual void record_modified_node(oop src, ptrdiff_t offset, oop val) {};
-  virtual void record_clone(oop src, oop dst, size_t size) {};
-  virtual void record_arraycopy(arrayOop src_obj, size_t src_offset_in_bytes, oop* src_raw, arrayOop dst_obj, size_t dst_offset_in_bytes, oop* dst_raw, size_t length) {};
-  virtual bool is_slow_path_call(address call) {
-    return false;
+  /// Generic pre-write barrier. Called by fast-paths.
+  static void object_reference_write_pre_call(void* src, void* slot, void* target);
+  /// Generic post-write barrier. Called by fast-paths.
+  static void object_reference_write_post_call(void* src, void* slot, void* target);
+  /// Generic slow-path. Called by fast-paths.
+  static void object_reference_write_slow_call(void* src, void* slot, void* target);
+  /// Generic arraycopy post-barrier. Called by fast-paths.
+  static void object_reference_array_copy_pre_call(void* src, void* dst, size_t count);
+  /// Generic arraycopy pre-barrier. Called by fast-paths.
+  static void object_reference_array_copy_post_call(void* src, void* dst, size_t count);
+  /// Check if the address is a slow-path function.
+  virtual bool is_slow_path_call(address call) const {
+    return call == CAST_FROM_FN_PTR(address, object_reference_write_pre_call)
+        || call == CAST_FROM_FN_PTR(address, object_reference_write_post_call)
+        || call == CAST_FROM_FN_PTR(address, object_reference_write_slow_call)
+        || call == CAST_FROM_FN_PTR(address, object_reference_array_copy_pre_call)
+        || call == CAST_FROM_FN_PTR(address, object_reference_array_copy_post_call);
   }
+
+  /// Full pre-barrier
+  virtual void object_reference_write_pre(oop src, oop* slot, oop target) const {};
+  /// Full post-barrier
+  virtual void object_reference_write_post(oop src, oop* slot, oop target) const {};
+  /// Full arraycopy pre-barrier
+  virtual void object_reference_array_copy_pre(oop* src, oop* dst, size_t count) const {};
+  /// Full arraycopy post-barrier
+  virtual void object_reference_array_copy_post(oop* src, oop* dst, size_t count) const {};
 };
 
 class MMTkBarrierC1;
@@ -149,8 +172,9 @@ public:
     }
 
     static void oop_store_in_heap_at(oop base, ptrdiff_t offset, oop value) {
-      runtime()->record_modified_node(base, offset, value);
+      runtime()->object_reference_write_pre(base, (oop*) (size_t((void*) base) + offset), value);
       Raw::oop_store_at(base, offset, value);
+      runtime()->object_reference_write_post(base, (oop*) (size_t((void*) base) + offset), value);
     }
 
     template <typename T>
@@ -160,8 +184,9 @@ public:
     }
 
     static oop oop_atomic_cmpxchg_in_heap_at(oop new_value, oop base, ptrdiff_t offset, oop compare_value) {
-      runtime()->record_modified_node(base, offset, new_value);
+      runtime()->object_reference_write_pre(base, (oop*) (size_t((void*) base) + offset), new_value);
       oop result = Raw::oop_atomic_cmpxchg_at(new_value, base, offset, compare_value);
+      runtime()->object_reference_write_post(base, (oop*) (size_t((void*) base) + offset), new_value);
       return result;
     }
 
@@ -172,8 +197,9 @@ public:
     }
 
     static oop oop_atomic_xchg_in_heap_at(oop new_value, oop base, ptrdiff_t offset) {
-      runtime()->record_modified_node(base, offset, new_value);
+      runtime()->object_reference_write_pre(base, (oop*) (size_t((void*) base) + offset), new_value);
       oop result = Raw::oop_atomic_xchg_at(new_value, base, offset);
+      runtime()->object_reference_write_post(base, (oop*) (size_t((void*) base) + offset), new_value);
       return result;
     }
 
@@ -181,47 +207,18 @@ public:
     static bool oop_arraycopy_in_heap_impl(arrayOop src_obj, size_t src_offset_in_bytes, T* src_raw,
                                       arrayOop dst_obj, size_t dst_offset_in_bytes, T* dst_raw,
                                       size_t length) {
-      runtime()->record_arraycopy(src_obj, src_offset_in_bytes, (oop*) src_raw, dst_obj, dst_offset_in_bytes, (oop*) dst_raw, length);
-      return Raw::oop_arraycopy(src_obj, src_offset_in_bytes, src_raw, dst_obj, dst_offset_in_bytes, dst_raw, length);
-    }
-
-
-    static bool oop_arraycopy_in_heap(arrayOop src_obj, size_t src_offset_in_bytes, oop* src_raw,
-                                      arrayOop dst_obj, size_t dst_offset_in_bytes, oop* dst_raw,
-                                      size_t length) {
-      return oop_arraycopy_in_heap_impl(src_obj, src_offset_in_bytes, src_raw, dst_obj, dst_offset_in_bytes, dst_raw, length);
-    }
-    static bool oop_arraycopy_in_heap(arrayOop src_obj, size_t src_offset_in_bytes, arrayOop* src_raw,
-                                      arrayOop dst_obj, size_t dst_offset_in_bytes, arrayOop* dst_raw,
-                                      size_t length) {
-      return oop_arraycopy_in_heap_impl(src_obj, src_offset_in_bytes, src_raw, dst_obj, dst_offset_in_bytes, dst_raw, length);
-    }
-    static bool oop_arraycopy_in_heap(arrayOop src_obj, size_t src_offset_in_bytes, instanceOop* src_raw,
-                                      arrayOop dst_obj, size_t dst_offset_in_bytes, instanceOop* dst_raw,
-                                      size_t length) {
-      return oop_arraycopy_in_heap_impl(src_obj, src_offset_in_bytes, src_raw, dst_obj, dst_offset_in_bytes, dst_raw, length);
-    }
-    static bool oop_arraycopy_in_heap(arrayOop src_obj, size_t src_offset_in_bytes, objArrayOop* src_raw,
-                                      arrayOop dst_obj, size_t dst_offset_in_bytes, objArrayOop* dst_raw,
-                                      size_t length) {
-      return oop_arraycopy_in_heap_impl(src_obj, src_offset_in_bytes, src_raw, dst_obj, dst_offset_in_bytes, dst_raw, length);
-    }
-    static bool oop_arraycopy_in_heap(arrayOop src_obj, size_t src_offset_in_bytes, typeArrayOop* src_raw,
-                                      arrayOop dst_obj, size_t dst_offset_in_bytes, typeArrayOop* dst_raw,
-                                      size_t length) {
-      return oop_arraycopy_in_heap_impl(src_obj, src_offset_in_bytes, src_raw, dst_obj, dst_offset_in_bytes, dst_raw, length);
-    }
-
-    template <typename T>
-    static bool oop_arraycopy_in_heap(arrayOop src_obj, size_t src_offset_in_bytes, T* src_raw,
-                                      arrayOop dst_obj, size_t dst_offset_in_bytes, T* dst_raw,
-                                      size_t length) {
-      runtime()->record_arraycopy(src_obj, src_offset_in_bytes, (oop*) src_raw, dst_obj, dst_offset_in_bytes, (oop*) dst_raw, length);
-      return Raw::oop_arraycopy(src_obj, src_offset_in_bytes, src_raw, dst_obj, dst_offset_in_bytes, dst_raw, length);
+      T* src = arrayOopDesc::obj_offset_to_raw(src_obj, src_offset_in_bytes, src_raw);
+      T* dst = arrayOopDesc::obj_offset_to_raw(dst_obj, dst_offset_in_bytes, dst_raw);
+      runtime()->object_reference_array_copy_pre((oop*) src, (oop*) dst, length);
+      bool result = Raw::oop_arraycopy(src_obj, src_offset_in_bytes, src_raw,
+                                       dst_obj, dst_offset_in_bytes, dst_raw,
+                                       length);
+      runtime()->object_reference_array_copy_post((oop*) src, (oop*) dst, length);
+      return result;
     }
 
     static void clone_in_heap(oop src, oop dst, size_t size) {
-      runtime()->record_clone(src, dst, size);
+      // TODO: We don't need clone barriers at the moment.
       Raw::clone(src, dst, size);
     }
   };

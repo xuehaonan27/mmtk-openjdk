@@ -3,113 +3,25 @@
 
 constexpr int kUnloggedValue = 1;
 
-void MMTkFieldLoggingBarrierSetRuntime::record_modified_node_slow(void* src, void* slot, void* val) {
-  ::mmtk_object_reference_write((MMTk_Mutator) &Thread::current()->third_party_heap_mutator, src, slot, val);
-}
-
-void MMTkFieldLoggingBarrierSetRuntime::record_clone_slow(void* src, void* dst, size_t size) {
-  ::mmtk_object_reference_clone((MMTk_Mutator) &Thread::current()->third_party_heap_mutator, src, dst, size);
-}
-
-void MMTkFieldLoggingBarrierSetRuntime::record_modified_node(oop src, ptrdiff_t offset, oop val) {
+void MMTkFieldLoggingBarrierSetRuntime::object_reference_write_pre(oop src, oop* slot, oop target) const {
 #if MMTK_ENABLE_BARRIER_FASTPATH
-    intptr_t addr = ((intptr_t) (void*) src) + offset;
+    intptr_t addr = ((intptr_t) (void*) slot);
     uint8_t* meta_addr = (uint8_t*) (SIDE_METADATA_BASE_ADDRESS + (addr >> 6));
     intptr_t shift = (addr >> 3) & 0b111;
     uint8_t byte_val = *meta_addr;
     if (((byte_val >> shift) & 1) == kUnloggedValue) {
-      record_modified_node_slow((void*) src, (void*) (((intptr_t) (void*) src) + offset), (void*) val);
+      // MMTkObjectBarrierSetRuntime::object_reference_write_pre_slow()((void*) src);
+      object_reference_write_slow_call((void*) src, (void*) slot, (void*) target);
     }
 #else
-    record_modified_node_slow((void*) src, (void*) (((intptr_t) (void*) src) + offset), (void*) val);
+  object_reference_write_pre_call((void*) src, (void*) slot, (void*) target);
 #endif
-}
-
-void MMTkFieldLoggingBarrierSetRuntime::record_clone(oop src, oop dst, size_t size) {
-  // record_clone_slow((void*) src, (void*) dst, size);
-}
-
-void MMTkFieldLoggingBarrierSetRuntime::record_arraycopy(arrayOop src_obj, size_t src_offset_in_bytes, oop* src_raw, arrayOop dst_obj, size_t dst_offset_in_bytes, oop* dst_raw, size_t length) {
-  // ::mmtk_object_reference_arraycopy((MMTk_Mutator) &Thread::current()->third_party_heap_mutator, (void*) src_obj, src_offset_in_bytes, (void*) dst_obj, dst_offset_in_bytes, length);
-  record_array_copy_inline((void*) (((intptr_t) (void*) src_obj) + src_offset_in_bytes), (void*) (((intptr_t) (void*) dst_obj) + dst_offset_in_bytes), length);
 }
 
 #define __ masm->
 
-void MMTkFieldLoggingBarrierSetAssembler::oop_store_at(MacroAssembler* masm, DecoratorSet decorators, BasicType type, Address dst, Register val, Register tmp1, Register tmp2) {
-  bool in_heap = (decorators & IN_HEAP) != 0;
-  bool as_normal = (decorators & AS_NORMAL) != 0;
-  assert((decorators & IS_DEST_UNINITIALIZED) == 0, "unsupported");
-
-  if (!in_heap) {
-    BarrierSetAssembler::store_at(masm, decorators, type, dst, val, tmp1, tmp2);
-    return;
-  }
-
-  record_modified_node(masm, dst, val, tmp1, tmp2);
-
-  BarrierSetAssembler::store_at(masm, decorators, type, dst, val, tmp1, tmp2);
-}
-
-void MMTkFieldLoggingBarrierSetAssembler::arraycopy_prologue(MacroAssembler* masm, DecoratorSet decorators, BasicType type, Register src, Register dst, Register count) {
-  const bool dest_uninitialized = (decorators & IS_DEST_UNINITIALIZED) != 0;
-  if ((type == T_OBJECT || type == T_ARRAY) && !dest_uninitialized) {
-    Label slow, done;
-    // Bailout if count is zero
-    __ cmpptr(count, 0);
-    __ jcc(Assembler::equal, done);
-    // Fast path if count is one
-    __ cmpptr(count, 1);
-    __ jcc(Assembler::notEqual, slow);
-    __ push(rax);
-    record_modified_node(masm, Address(dst, 0), src, rax, rax);
-    __ pop(rax);
-    __ jmp(done);
-    // Slow path
-    __ bind(slow);
-    __ pusha();
-    assert_different_registers(src, dst, count);
-    assert(src == rdi, "expected");
-    assert(dst == rsi, "expected");
-    assert(count == rdx, "expected");
-    __ call_VM_leaf(CAST_FROM_FN_PTR(address, MMTkFieldLoggingBarrierSetRuntime::record_array_copy_slow), src, dst, count);
-    __ popa();
-    __ bind(done);
-  }
-}
-
-// void MMTkFieldLoggingBarrierSetAssembler::arraycopy_prologue2(MacroAssembler* masm, DecoratorSet decorators, BasicType type, Register src, Register dst, Register count, Register dst_obj) {
-//   if (type == T_OBJECT || type == T_ARRAY) {
-//     __ pusha();
-//     assert_different_registers(c_rarg0, dst);
-//     assert_different_registers(c_rarg0, count);
-//     // guarantee(c_rarg0 != dst, "X");
-//     guarantee(rscratch1 != src, "X");
-//     guarantee(rscratch1 != dst, "X");
-//     guarantee(rscratch1 != count, "X");
-
-//     guarantee(c_rarg0 != count, "X");
-
-//     if (c_rarg0 == dst) {
-//       __ movptr(rscratch1, dst);
-//     }
-//     __ movptr(c_rarg0, src);
-//     if (c_rarg0 == dst) {
-//       __ movptr(dst, rscratch1);
-//     }
-
-//     assert_different_registers(c_rarg1, count);
-//     guarantee(c_rarg1 != count, "X");
-
-//     __ movptr(c_rarg1, dst);
-//     __ movptr(c_rarg2, count);
-//     __ movptr(c_rarg3, dst_obj);
-//     __ call_VM_leaf_base(CAST_FROM_FN_PTR(address, MMTkFieldLoggingBarrierSetRuntime::record_array_copy_slow), 4);
-//     __ popa();
-//   }
-// }
-
-void MMTkFieldLoggingBarrierSetAssembler::record_modified_node(MacroAssembler* masm, Address dst, Register val, Register tmp1, Register tmp2) {
+void MMTkFieldLoggingBarrierSetAssembler::object_reference_write_pre(MacroAssembler* masm, DecoratorSet decorators, Address dst, Register val, Register tmp1, Register tmp2) const {
+  if (can_remove_barrier(decorators, val, /* skip_const_null */ false)) return;
 #if MMTK_ENABLE_BARRIER_FASTPATH
   Label done;
 
@@ -140,28 +52,50 @@ void MMTkFieldLoggingBarrierSetAssembler::record_modified_node(MacroAssembler* m
   __ pusha();
   __ movptr(c_rarg0, dst.base());
   __ lea(c_rarg1, dst);
-  if (val == noreg) {
-    __ movptr(c_rarg2, (int32_t) NULL_WORD);
-  } else {
-    __ movptr(c_rarg2, val);
-  }
-  __ call_VM_leaf_base(CAST_FROM_FN_PTR(address, MMTkFieldLoggingBarrierSetRuntime::record_modified_node_slow), 3);
+  __ movptr(c_rarg2, val == noreg ?  (int32_t) NULL_WORD : val);
+  __ call_VM_leaf_base(FN_ADDR(MMTkBarrierSetRuntime::object_reference_write_slow_call), 3);
   __ popa();
 
   __ bind(done);
 #else
-  // assert_different_registers(c_rarg0, val);
-  __ pusha();
   __ movptr(c_rarg0, dst.base());
   __ lea(c_rarg1, dst);
-  if (val == noreg) {
-    __ movptr(c_rarg2, (int32_t) NULL_WORD);
-  } else {
-    __ movptr(c_rarg2, val);
-  }
-  __ call_VM_leaf_base(CAST_FROM_FN_PTR(address, MMTkFieldLoggingBarrierSetRuntime::record_modified_node_slow), 3);
-  __ popa();
+  __ movptr(c_rarg2, val == noreg ?  (int32_t) NULL_WORD : val);
+  __ call_VM_leaf_base(FN_ADDR(MMTkBarrierSetRuntime::object_reference_write_pre_call), 3);
 #endif
+}
+
+void MMTkFieldLoggingBarrierSetAssembler::arraycopy_prologue(MacroAssembler* masm, DecoratorSet decorators, BasicType type, Register src, Register dst, Register count) {
+  const bool dest_uninitialized = (decorators & IS_DEST_UNINITIALIZED) != 0;
+  if ((type == T_OBJECT || type == T_ARRAY) && !dest_uninitialized) {
+    // Label slow, done;
+    // // Bailout if count is zero
+    // __ cmpptr(count, 0);
+    // __ jcc(Assembler::equal, done);
+    // // Fast path if count is one
+    // __ cmpptr(count, 1);
+    // __ jcc(Assembler::notEqual, slow);
+    // __ push(rax);
+    // record_modified_node(masm, Address(dst, 0), src, rax, rax);
+    // __ pop(rax);
+    // __ jmp(done);
+    // // Slow path
+    // __ bind(slow);
+    // __ pusha();
+    // assert_different_registers(src, dst, count);
+    // assert(src == rdi, "expected");
+    // assert(dst == rsi, "expected");
+    // assert(count == rdx, "expected");
+    // __ call_VM_leaf(CAST_FROM_FN_PTR(address, MMTkFieldLoggingBarrierSetRuntime::record_array_copy_slow), src, dst, count);
+    // __ popa();
+    // __ bind(done);
+    __ pusha();
+    __ movptr(c_rarg0, src);
+    __ movptr(c_rarg1, dst);
+    __ movptr(c_rarg2, count);
+    __ call_VM_leaf_base(FN_ADDR(MMTkBarrierSetRuntime::object_reference_array_copy_pre_call), 3);
+    __ popa();
+  }
 }
 
 #undef __
@@ -172,7 +106,7 @@ void MMTkFieldLoggingBarrierSetAssembler::record_modified_node(MacroAssembler* m
 #define __ gen->lir()->
 #endif
 
-void MMTkFieldLoggingBarrierSetC1::record_modified_node(LIRAccess& access, LIR_Opr src, LIR_Opr slot, LIR_Opr new_val) {
+void MMTkFieldLoggingBarrierSetC1::object_reference_write_pre(LIRAccess& access, LIR_Opr src, LIR_Opr slot, LIR_Opr new_val) const {
   LIRGenerator* gen = access.gen();
   DecoratorSet decorators = access.decorators();
   if ((decorators & IN_HEAP) == 0) return;
@@ -187,13 +121,15 @@ void MMTkFieldLoggingBarrierSetC1::record_modified_node(LIRAccess& access, LIR_O
   }
   assert(src->is_register(), "must be a register at this point");
   if (!slot->is_register()) {
-    LIR_Opr reg = gen->new_pointer_register();
-    if (slot->is_constant()) {
-      __ move(slot, reg);
+    LIR_Address* address = slot->as_address_ptr();
+    LIR_Opr ptr = gen->new_pointer_register();
+    if (!address->index()->is_valid() && address->disp() == 0) {
+      __ move(address->base(), ptr);
     } else {
-      __ leal(slot, reg);
+      assert(address->disp() != max_jint, "lea doesn't support patched addresses!");
+      __ leal(slot, ptr);
     }
-    slot = reg;
+    slot = ptr;
   }
   assert(slot->is_register(), "must be a register at this point");
   if (!new_val->is_register()) {
@@ -206,35 +142,31 @@ void MMTkFieldLoggingBarrierSetC1::record_modified_node(LIRAccess& access, LIR_O
     new_val = new_val_reg;
   }
   assert(new_val->is_register(), "must be a register at this point");
-  CodeStub* slow = new MMTkFieldLoggingBarrierStub(src, slot, new_val);
+  CodeStub* slow = new MMTkC1BarrierStub(src, slot, new_val);
 
 #if MMTK_ENABLE_BARRIER_FASTPATH
-  LIR_Opr addr = src;
+  LIR_Opr addr = slot;
   // uint8_t* meta_addr = (uint8_t*) (SIDE_METADATA_BASE_ADDRESS + (addr >> 6));
   LIR_Opr offset = gen->new_pointer_register();
   __ move(addr, offset);
-  __ shift_right(offset, 6, offset);
+  __ unsigned_shift_right(offset, 6, offset);
   LIR_Opr base = gen->new_pointer_register();
   __ move(LIR_OprFact::longConst(SIDE_METADATA_BASE_ADDRESS), base);
   LIR_Address* meta_addr = new LIR_Address(base, offset, T_BYTE);
-  // intptr_t shift = (addr >> 3) & 0b111;
-  LIR_Opr shift_long = gen->new_pointer_register();
-  __ move(addr, shift_long);
-  __ shift_right(shift_long, 3, shift_long);
-  __ logical_and(shift_long, LIR_OprFact::longConst(0b111), shift_long);
-  LIR_Opr shift_int = gen->new_register(T_INT);
-  __ convert(Bytecodes::_l2i, shift_long, shift_int);
-  LIR_Opr shift = LIRGenerator::shiftCountOpr();
-  __ move(shift_int, shift);
   // uint8_t byte_val = *meta_addr;
   LIR_Opr byte_val = gen->new_register(T_INT);
   __ move(meta_addr, byte_val);
+  // intptr_t shift = (addr >> 3) & 0b111;
+  LIR_Opr shift = gen->new_register(T_INT);
+  __ move(addr, shift);
+  __ unsigned_shift_right(shift, 3, shift);
+  __ logical_and(shift, LIR_OprFact::intConst(0b111), shift);
   // if (((byte_val >> shift) & 1) == 1) slow;
   LIR_Opr result = byte_val;
-  __ shift_right(result, shift, result, LIR_OprFact::illegalOpr);
+  __ unsigned_shift_right(result, shift, result, LIR_OprFact::illegalOpr);
   __ logical_and(result, LIR_OprFact::intConst(1), result);
   __ cmp(lir_cond_equal, result, LIR_OprFact::intConst(1));
-  __ branch(lir_cond_equal, LP64_ONLY(T_LONG) NOT_LP64(T_INT), slow);
+  __ branch(lir_cond_equal, T_BYTE, slow);
 #else
   __ jump(slow);
 #endif
@@ -246,43 +178,9 @@ void MMTkFieldLoggingBarrierSetC1::record_modified_node(LIRAccess& access, LIR_O
 
 #define __ ideal.
 
-bool MMTkFieldLoggingBarrierSetC2::can_remove_barrier(GraphKit* kit, PhaseTransform* phase, Node* adr) const {
-  intptr_t      offset = 0;
-  Node*         base   = AddPNode::Ideal_base_and_offset(adr, phase, offset);
-  AllocateNode* alloc  = AllocateNode::Ideal_allocation(base, phase);
 
-  if (offset == Type::OffsetBot) {
-    return false; // cannot unalias unless there are precise offsets
-  }
-
-  if (alloc == NULL) {
-     return false; // No allocation found
-  }
-
-  // Start search from Store node
-  Node* mem = kit->control();
-  if (mem->is_Proj() && mem->in(0)->is_Initialize()) {
-
-    InitializeNode* st_init = mem->in(0)->as_Initialize();
-    AllocateNode*  st_alloc = st_init->allocation();
-
-    // Make sure we are looking at the same allocation
-    if (alloc == st_alloc) {
-      return true;
-    }
-  }
-
-  return false;
-}
-
-void MMTkFieldLoggingBarrierSetC2::record_modified_node(GraphKit* kit, Node* src, Node* slot, Node* val) const {
-
-  if (!disable_fast_alloc() && src == kit->just_allocated_object(kit->control())) {
-    return;
-  }
-  if (!disable_fast_alloc() && can_remove_barrier(kit, &kit->gvn(), slot)) {
-    return;
-  }
+void MMTkFieldLoggingBarrierSetC2::object_reference_write_pre(GraphKit* kit, Node* src, Node* slot, Node* val) const {
+  if (can_remove_barrier(kit, &kit->gvn(), src, slot, val, /* skip_const_null */ false)) return;
 
   MMTkIdealKit ideal(kit, true);
 
@@ -300,53 +198,16 @@ void MMTkFieldLoggingBarrierSetC2::record_modified_node(GraphKit* kit, Node* src
 
   __ if_then(result, BoolTest::ne, zero, unlikely); {
     const TypeFunc* tf = __ func_type(TypeOopPtr::BOTTOM, TypeOopPtr::BOTTOM, TypeOopPtr::BOTTOM);
-    Node* x = __ make_leaf_call(tf, CAST_FROM_FN_PTR(address, MMTkFieldLoggingBarrierSetRuntime::record_modified_node_slow), "record_modified_node", src, slot, val);
+    Node* x = __ make_leaf_call(tf, FN_ADDR(MMTkBarrierSetRuntime::object_reference_write_slow_call), "mmtk_barrier_call", src, slot, val);
   } __ end_if();
 #else
   const TypeFunc* tf = __ func_type(TypeOopPtr::BOTTOM, TypeOopPtr::BOTTOM, TypeOopPtr::BOTTOM);
-  Node* x = __ make_leaf_call(tf, CAST_FROM_FN_PTR(address, MMTkFieldLoggingBarrierSetRuntime::record_modified_node_slow), "record_modified_node", src, slot, val);
+  Node* x = __ make_leaf_call(tf, FN_ADDR(MMTkBarrierSetRuntime::object_reference_write_pre_call), "mmtk_barrier_call", src, slot, val);
 #endif
   kit->sync_kit(ideal);
   kit->insert_mem_bar(Op_MemBarVolatile);
 
   kit->final_sync(ideal); // Final sync IdealKit and GraphKit.
-}
-
-// static bool clone_needs_barrier(Node* src, PhaseGVN& gvn) {
-//   const TypeOopPtr* src_type = gvn.type(src)->is_oopptr();
-//   if (src_type->isa_instptr() != NULL) {
-//     ciInstanceKlass* ik = src_type->klass()->as_instance_klass();
-//     if ((src_type->klass_is_exact() || (!ik->is_interface() && !ik->has_subklass())) && !ik->has_injected_fields()) {
-//       return ik->has_object_fields();
-//     } else {
-//       return true;
-//     }
-//   } else if (src_type->isa_aryptr()) {
-//     BasicType src_elem  = src_type->klass()->as_array_klass()->element_type()->basic_type();
-//     if (src_elem == T_OBJECT || src_elem == T_ARRAY) {
-//       return true;
-//     } else {
-//       return false;
-//     }
-//   } else {
-//     return true;
-//   }
-// }
-
-void MMTkFieldLoggingBarrierSetC2::record_clone(GraphKit* kit, Node* src, Node* dst, Node* size) const {
-  // if (!clone_needs_barrier(src, kit->gvn())) return;
-  // if (src == kit->just_allocated_object(kit->control())) {
-  //   return;
-  // }
-
-  // MMTkIdealKit ideal(kit, true);
-  // const TypeFunc* tf = __ func_type(TypeOopPtr::BOTTOM, TypeOopPtr::BOTTOM, TypeInt::INT);
-  // Node* x = __ make_leaf_call(tf, CAST_FROM_FN_PTR(address, MMTkFieldLoggingBarrierSetRuntime::record_clone_slow), "record_clone", src, dst, size);
-
-  // kit->sync_kit(ideal);
-  // kit->insert_mem_bar(Op_MemBarVolatile);
-
-  // kit->final_sync(ideal); // Final sync IdealKit and GraphKit.
 }
 
 #undef __
