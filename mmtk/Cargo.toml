@@ -25,7 +25,7 @@ codegen-units = 1
 [package.metadata.openjdk]
 # Our CI matches the following line and extract mmtk/openjdk. If this line is updated, please check ci yaml files and make sure it works.
 openjdk_repo = "https://github.com/mmtk/openjdk.git"
-openjdk_version = "c82e5c44adced4383162826c2c3933a83cfb139b"
+openjdk_version = "f24111bb0f220aec18136eeb020aadb7276225ca"
 
 [dependencies]
 libc = "0.2"
@@ -38,7 +38,7 @@ once_cell = "1.10.0"
 # - change branch
 # - change repo name
 # But other changes including adding/removing whitespaces in commented lines may break the CI.
-mmtk = { git = "https://github.com/wenyuzhao/mmtk-core.git", rev = "6779dff4f1b10173b03b39e1c42455c2e79bd879" }
+mmtk = { git = "https://github.com/wenyuzhao/mmtk-core.git", rev = "e6e3c1880caf297dcdc53ce7c47745a9ebce39f2" }
 # Uncomment the following to build locally
 # mmtk = { path = "../../mmtk-core" }
 
