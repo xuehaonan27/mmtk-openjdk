@@ -25,7 +25,7 @@ static NO_BARRIER: sync::Lazy<CString> = sync::Lazy::new(|| CString::new("NoBarr
 static OBJECT_BARRIER: sync::Lazy<CString> =
     sync::Lazy::new(|| CString::new("ObjectBarrier").unwrap());
 static FIELD_LOGGING_BARRIER: sync::Lazy<CString> =
-    sync::Lazy::new(|| CString::new("FieldLoggingBarrier").unwrap());
+    sync::Lazy::new(|| CString::new("FieldBarrier").unwrap());
 
 #[no_mangle]
 pub extern "C" fn get_mmtk_version() -> *const c_char {
@@ -37,7 +37,7 @@ pub extern "C" fn mmtk_active_barrier() -> *const c_char {
     match SINGLETON.get_plan().constraints().barrier {
         BarrierSelector::NoBarrier => NO_BARRIER.as_ptr(),
         BarrierSelector::ObjectBarrier => OBJECT_BARRIER.as_ptr(),
-        BarrierSelector::FieldLoggingBarrier => FIELD_LOGGING_BARRIER.as_ptr(),
+        BarrierSelector::FieldBarrier => FIELD_LOGGING_BARRIER.as_ptr(),
         // In case we have more barriers in mmtk-core.
         #[allow(unreachable_patterns)]
         _ => unimplemented!(),

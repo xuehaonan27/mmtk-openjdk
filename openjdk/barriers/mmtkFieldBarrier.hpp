@@ -16,7 +16,7 @@
 #define LOG_BYTES_IN_CHUNK 22
 #define CHUNK_MASK ((1L << LOG_BYTES_IN_CHUNK) - 1)
 
-class MMTkFieldLoggingBarrierSetRuntime: public MMTkBarrierSetRuntime {
+class MMTkFieldBarrierSetRuntime: public MMTkBarrierSetRuntime {
 public:
   // Interfaces called by `MMTkBarrierSet::AccessBarrier`
   virtual void object_reference_write_pre(oop src, oop* slot, oop target) const override;
@@ -25,14 +25,14 @@ public:
   }
 };
 
-class MMTkFieldLoggingBarrierSetAssembler: public MMTkBarrierSetAssembler {
+class MMTkFieldBarrierSetAssembler: public MMTkBarrierSetAssembler {
 protected:
   virtual void object_reference_write_pre(MacroAssembler* masm, DecoratorSet decorators, Address dst, Register val, Register tmp1, Register tmp2) const override;
 public:
   virtual void arraycopy_prologue(MacroAssembler* masm, DecoratorSet decorators, BasicType type, Register src, Register dst, Register count) override;
 };
 
-class MMTkFieldLoggingBarrierSetC1: public MMTkBarrierSetC1 {
+class MMTkFieldBarrierSetC1: public MMTkBarrierSetC1 {
 protected:
   virtual void object_reference_write_pre(LIRAccess& access, LIR_Opr src, LIR_Opr slot, LIR_Opr new_val) const override;
 
@@ -41,16 +41,16 @@ protected:
   }
 };
 
-class MMTkFieldLoggingBarrierSetC2: public MMTkBarrierSetC2 {
+class MMTkFieldBarrierSetC2: public MMTkBarrierSetC2 {
 protected:
   virtual void object_reference_write_pre(GraphKit* kit, Node* src, Node* slot, Node* val) const override;
 };
 
-struct MMTkFieldLoggingBarrier: MMTkBarrierImpl<
-  MMTkFieldLoggingBarrierSetRuntime,
-  MMTkFieldLoggingBarrierSetAssembler,
-  MMTkFieldLoggingBarrierSetC1,
-  MMTkFieldLoggingBarrierSetC2
+struct MMTkFieldBarrier: MMTkBarrierImpl<
+  MMTkFieldBarrierSetRuntime,
+  MMTkFieldBarrierSetAssembler,
+  MMTkFieldBarrierSetC1,
+  MMTkFieldBarrierSetC2
 > {};
 
 #endif

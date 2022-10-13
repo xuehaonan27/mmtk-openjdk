@@ -1,9 +1,9 @@
-#include "mmtkFieldLoggingBarrier.hpp"
+#include "mmtkFieldBarrier.hpp"
 #include "runtime/interfaceSupport.inline.hpp"
 
 constexpr int kUnloggedValue = 1;
 
-void MMTkFieldLoggingBarrierSetRuntime::object_reference_write_pre(oop src, oop* slot, oop target) const {
+void MMTkFieldBarrierSetRuntime::object_reference_write_pre(oop src, oop* slot, oop target) const {
 #if MMTK_ENABLE_BARRIER_FASTPATH
     intptr_t addr = ((intptr_t) (void*) slot);
     uint8_t* meta_addr = (uint8_t*) (SIDE_METADATA_BASE_ADDRESS + (addr >> 6));
@@ -20,7 +20,7 @@ void MMTkFieldLoggingBarrierSetRuntime::object_reference_write_pre(oop src, oop*
 
 #define __ masm->
 
-void MMTkFieldLoggingBarrierSetAssembler::object_reference_write_pre(MacroAssembler* masm, DecoratorSet decorators, Address dst, Register val, Register tmp1, Register tmp2) const {
+void MMTkFieldBarrierSetAssembler::object_reference_write_pre(MacroAssembler* masm, DecoratorSet decorators, Address dst, Register val, Register tmp1, Register tmp2) const {
   if (can_remove_barrier(decorators, val, /* skip_const_null */ false)) return;
 #if MMTK_ENABLE_BARRIER_FASTPATH
   Label done;
@@ -65,7 +65,7 @@ void MMTkFieldLoggingBarrierSetAssembler::object_reference_write_pre(MacroAssemb
 #endif
 }
 
-void MMTkFieldLoggingBarrierSetAssembler::arraycopy_prologue(MacroAssembler* masm, DecoratorSet decorators, BasicType type, Register src, Register dst, Register count) {
+void MMTkFieldBarrierSetAssembler::arraycopy_prologue(MacroAssembler* masm, DecoratorSet decorators, BasicType type, Register src, Register dst, Register count) {
   const bool dest_uninitialized = (decorators & IS_DEST_UNINITIALIZED) != 0;
   if ((type == T_OBJECT || type == T_ARRAY) && !dest_uninitialized) {
     // Label slow, done;
@@ -86,7 +86,7 @@ void MMTkFieldLoggingBarrierSetAssembler::arraycopy_prologue(MacroAssembler* mas
     // assert(src == rdi, "expected");
     // assert(dst == rsi, "expected");
     // assert(count == rdx, "expected");
-    // __ call_VM_leaf(CAST_FROM_FN_PTR(address, MMTkFieldLoggingBarrierSetRuntime::record_array_copy_slow), src, dst, count);
+    // __ call_VM_leaf(CAST_FROM_FN_PTR(address, MMTkFieldBarrierSetRuntime::record_array_copy_slow), src, dst, count);
     // __ popa();
     // __ bind(done);
     __ pusha();
@@ -106,7 +106,7 @@ void MMTkFieldLoggingBarrierSetAssembler::arraycopy_prologue(MacroAssembler* mas
 #define __ gen->lir()->
 #endif
 
-void MMTkFieldLoggingBarrierSetC1::object_reference_write_pre(LIRAccess& access, LIR_Opr src, LIR_Opr slot, LIR_Opr new_val) const {
+void MMTkFieldBarrierSetC1::object_reference_write_pre(LIRAccess& access, LIR_Opr src, LIR_Opr slot, LIR_Opr new_val) const {
   LIRGenerator* gen = access.gen();
   DecoratorSet decorators = access.decorators();
   if ((decorators & IN_HEAP) == 0) return;
@@ -179,7 +179,7 @@ void MMTkFieldLoggingBarrierSetC1::object_reference_write_pre(LIRAccess& access,
 #define __ ideal.
 
 
-void MMTkFieldLoggingBarrierSetC2::object_reference_write_pre(GraphKit* kit, Node* src, Node* slot, Node* val) const {
+void MMTkFieldBarrierSetC2::object_reference_write_pre(GraphKit* kit, Node* src, Node* slot, Node* val) const {
   if (can_remove_barrier(kit, &kit->gvn(), src, slot, val, /* skip_const_null */ false)) return;
 
   MMTkIdealKit ideal(kit, true);
