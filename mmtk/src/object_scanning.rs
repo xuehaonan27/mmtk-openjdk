@@ -117,11 +117,34 @@ impl OopIterate for InstanceRefKlass {
                 ReferenceType::None => {
                     panic!("oop_iterate on InstanceRefKlass with reference_type as None")
                 }
-                ReferenceType::Weak => add_weak_candidate(reference),
-                ReferenceType::Soft => add_soft_candidate(reference),
-                ReferenceType::Phantom => add_phantom_candidate(reference),
+                ReferenceType::Weak => {
+                    if !crate::SINGLETON.reference_processors.allow_new_candidate() {
+                        Self::process_ref_as_strong(oop, closure)
+                    } else {
+                        add_weak_candidate(reference)
+                    }
+                }
+                ReferenceType::Soft => {
+                    // let oop = Oop::from(reff);
+                    // unsafe { InstanceRefKlass::referent_address(oop).store(ObjectReference::NULL) };
+                    if !crate::SINGLETON.reference_processors.allow_new_candidate() {
+                        Self::process_ref_as_strong(oop, closure)
+                    } else {
+                        add_soft_candidate(reference)
+                    }
+                    // Self::process_ref_as_strong(oop, closure)
+                }
+                ReferenceType::Phantom => {
+                    if !crate::SINGLETON.reference_processors.allow_new_candidate() {
+                        Self::process_ref_as_strong(oop, closure)
+                    } else {
+                        add_phantom_candidate(reference)
+                    }
+                }
                 // Process these two types normally (as if they are strong refs)
                 // We will handle final reference later
+                // ReferenceType::Weak
+                // | ReferenceType::Phantom
                 ReferenceType::Final | ReferenceType::Other => {
                     Self::process_ref_as_strong(oop, closure)
                 }
