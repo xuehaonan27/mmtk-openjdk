@@ -69,16 +69,26 @@ public:
 /// Barrier implementations may inherit from this class, and override `emit_code` to perform a specialized slow-path call.
 struct MMTkC1BarrierStub: CodeStub {
   LIR_Opr src, slot, new_val;
+  CodeEmitInfo* info; // Code patching info
+  LIR_PatchCode patch_code; // Enable code patching?
+  LIR_Opr scratch = NULL; // Scratch register for the resolved field
 
-  MMTkC1BarrierStub(LIR_Opr src, LIR_Opr slot, LIR_Opr new_val): src(src), slot(slot), new_val(new_val) {}
+  MMTkC1BarrierStub(LIR_Opr src, LIR_Opr slot, LIR_Opr new_val, CodeEmitInfo* info = NULL, LIR_PatchCode patch_code = lir_patch_none): src(src), slot(slot), new_val(new_val), info(info), patch_code(patch_code) {}
 
   virtual void emit_code(LIR_Assembler* ce) override;
 
   virtual void visit(LIR_OpVisitState* visitor) override {
-    visitor->do_slow_case();
+    if (info != NULL)
+        visitor->do_slow_case(info);
+      else
+        visitor->do_slow_case();
     if (src != NULL) visitor->do_input(src);
     if (slot != NULL) visitor->do_input(slot);
     if (new_val != NULL) visitor->do_input(new_val);
+    if (scratch != NULL) {
+      assert(scratch->is_oop(), "must be");
+      visitor->do_temp(scratch);
+    }
   }
 
   NOT_PRODUCT(virtual void print_name(outputStream* out) const { out->print("MMTkC1BarrierStub"); });
