@@ -1,6 +1,5 @@
 use crate::abi::{InstanceRefKlass, Oop};
 use crate::OpenJDK;
-use crate::UPCALLS;
 use mmtk::util::opaque_pointer::VMWorkerThread;
 use mmtk::util::ObjectReference;
 use mmtk::vm::ReferenceGlue;
@@ -18,9 +17,9 @@ impl ReferenceGlue<OpenJDK> for VMReferenceGlue {
         let oop = Oop::from(object);
         unsafe { InstanceRefKlass::referent_address(oop).load::<ObjectReference>() }
     }
-    fn enqueue_references(references: &[ObjectReference], _tls: VMWorkerThread) {
-        unsafe {
-            ((*UPCALLS).enqueue_references)(references.as_ptr(), references.len());
-        }
+    fn enqueue_references(_references: &[ObjectReference], _tls: VMWorkerThread) {
+        // unsafe {
+        //     ((*UPCALLS).enqueue_references)(references.as_ptr(), references.len());
+        // }
     }
 }

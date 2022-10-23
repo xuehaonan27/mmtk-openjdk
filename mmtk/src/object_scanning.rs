@@ -108,12 +108,9 @@ impl OopIterate for InstanceRefKlass {
     #[inline]
     fn oop_iterate(&self, oop: Oop, closure: &mut impl EdgeVisitor<OpenJDKEdge>) {
         use crate::abi::*;
-        use crate::api::{add_phantom_candidate, add_soft_candidate, add_weak_candidate};
         self.instance_klass.oop_iterate(oop, closure);
 
         if Self::should_scan_weak_refs() {
-            unreachable!();
-            let reference = ObjectReference::from(oop);
             match self.instance_klass.reference_type {
                 ReferenceType::None => {
                     panic!("oop_iterate on InstanceRefKlass with reference_type as None")
