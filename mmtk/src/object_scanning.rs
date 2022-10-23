@@ -112,33 +112,15 @@ impl OopIterate for InstanceRefKlass {
         self.instance_klass.oop_iterate(oop, closure);
 
         if Self::should_scan_weak_refs() {
+            unreachable!();
             let reference = ObjectReference::from(oop);
             match self.instance_klass.reference_type {
                 ReferenceType::None => {
                     panic!("oop_iterate on InstanceRefKlass with reference_type as None")
                 }
-                ReferenceType::Weak => {
-                    if !crate::SINGLETON.reference_processors.allow_new_candidate() {
+                rt @ (ReferenceType::Weak | ReferenceType::Soft | ReferenceType::Phantom) => {
+                    if !Self::discover_reference(oop, rt) {
                         Self::process_ref_as_strong(oop, closure)
-                    } else {
-                        add_weak_candidate(reference)
-                    }
-                }
-                ReferenceType::Soft => {
-                    // let oop = Oop::from(reff);
-                    // unsafe { InstanceRefKlass::referent_address(oop).store(ObjectReference::NULL) };
-                    if !crate::SINGLETON.reference_processors.allow_new_candidate() {
-                        Self::process_ref_as_strong(oop, closure)
-                    } else {
-                        add_soft_candidate(reference)
-                    }
-                    // Self::process_ref_as_strong(oop, closure)
-                }
-                ReferenceType::Phantom => {
-                    if !crate::SINGLETON.reference_processors.allow_new_candidate() {
-                        Self::process_ref_as_strong(oop, closure)
-                    } else {
-                        add_phantom_candidate(reference)
                     }
                 }
                 // Process these two types normally (as if they are strong refs)
@@ -167,6 +149,25 @@ impl InstanceRefKlass {
         closure.visit_edge(referent_addr);
         let discovered_addr = Self::discovered_address(oop);
         closure.visit_edge(discovered_addr);
+    }
+    #[inline]
+    fn discover_reference(oop: Oop, rt: ReferenceType) -> bool {
+        use crate::api::{add_phantom_candidate, add_soft_candidate, add_weak_candidate};
+        if !crate::SINGLETON.reference_processors.allow_new_candidate() {
+            return false;
+        }
+        let referent: ObjectReference = unsafe { InstanceRefKlass::referent_address(oop).load() };
+        if referent.is_live() {
+            return false;
+        }
+        let reference = ObjectReference::from(oop);
+        match rt {
+            ReferenceType::Weak => add_weak_candidate(reference),
+            ReferenceType::Soft => add_soft_candidate(reference),
+            ReferenceType::Phantom => add_phantom_candidate(reference),
+            _ => unreachable!(),
+        }
+        true
     }
 }
 
