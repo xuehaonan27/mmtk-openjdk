@@ -150,13 +150,17 @@ impl InstanceRefKlass {
     #[inline]
     fn discover_reference(oop: Oop, rt: ReferenceType) -> bool {
         use crate::api::{add_phantom_candidate, add_soft_candidate, add_weak_candidate};
+        // Do not discover new refs during reference processing.
         if !crate::SINGLETON.reference_processors.allow_new_candidate() {
             return false;
         }
+        // Do not discover if the referent is true.
         let referent: ObjectReference = unsafe { InstanceRefKlass::referent_address(oop).load() };
         if referent.is_live() {
             return false;
         }
+        // TODO: Do not discover if the referent is a nursery object.
+        // TODO: Fast list insertion
         let reference = ObjectReference::from(oop);
         match rt {
             ReferenceType::Weak => add_weak_candidate(reference),
