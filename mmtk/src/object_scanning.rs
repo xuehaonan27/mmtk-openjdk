@@ -1,3 +1,5 @@
+use crate::reference_glue::DISCOVERED_LISTS;
+
 use super::abi::*;
 use super::{OpenJDKEdge, UPCALLS};
 use mmtk::util::constants::*;
@@ -151,10 +153,16 @@ impl InstanceRefKlass {
     fn discover_reference(oop: Oop, rt: ReferenceType) -> bool {
         use crate::api::{add_phantom_candidate, add_soft_candidate, add_weak_candidate};
         // Do not discover new refs during reference processing.
-        if !crate::SINGLETON.reference_processors.allow_new_candidate() {
-            return false;
+        if crate::VM_REF_PROCESSOR {
+            if !DISCOVERED_LISTS.allow_discover() {
+                return false;
+            }
+        } else {
+            if !crate::SINGLETON.reference_processors.allow_new_candidate() {
+                return false;
+            }
         }
-        // Do not discover if the referent is true.
+        // Do not discover if the referent is live.
         let referent: ObjectReference = unsafe { InstanceRefKlass::referent_address(oop).load() };
         if referent.is_live() {
             return false;
@@ -162,11 +170,16 @@ impl InstanceRefKlass {
         // TODO: Do not discover if the referent is a nursery object.
         // TODO: Fast list insertion
         let reference = ObjectReference::from(oop);
-        match rt {
-            ReferenceType::Weak => add_weak_candidate(reference),
-            ReferenceType::Soft => add_soft_candidate(reference),
-            ReferenceType::Phantom => add_phantom_candidate(reference),
-            _ => unreachable!(),
+        if crate::VM_REF_PROCESSOR {
+            // crate::reference_glue::set_referent(reference, ObjectReference::NULL);
+            DISCOVERED_LISTS.get(rt).add(reference);
+        } else {
+            match rt {
+                ReferenceType::Weak => add_weak_candidate(reference),
+                ReferenceType::Soft => add_soft_candidate(reference),
+                ReferenceType::Phantom => add_phantom_candidate(reference),
+                _ => unreachable!(),
+            }
         }
         true
     }

@@ -155,7 +155,7 @@ pub struct InstanceKlass {
 }
 
 #[repr(u8)]
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
 #[allow(dead_code)]
 pub enum ReferenceType {
     None,    // Regular class

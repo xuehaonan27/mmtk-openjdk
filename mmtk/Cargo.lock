@@ -18,6 +18,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "64f46ca51dca4837f1520754d1c8c36636356b81553d928dc9c177025369a06e"
 
 [[package]]
+name = "atomic"
+version = "0.5.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b88d82667eca772c4aa12f0f1348b3ae643424c8876448f3f7bd5787032e234c"
+dependencies = [
+ "autocfg",
+]
+
+[[package]]
 name = "atomic-traits"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -342,7 +351,7 @@ name = "mmtk"
 version = "0.15.0"
 source = "git+https://github.com/mmtk/mmtk-core.git?rev=f82848847a6392537fec6b914d7ad95fbf28b0a2#f82848847a6392537fec6b914d7ad95fbf28b0a2"
 dependencies = [
- "atomic",
+ "atomic 0.4.6",
  "atomic-traits",
  "atomic_refcell",
  "built",
@@ -377,6 +386,7 @@ dependencies = [
 name = "mmtk_openjdk"
 version = "0.15.0"
 dependencies = [
+ "atomic 0.5.1",
  "built",
  "lazy_static",
  "libc",
