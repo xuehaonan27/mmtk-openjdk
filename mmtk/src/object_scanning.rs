@@ -168,7 +168,8 @@ impl InstanceRefKlass {
             return false;
         }
         // TODO: Do not discover if the referent is a nursery object.
-        // TODO: Fast list insertion
+
+        // Add to reference list
         let reference = ObjectReference::from(oop);
         if crate::VM_REF_PROCESSOR {
             // crate::reference_glue::set_referent(reference, ObjectReference::NULL);

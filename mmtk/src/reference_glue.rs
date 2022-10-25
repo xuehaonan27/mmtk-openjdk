@@ -1,5 +1,5 @@
 use std::marker::PhantomData;
-use std::sync::atomic::{AtomicBool, AtomicUsize};
+use std::sync::atomic::AtomicBool;
 use std::sync::Mutex;
 
 use crate::abi::{InstanceRefKlass, Oop, ReferenceType};
@@ -26,7 +26,7 @@ fn get_referent(object: ObjectReference) -> ObjectReference {
 #[inline(always)]
 fn get_next_reference_slot(object: ObjectReference) -> Address {
     let oop = Oop::from(object);
-    unsafe { InstanceRefKlass::discovered_address(oop) }
+    InstanceRefKlass::discovered_address(oop)
 }
 
 #[inline(always)]
@@ -61,22 +61,21 @@ impl ReferenceGlue<OpenJDK> for VMReferenceGlue {
 
 pub struct DiscoveredList {
     head: Atomic<ObjectReference>,
-    rt: ReferenceType,
+    _rt: ReferenceType,
 }
 
 impl DiscoveredList {
     fn new(rt: ReferenceType) -> Self {
         Self {
             head: Atomic::new(ObjectReference::NULL),
-            rt,
+            _rt: rt,
         }
     }
 
     #[inline]
     pub fn add(&self, obj: ObjectReference) {
-        // let _g = LOCK.lock().unwrap();
         let oop = Oop::from(obj);
-        let head = self.head.load(Ordering::SeqCst);
+        let head = self.head.load(Ordering::Relaxed);
         let discovered_addr = unsafe {
             InstanceRefKlass::discovered_address(oop).as_ref::<Atomic<ObjectReference>>()
         };
@@ -92,7 +91,7 @@ impl DiscoveredList {
             .is_ok()
         {
             // println!("add {:?} {:?}", self.rt, obj);
-            self.head.store(obj, Ordering::SeqCst);
+            self.head.store(obj, Ordering::Relaxed);
         }
         debug_assert!(!get_next_reference(obj).is_null());
     }
@@ -127,7 +126,7 @@ impl DiscoveredLists {
         self.allow_discover.load(Ordering::SeqCst)
     }
 
-    #[inline]
+    #[inline(always)]
     pub fn get_by_rt_and_index(&self, rt: ReferenceType, index: usize) -> &DiscoveredList {
         match rt {
             ReferenceType::Soft => &self.soft[index],
@@ -137,7 +136,7 @@ impl DiscoveredLists {
         }
     }
 
-    #[inline]
+    #[inline(always)]
     pub fn get(&self, rt: ReferenceType) -> &DiscoveredList {
         let id = mmtk::scheduler::worker::current_worker_ordinal().unwrap();
         self.get_by_rt_and_index(rt, id)
@@ -152,6 +151,7 @@ impl DiscoveredLists {
         let mut packets = vec![];
         for i in 0..lists.len() {
             let head = lists[i].head.load(Ordering::SeqCst);
+            lists[i].head.store(ObjectReference::NULL, Ordering::SeqCst);
             if head.is_null() {
                 continue;
             }
@@ -167,10 +167,10 @@ impl DiscoveredLists {
     }
 
     pub fn process<E: ProcessEdgesWork<VM = OpenJDK>>(&self, worker: &mut GCWorker<OpenJDK>) {
-        println!(
-            "process refs {}",
-            worker.mmtk.plan.is_emergency_collection()
-        );
+        // println!(
+        //     "process refs {}",
+        //     worker.mmtk.plan.is_emergency_collection()
+        // );
         self.allow_discover.store(false, Ordering::SeqCst);
         self.process_lists::<E>(worker, ReferenceType::Soft, &self.soft);
         self.process_lists::<E>(worker, ReferenceType::Weak, &self.weak);
@@ -194,71 +194,54 @@ impl<E: ProcessEdgesWork<VM = OpenJDK>> GCWork<OpenJDK> for ProcessDiscoveredLis
     fn do_work(&mut self, worker: &mut GCWorker<OpenJDK>, mmtk: &'static MMTK<OpenJDK>) {
         let mut trace = E::new(vec![], false, mmtk);
         trace.set_worker(worker);
-        // mmtk.reference_processors.scan_soft_refs(&mut w, mmtk);
-        let retain = true || self.rt == ReferenceType::Soft && !mmtk.plan.is_emergency_collection();
-        // if rt == ReferenceType::Soft && !mmtk.plan.is_emergency_collection() {
-        //     // Retain soft refs
-        //     let mut obj = self.head;
-        //     let mut prev_obj = ObjectReference::NULL;
-        //     while obj != prev_obj {
-        //         if !reference.is_live() {}
-        //         prev_obj = obj;
-        //         obj = get_next_reference(obj);
-        //     }
-        // }
+        let retain = self.rt == ReferenceType::Soft && !mmtk.get_plan().is_emergency_collection();
         let mut cursor = &mut self.head;
         let mut holder: Option<ObjectReference> = None;
         loop {
             debug_assert!(!cursor.is_null());
-            let mut reference = *cursor;
-            // Remove reference from list if it is dead
-            if !reference.is_live() {
-                set_referent(reference, ObjectReference::NULL);
-                let next_ref = get_next_reference(reference);
-                if next_ref == reference {
-                    if let Some(holder) = holder {
-                        *cursor = holder;
-                    } else {
-                        *cursor = ObjectReference::NULL;
-                    }
-                    break;
-                } else {
-                    debug_assert!(!next_ref.is_null());
-                    *cursor = next_ref;
-                    debug_assert!(!cursor.is_null());
-                    continue;
-                }
-            } else {
-                let new_reference = reference.get_forwarded_object().unwrap_or(reference);
-                // println!("reference {:?} => {:?}", reference, new_reference);
-                reference = new_reference;
-                *cursor = reference;
-            }
+            let reference = *cursor;
+            debug_assert!(reference.is_live());
+            debug_assert!(reference.get_forwarded_object().is_none());
             let referent = get_referent(reference);
             if !referent.is_null() && (referent.is_live() || retain) {
                 // Keep this ref
                 let forwarded = trace.trace_object(referent);
                 set_referent(reference, forwarded);
+                // Remove from list
+                let next_ref = get_next_reference(reference);
+                set_next_reference(reference, ObjectReference::NULL);
+                // End of list.
+                if next_ref.is_live() {
+                    let next_ref = next_ref.get_forwarded_object().unwrap_or(next_ref);
+                    if next_ref == reference {
+                        // End of list
+                        if let Some(holder) = holder {
+                            set_next_reference(holder, holder);
+                        }
+                        break;
+                    }
+                }
+                // Move to next
+                *cursor = next_ref;
+                // holder remains the same
             } else {
                 // Clear this ref
                 set_referent(reference, ObjectReference::NULL);
-            }
-            cursor = unsafe { &mut *get_next_reference_slot(reference).to_mut_ptr() };
-            holder = Some(reference);
-            let next_ref = get_next_reference(reference);
-            if next_ref.is_live() {
-                let next_ref = next_ref.get_forwarded_object().unwrap_or(next_ref);
-                if next_ref == reference {
-                    set_next_reference(reference, next_ref);
-                    break;
+                // Move to next
+                let next_ref = get_next_reference(reference);
+                cursor = unsafe { &mut *get_next_reference_slot(reference).to_mut_ptr() };
+                holder = Some(reference);
+                if next_ref.is_live() {
+                    let next_ref = next_ref.get_forwarded_object().unwrap_or(next_ref);
+                    if next_ref == reference {
+                        // End of list
+                        set_next_reference(reference, next_ref);
+                        break;
+                    }
                 }
             }
-            debug_assert!(!cursor.is_null(), "{:?}", reference);
         }
         trace.flush();
-        DISCOVERED_LISTS
-            .get_by_rt_and_index(self.rt, self.list_index)
-            .head
-            .store(self.head, Ordering::SeqCst);
+        // TODO: Flush the list to the Universe::pending_list
     }
 }
