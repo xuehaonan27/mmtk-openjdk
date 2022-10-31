@@ -1,4 +1,5 @@
 use crate::reference_glue::DISCOVERED_LISTS;
+use crate::SINGLETON;
 
 use super::abi::*;
 use super::{OpenJDKEdge, UPCALLS};
@@ -112,12 +113,15 @@ impl OopIterate for InstanceRefKlass {
         use crate::abi::*;
         self.instance_klass.oop_iterate(oop, closure);
 
-        if Self::should_scan_weak_refs() {
+        if Self::should_discover_refs(self.instance_klass.reference_type) {
             match self.instance_klass.reference_type {
                 ReferenceType::None => {
                     panic!("oop_iterate on InstanceRefKlass with reference_type as None")
                 }
-                rt @ (ReferenceType::Weak | ReferenceType::Soft | ReferenceType::Phantom) => {
+                rt @ (ReferenceType::Weak
+                | ReferenceType::Soft
+                | ReferenceType::Phantom
+                | ReferenceType::Final) => {
                     if !Self::discover_reference(oop, rt) {
                         Self::process_ref_as_strong(oop, closure)
                     }
@@ -126,9 +130,7 @@ impl OopIterate for InstanceRefKlass {
                 // We will handle final reference later
                 // ReferenceType::Weak
                 // | ReferenceType::Phantom
-                ReferenceType::Final | ReferenceType::Other => {
-                    Self::process_ref_as_strong(oop, closure)
-                }
+                ReferenceType::Other => Self::process_ref_as_strong(oop, closure),
             }
         } else {
             Self::process_ref_as_strong(oop, closure);
@@ -138,9 +140,14 @@ impl OopIterate for InstanceRefKlass {
 
 impl InstanceRefKlass {
     #[inline]
-    fn should_scan_weak_refs() -> bool {
-        use SINGLETON;
-        !*SINGLETON.get_options().no_reference_types
+    fn should_discover_refs(rt: ReferenceType) -> bool {
+        if *SINGLETON.get_options().no_finalizer && rt == ReferenceType::Final {
+            return false;
+        }
+        if *SINGLETON.get_options().no_reference_types && rt != ReferenceType::Final {
+            return false;
+        }
+        true
     }
     #[inline]
     fn process_ref_as_strong(oop: Oop, closure: &mut impl EdgeVisitor<OpenJDKEdge>) {

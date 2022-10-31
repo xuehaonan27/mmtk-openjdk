@@ -3,7 +3,7 @@ use std::sync::atomic::AtomicBool;
 use std::sync::Mutex;
 
 use crate::abi::{InstanceRefKlass, Oop, ReferenceType};
-use crate::OpenJDK;
+use crate::{OpenJDK, SINGLETON};
 use atomic::{Atomic, Ordering};
 use mmtk::scheduler::{GCWork, GCWorker, ProcessEdgesWork, WorkBucketStage};
 use mmtk::util::opaque_pointer::VMWorkerThread;
@@ -100,6 +100,7 @@ impl DiscoveredList {
 pub struct DiscoveredLists {
     pub soft: Vec<DiscoveredList>,
     pub weak: Vec<DiscoveredList>,
+    pub r#final: Vec<DiscoveredList>,
     pub phantom: Vec<DiscoveredList>,
     allow_discover: AtomicBool,
 }
@@ -111,6 +112,7 @@ impl DiscoveredLists {
         Self {
             soft: build_lists(ReferenceType::Soft),
             weak: build_lists(ReferenceType::Weak),
+            r#final: build_lists(ReferenceType::Final),
             phantom: build_lists(ReferenceType::Phantom),
             allow_discover: AtomicBool::new(true),
         }
@@ -132,6 +134,7 @@ impl DiscoveredLists {
             ReferenceType::Soft => &self.soft[index],
             ReferenceType::Weak => &self.weak[index],
             ReferenceType::Phantom => &self.phantom[index],
+            ReferenceType::Final => &self.r#final[index],
             _ => unimplemented!(),
         }
     }
@@ -147,11 +150,14 @@ impl DiscoveredLists {
         worker: &mut GCWorker<OpenJDK>,
         rt: ReferenceType,
         lists: &[DiscoveredList],
+        clear: bool,
     ) {
         let mut packets = vec![];
         for i in 0..lists.len() {
             let head = lists[i].head.load(Ordering::SeqCst);
-            lists[i].head.store(ObjectReference::NULL, Ordering::SeqCst);
+            if clear {
+                lists[i].head.store(ObjectReference::NULL, Ordering::SeqCst);
+            }
             if head.is_null() {
                 continue;
             }
@@ -168,21 +174,53 @@ impl DiscoveredLists {
 
     pub fn reconsider_soft_refs<E: ProcessEdgesWork<VM = OpenJDK>>(
         &self,
-        worker: &mut GCWorker<OpenJDK>,
+        _worker: &mut GCWorker<OpenJDK>,
     ) {
     }
 
-    pub fn process<E: ProcessEdgesWork<VM = OpenJDK>>(&self, worker: &mut GCWorker<OpenJDK>) {
+    pub fn process_soft_weak_final_refs<E: ProcessEdgesWork<VM = OpenJDK>>(
+        &self,
+        worker: &mut GCWorker<OpenJDK>,
+    ) {
         self.allow_discover.store(false, Ordering::SeqCst);
-        self.process_lists::<E>(worker, ReferenceType::Soft, &self.soft);
-        self.process_lists::<E>(worker, ReferenceType::Weak, &self.weak);
-        self.process_lists::<E>(worker, ReferenceType::Phantom, &self.phantom);
+        if !*SINGLETON.get_options().no_reference_types {
+            self.process_lists::<E>(worker, ReferenceType::Soft, &self.soft, true);
+            self.process_lists::<E>(worker, ReferenceType::Weak, &self.weak, true);
+        }
+        if !*SINGLETON.get_options().no_finalizer {
+            self.process_lists::<E>(worker, ReferenceType::Final, &self.r#final, false);
+        }
     }
 
     pub fn resurrect_final_refs<E: ProcessEdgesWork<VM = OpenJDK>>(
         &self,
         worker: &mut GCWorker<OpenJDK>,
     ) {
+        assert!(!*SINGLETON.get_options().no_finalizer);
+        let lists = &self.r#final;
+        let mut packets = vec![];
+        for i in 0..lists.len() {
+            let head = lists[i].head.load(Ordering::SeqCst);
+            lists[i].head.store(ObjectReference::NULL, Ordering::SeqCst);
+            if head.is_null() {
+                continue;
+            }
+            let w = ResurrectFinalizables {
+                list_index: i,
+                head,
+                _p: PhantomData::<E>,
+            };
+            packets.push(Box::new(w) as Box<dyn GCWork<OpenJDK>>);
+        }
+        worker.scheduler().work_buckets[WorkBucketStage::Unconstrained].bulk_add(packets);
+    }
+
+    pub fn process_phantom_refs<E: ProcessEdgesWork<VM = OpenJDK>>(
+        &self,
+        worker: &mut GCWorker<OpenJDK>,
+    ) {
+        assert!(!*SINGLETON.get_options().no_reference_types);
+        self.process_lists::<E>(worker, ReferenceType::Phantom, &self.phantom, true);
     }
 }
 
@@ -205,16 +243,21 @@ impl<E: ProcessEdgesWork<VM = OpenJDK>> GCWork<OpenJDK> for ProcessDiscoveredLis
         let retain = self.rt == ReferenceType::Soft && !mmtk.get_plan().is_emergency_collection();
         let new_list = iterate_list(self.head, |reference| {
             let referent = get_referent(reference);
-            if !referent.is_null() && (referent.is_live() || retain) {
+            if referent.is_null() {
+                // Remove from the discovered list
+                return IterationResult::Removed;
+            } else if referent.is_live() || retain {
                 // Keep this referent
                 let forwarded = trace.trace_object(referent);
                 set_referent(reference, forwarded);
-                // Remove the reference from the discovered list
+                // Remove from the discovered list
                 return IterationResult::Removed;
             } else {
-                // Clear this referent
-                set_referent(reference, ObjectReference::NULL);
-                // Keep the reference from the discovered list
+                if self.rt != ReferenceType::Final {
+                    // Clear this referent
+                    set_referent(reference, ObjectReference::NULL);
+                }
+                // Keep the reference
                 return IterationResult::Kept;
             }
         });
@@ -222,6 +265,48 @@ impl<E: ProcessEdgesWork<VM = OpenJDK>> GCWork<OpenJDK> for ProcessDiscoveredLis
         if let Some((head, tail)) = new_list {
             assert!(!head.is_null() && !tail.is_null());
             assert_eq!(tail, get_next_reference(tail));
+            if self.rt == ReferenceType::Final {
+                DISCOVERED_LISTS.r#final[self.list_index]
+                    .head
+                    .store(head, Ordering::SeqCst);
+            } else {
+                let old_head = unsafe { ((*crate::UPCALLS).swap_reference_pending_list)(head) };
+                set_next_reference(tail, old_head);
+            }
+        } else {
+            if self.rt == ReferenceType::Final {
+                DISCOVERED_LISTS.r#final[self.list_index]
+                    .head
+                    .store(ObjectReference::NULL, Ordering::SeqCst);
+            }
+        }
+        trace.flush();
+    }
+}
+
+pub struct ResurrectFinalizables<E: ProcessEdgesWork<VM = OpenJDK>> {
+    list_index: usize,
+    head: ObjectReference,
+    _p: PhantomData<E>,
+}
+
+impl<E: ProcessEdgesWork<VM = OpenJDK>> GCWork<OpenJDK> for ResurrectFinalizables<E> {
+    fn do_work(&mut self, worker: &mut GCWorker<OpenJDK>, mmtk: &'static MMTK<OpenJDK>) {
+        let mut trace = E::new(vec![], false, mmtk);
+        trace.set_worker(worker);
+        let new_list = iterate_list(self.head, |reference| {
+            let referent = get_referent(reference);
+            let forwarded = trace.trace_object(referent);
+            set_referent(reference, forwarded);
+            return IterationResult::Kept;
+        });
+
+        if let Some((head, tail)) = new_list {
+            assert!(!head.is_null() && !tail.is_null());
+            assert_eq!(tail, get_next_reference(tail));
+            DISCOVERED_LISTS.r#final[self.list_index]
+                .head
+                .store(ObjectReference::NULL, Ordering::SeqCst);
             let old_head = unsafe { ((*crate::UPCALLS).swap_reference_pending_list)(head) };
             set_next_reference(tail, old_head);
         }
@@ -238,10 +323,9 @@ fn iterate_list(
     mut head: ObjectReference,
     mut visitor: impl FnMut(ObjectReference) -> IterationResult,
 ) -> Option<(ObjectReference, ObjectReference)> {
-    // let retain = self.rt == ReferenceType::Soft && !mmtk.get_plan().is_emergency_collection();
     let mut cursor = &mut head;
     let mut holder: Option<ObjectReference> = None;
-    let mut tail: Option<ObjectReference>;
+    let tail: Option<ObjectReference>;
     loop {
         debug_assert!(!cursor.is_null());
         let reference = *cursor;

@@ -27,13 +27,30 @@
 #include "mmtkVMCompanionThread.hpp"
 #include "mmtkVMOperation.hpp"
 #include "logging/log.hpp"
+#include "interpreter/oopMapCache.hpp"
 
 VM_MMTkSTWOperation::VM_MMTkSTWOperation(MMTkVMCompanionThread *companion_thread):
     _companion_thread(companion_thread) {
+}
+
+bool VM_MMTkSTWOperation::doit_prologue() {
+    Heap_lock->lock();
+    return true;
 }
 
 void VM_MMTkSTWOperation::doit() {
     log_trace(vmthread)("Entered VM_MMTkSTWOperation::doit().");
     _companion_thread->reach_suspended_and_wait_for_resume();
     log_trace(vmthread)("Leaving VM_MMTkSTWOperation::doit()");
+}
+
+void VM_MMTkSTWOperation::doit_epilogue() {
+    // Clean up old interpreter OopMap entries that were replaced
+    // during the GC thread root traversal.
+    OopMapCache::cleanup_old_entries();
+    // Notify the reference processing thread
+    if (Universe::has_reference_pending_list()) {
+        Heap_lock->notify_all();
+    }
+    Heap_lock->unlock();
 }
