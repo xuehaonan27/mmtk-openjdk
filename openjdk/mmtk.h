@@ -177,6 +177,7 @@ typedef struct {
     void (*schedule_finalizer)();
     void (*prepare_for_roots_re_scanning)();
     void (*enqueue_references)(void** objects, size_t len);
+    void* (*swap_reference_pending_list)(void* objects);
 } OpenJDK_Upcalls;
 
 extern void openjdk_gc_init(OpenJDK_Upcalls *calls);

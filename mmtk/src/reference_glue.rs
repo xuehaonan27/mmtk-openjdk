@@ -167,10 +167,6 @@ impl DiscoveredLists {
     }
 
     pub fn process<E: ProcessEdgesWork<VM = OpenJDK>>(&self, worker: &mut GCWorker<OpenJDK>) {
-        // println!(
-        //     "process refs {}",
-        //     worker.mmtk.plan.is_emergency_collection()
-        // );
         self.allow_discover.store(false, Ordering::SeqCst);
         self.process_lists::<E>(worker, ReferenceType::Soft, &self.soft);
         self.process_lists::<E>(worker, ReferenceType::Weak, &self.weak);
@@ -197,6 +193,7 @@ impl<E: ProcessEdgesWork<VM = OpenJDK>> GCWork<OpenJDK> for ProcessDiscoveredLis
         let retain = self.rt == ReferenceType::Soft && !mmtk.get_plan().is_emergency_collection();
         let mut cursor = &mut self.head;
         let mut holder: Option<ObjectReference> = None;
+        let mut tail: Option<ObjectReference>;
         loop {
             debug_assert!(!cursor.is_null());
             let reference = *cursor;
@@ -217,13 +214,16 @@ impl<E: ProcessEdgesWork<VM = OpenJDK>> GCWork<OpenJDK> for ProcessDiscoveredLis
                         // End of list
                         if let Some(holder) = holder {
                             set_next_reference(holder, holder);
+                            tail = Some(holder);
+                        } else {
+                            *cursor = ObjectReference::NULL;
+                            tail = None;
                         }
                         break;
                     }
                 }
                 // Move to next
                 *cursor = next_ref;
-                // holder remains the same
             } else {
                 // Clear this ref
                 set_referent(reference, ObjectReference::NULL);
@@ -236,12 +236,22 @@ impl<E: ProcessEdgesWork<VM = OpenJDK>> GCWork<OpenJDK> for ProcessDiscoveredLis
                     if next_ref == reference {
                         // End of list
                         set_next_reference(reference, next_ref);
+                        tail = Some(reference);
                         break;
                     }
                 }
             }
         }
+        // Flush the list to the Universe::pending_list
+        let head = *cursor;
+        if let Some(tail) = tail {
+            assert!(!head.is_null());
+            assert_eq!(tail, get_next_reference(tail));
+            let old_head = unsafe { ((*crate::UPCALLS).swap_reference_pending_list)(head) };
+            set_next_reference(tail, old_head);
+        } else {
+            assert!(head.is_null());
+        }
         trace.flush();
-        // TODO: Flush the list to the Universe::pending_list
     }
 }
