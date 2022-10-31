@@ -166,11 +166,23 @@ impl DiscoveredLists {
         worker.scheduler().work_buckets[WorkBucketStage::Unconstrained].bulk_add(packets);
     }
 
+    pub fn reconsider_soft_refs<E: ProcessEdgesWork<VM = OpenJDK>>(
+        &self,
+        worker: &mut GCWorker<OpenJDK>,
+    ) {
+    }
+
     pub fn process<E: ProcessEdgesWork<VM = OpenJDK>>(&self, worker: &mut GCWorker<OpenJDK>) {
         self.allow_discover.store(false, Ordering::SeqCst);
         self.process_lists::<E>(worker, ReferenceType::Soft, &self.soft);
         self.process_lists::<E>(worker, ReferenceType::Weak, &self.weak);
         self.process_lists::<E>(worker, ReferenceType::Phantom, &self.phantom);
+    }
+
+    pub fn resurrect_final_refs<E: ProcessEdgesWork<VM = OpenJDK>>(
+        &self,
+        worker: &mut GCWorker<OpenJDK>,
+    ) {
     }
 }
 
@@ -191,23 +203,58 @@ impl<E: ProcessEdgesWork<VM = OpenJDK>> GCWork<OpenJDK> for ProcessDiscoveredLis
         let mut trace = E::new(vec![], false, mmtk);
         trace.set_worker(worker);
         let retain = self.rt == ReferenceType::Soft && !mmtk.get_plan().is_emergency_collection();
-        let mut cursor = &mut self.head;
-        let mut holder: Option<ObjectReference> = None;
-        let mut tail: Option<ObjectReference>;
-        loop {
-            debug_assert!(!cursor.is_null());
-            let reference = *cursor;
-            debug_assert!(reference.is_live());
-            debug_assert!(reference.get_forwarded_object().is_none());
+        let new_list = iterate_list(self.head, |reference| {
             let referent = get_referent(reference);
             if !referent.is_null() && (referent.is_live() || retain) {
-                // Keep this ref
+                // Keep this referent
                 let forwarded = trace.trace_object(referent);
                 set_referent(reference, forwarded);
-                // Remove from list
+                // Remove the reference from the discovered list
+                return IterationResult::Removed;
+            } else {
+                // Clear this referent
+                set_referent(reference, ObjectReference::NULL);
+                // Keep the reference from the discovered list
+                return IterationResult::Kept;
+            }
+        });
+        // Flush the list to the Universe::pending_list
+        if let Some((head, tail)) = new_list {
+            assert!(!head.is_null() && !tail.is_null());
+            assert_eq!(tail, get_next_reference(tail));
+            let old_head = unsafe { ((*crate::UPCALLS).swap_reference_pending_list)(head) };
+            set_next_reference(tail, old_head);
+        }
+        trace.flush();
+    }
+}
+
+enum IterationResult {
+    Kept,
+    Removed,
+}
+
+fn iterate_list(
+    mut head: ObjectReference,
+    mut visitor: impl FnMut(ObjectReference) -> IterationResult,
+) -> Option<(ObjectReference, ObjectReference)> {
+    // let retain = self.rt == ReferenceType::Soft && !mmtk.get_plan().is_emergency_collection();
+    let mut cursor = &mut head;
+    let mut holder: Option<ObjectReference> = None;
+    let mut tail: Option<ObjectReference>;
+    loop {
+        debug_assert!(!cursor.is_null());
+        let reference = *cursor;
+        debug_assert!(reference.is_live());
+        debug_assert!(reference.get_forwarded_object().is_none());
+        let next_ref = get_next_reference(reference);
+        let result = visitor(reference);
+        match result {
+            IterationResult::Removed => {
+                // Remove `reference` from list
                 let next_ref = get_next_reference(reference);
                 set_next_reference(reference, ObjectReference::NULL);
-                // End of list.
+                // Reached the end of the list?
                 if next_ref.is_live() {
                     let next_ref = next_ref.get_forwarded_object().unwrap_or(next_ref);
                     if next_ref == reference {
@@ -224,13 +271,9 @@ impl<E: ProcessEdgesWork<VM = OpenJDK>> GCWork<OpenJDK> for ProcessDiscoveredLis
                 }
                 // Move to next
                 *cursor = next_ref;
-            } else {
-                // Clear this ref
-                set_referent(reference, ObjectReference::NULL);
-                // Move to next
-                let next_ref = get_next_reference(reference);
-                cursor = unsafe { &mut *get_next_reference_slot(reference).to_mut_ptr() };
-                holder = Some(reference);
+            }
+            IterationResult::Kept => {
+                // Reached the end of the list?
                 if next_ref.is_live() {
                     let next_ref = next_ref.get_forwarded_object().unwrap_or(next_ref);
                     if next_ref == reference {
@@ -240,18 +283,15 @@ impl<E: ProcessEdgesWork<VM = OpenJDK>> GCWork<OpenJDK> for ProcessDiscoveredLis
                         break;
                     }
                 }
+                // Move to next
+                cursor = unsafe { &mut *get_next_reference_slot(reference).to_mut_ptr() };
+                holder = Some(reference);
             }
         }
-        // Flush the list to the Universe::pending_list
-        let head = *cursor;
-        if let Some(tail) = tail {
-            assert!(!head.is_null());
-            assert_eq!(tail, get_next_reference(tail));
-            let old_head = unsafe { ((*crate::UPCALLS).swap_reference_pending_list)(head) };
-            set_next_reference(tail, old_head);
-        } else {
-            assert!(head.is_null());
-        }
-        trace.flush();
+    }
+    if head.is_null() {
+        None
+    } else {
+        Some((head, tail.unwrap()))
     }
 }
