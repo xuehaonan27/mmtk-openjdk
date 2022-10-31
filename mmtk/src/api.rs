@@ -381,8 +381,8 @@ pub extern "C" fn mmtk_array_copy_post(
 
 // finalization
 #[no_mangle]
-pub extern "C" fn add_finalizer(object: ObjectReference) {
-    memory_manager::add_finalizer(&SINGLETON, object);
+pub extern "C" fn add_finalizer(_object: ObjectReference) {
+    unreachable!()
 }
 
 #[no_mangle]

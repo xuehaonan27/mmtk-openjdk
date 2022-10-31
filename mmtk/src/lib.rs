@@ -2,6 +2,7 @@ extern crate libc;
 extern crate mmtk;
 #[macro_use]
 extern crate lazy_static;
+extern crate atomic;
 extern crate once_cell;
 extern crate spin;
 
@@ -100,6 +101,7 @@ pub struct OpenJDK_Upcalls {
     pub prepare_for_roots_re_scanning: extern "C" fn(),
     pub update_weak_processor: extern "C" fn(),
     pub enqueue_references: extern "C" fn(objects: *const ObjectReference, len: usize),
+    pub swap_reference_pending_list: extern "C" fn(objects: ObjectReference) -> ObjectReference,
 }
 thread_local! {
     pub static CURRENT_WORKER: RefCell<Option<*mut GCWorker<OpenJDK>>> = RefCell::new(None);
@@ -182,3 +184,5 @@ lazy_static! {
 
 /// A counter tracking the total size of the `CODE_CACHE_ROOTS`.
 static CODE_CACHE_ROOTS_SIZE: AtomicUsize = AtomicUsize::new(0);
+
+const VM_REF_PROCESSOR: bool = true;

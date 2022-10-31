@@ -1,3 +1,6 @@
+use crate::reference_glue::DISCOVERED_LISTS;
+use crate::SINGLETON;
+
 use super::abi::*;
 use super::{OpenJDKEdge, UPCALLS};
 use mmtk::util::constants::*;
@@ -108,23 +111,26 @@ impl OopIterate for InstanceRefKlass {
     #[inline(always)]
     fn oop_iterate(&self, oop: Oop, closure: &mut impl EdgeVisitor<OpenJDKEdge>) {
         use crate::abi::*;
-        use crate::api::{add_phantom_candidate, add_soft_candidate, add_weak_candidate};
         self.instance_klass.oop_iterate(oop, closure);
 
-        if Self::should_scan_weak_refs() {
-            let reference = unsafe { Address::from_ref(oop).to_object_reference() };
+        if Self::should_discover_refs(self.instance_klass.reference_type) {
             match self.instance_klass.reference_type {
                 ReferenceType::None => {
                     panic!("oop_iterate on InstanceRefKlass with reference_type as None")
                 }
-                ReferenceType::Weak => add_weak_candidate(reference),
-                ReferenceType::Soft => add_soft_candidate(reference),
-                ReferenceType::Phantom => add_phantom_candidate(reference),
+                rt @ (ReferenceType::Weak
+                | ReferenceType::Soft
+                | ReferenceType::Phantom
+                | ReferenceType::Final) => {
+                    if !Self::discover_reference(oop, rt) {
+                        Self::process_ref_as_strong(oop, closure)
+                    }
+                }
                 // Process these two types normally (as if they are strong refs)
                 // We will handle final reference later
-                ReferenceType::Final | ReferenceType::Other => {
-                    Self::process_ref_as_strong(oop, closure)
-                }
+                // ReferenceType::Weak
+                // | ReferenceType::Phantom
+                ReferenceType::Other => Self::process_ref_as_strong(oop, closure),
             }
         } else {
             Self::process_ref_as_strong(oop, closure);
@@ -134,9 +140,17 @@ impl OopIterate for InstanceRefKlass {
 
 impl InstanceRefKlass {
     #[inline]
-    fn should_scan_weak_refs() -> bool {
-        use SINGLETON;
-        !*SINGLETON.get_options().no_reference_types
+    fn should_discover_refs(rt: ReferenceType) -> bool {
+        if *SINGLETON.get_options().no_finalizer && rt == ReferenceType::Final {
+            return false;
+        }
+        if *SINGLETON.get_options().no_reference_types && rt != ReferenceType::Final {
+            return false;
+        }
+        if !SINGLETON.get_plan().should_process_refs_at_current_gc() {
+            return false;
+        }
+        true
     }
     #[inline]
     fn process_ref_as_strong(oop: Oop, closure: &mut impl EdgeVisitor<OpenJDKEdge>) {
@@ -144,6 +158,41 @@ impl InstanceRefKlass {
         closure.visit_edge(referent_addr);
         let discovered_addr = Self::discovered_address(oop);
         closure.visit_edge(discovered_addr);
+    }
+    #[inline]
+    fn discover_reference(oop: Oop, rt: ReferenceType) -> bool {
+        use crate::api::{add_phantom_candidate, add_soft_candidate, add_weak_candidate};
+        // Do not discover new refs during reference processing.
+        if crate::VM_REF_PROCESSOR {
+            if !DISCOVERED_LISTS.allow_discover() {
+                return false;
+            }
+        } else {
+            if !crate::SINGLETON.reference_processors.allow_new_candidate() {
+                return false;
+            }
+        }
+        // Do not discover if the referent is live.
+        let referent: ObjectReference = unsafe { InstanceRefKlass::referent_address(oop).load() };
+        if referent.is_live() {
+            return false;
+        }
+        // TODO: Do not discover if the referent is a nursery object.
+
+        // Add to reference list
+        let reference: ObjectReference = oop.into();
+        if crate::VM_REF_PROCESSOR {
+            // crate::reference_glue::set_referent(reference, ObjectReference::NULL);
+            DISCOVERED_LISTS.get(rt).add(reference);
+        } else {
+            match rt {
+                ReferenceType::Weak => add_weak_candidate(reference),
+                ReferenceType::Soft => add_soft_candidate(reference),
+                ReferenceType::Phantom => add_phantom_candidate(reference),
+                _ => unreachable!(),
+            }
+        }
+        true
     }
 }
 

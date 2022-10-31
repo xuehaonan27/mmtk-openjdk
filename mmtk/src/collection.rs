@@ -1,8 +1,10 @@
+use mmtk::scheduler::{GCWorker, ProcessEdgesWork};
 use mmtk::util::alloc::AllocationError;
 use mmtk::util::opaque_pointer::*;
 use mmtk::vm::{Collection, GCThreadContext, Scanning, VMBinding};
 use mmtk::{Mutator, MutatorContext};
 
+use crate::reference_glue::DISCOVERED_LISTS;
 use crate::UPCALLS;
 use crate::{MutatorClosure, OpenJDK};
 
@@ -51,6 +53,7 @@ impl Collection<OpenJDK> for VMCollection {
     }
 
     fn resume_mutators(tls: VMWorkerThread) {
+        DISCOVERED_LISTS.enable_discover();
         unsafe {
             ((*UPCALLS).resume_mutators)(tls);
         }
@@ -92,8 +95,24 @@ impl Collection<OpenJDK> for VMCollection {
     }
 
     fn schedule_finalization(_tls: VMWorkerThread) {
-        unsafe {
-            ((*UPCALLS).schedule_finalizer)();
+        unreachable!()
+    }
+
+    fn process_weak_refs<E: ProcessEdgesWork<VM = OpenJDK>>(worker: &mut GCWorker<OpenJDK>) {
+        if crate::VM_REF_PROCESSOR {
+            DISCOVERED_LISTS.process_soft_weak_final_refs::<E>(worker)
+        }
+    }
+
+    fn process_final_refs<E: ProcessEdgesWork<VM = OpenJDK>>(worker: &mut GCWorker<OpenJDK>) {
+        if crate::VM_REF_PROCESSOR {
+            DISCOVERED_LISTS.resurrect_final_refs::<E>(worker)
+        }
+    }
+
+    fn process_phantom_refs<E: ProcessEdgesWork<VM = OpenJDK>>(worker: &mut GCWorker<OpenJDK>) {
+        if crate::VM_REF_PROCESSOR {
+            DISCOVERED_LISTS.process_phantom_refs::<E>(worker)
         }
     }
 
