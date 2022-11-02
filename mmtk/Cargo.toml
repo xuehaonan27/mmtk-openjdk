@@ -76,7 +76,6 @@ immix = []
 
 sanity = ["mmtk/sanity"]
 barrier_measurement = ["mmtk/barrier_measurement"]
-work_packet_timer = ["mmtk/work_packet_timer"]
 yield_and_roots_timer = ["mmtk/yield_and_roots_timer"]
 satb_timer = ["mmtk/satb_timer"]
 instrumentation = ["mmtk/instrumentation"]
