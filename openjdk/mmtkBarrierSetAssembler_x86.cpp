@@ -202,7 +202,7 @@ void MMTkBarrierSetAssembler::generate_c1_write_barrier_stub_call(LIR_Assembler*
     auto masm = ce->masm();
     LIR_Address* addr = stub->slot->as_address_ptr();
     Address from_addr = ce->as_Address(addr);
-    __ movptr(stub->scratch->as_register(), from_addr);
+    __ lea(stub->scratch->as_register(), from_addr);
     // Store parameter
     ce->store_parameter(stub->scratch->as_pointer_register(), 1);
   } else {
