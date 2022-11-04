@@ -6,7 +6,7 @@ constexpr int kUnloggedValue = 1;
 void MMTkFieldBarrierSetRuntime::object_reference_write_pre(oop src, oop* slot, oop target) const {
 #if MMTK_ENABLE_BARRIER_FASTPATH
     intptr_t addr = ((intptr_t) (void*) slot);
-    uint8_t* meta_addr = (uint8_t*) (SIDE_METADATA_BASE_ADDRESS + (addr >> 6));
+    const volatile uint8_t * meta_addr = (const volatile uint8_t *) (SIDE_METADATA_BASE_ADDRESS + (addr >> 6));
     intptr_t shift = (addr >> 3) & 0b111;
     uint8_t byte_val = *meta_addr;
     if (((byte_val >> shift) & 1) == kUnloggedValue) {

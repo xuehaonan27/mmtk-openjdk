@@ -44,6 +44,10 @@ protected:
 class MMTkFieldBarrierSetC2: public MMTkBarrierSetC2 {
 protected:
   virtual void object_reference_write_pre(GraphKit* kit, Node* src, Node* slot, Node* val) const override;
+public:
+  virtual bool array_copy_requires_gc_barriers(BasicType type) const override {
+    return false;
+  }
 };
 
 struct MMTkFieldBarrier: MMTkBarrierImpl<

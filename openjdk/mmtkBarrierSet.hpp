@@ -204,7 +204,7 @@ public:
     }
 
     template <typename T>
-    static bool oop_arraycopy_in_heap_impl(arrayOop src_obj, size_t src_offset_in_bytes, T* src_raw,
+    static bool oop_arraycopy_in_heap(arrayOop src_obj, size_t src_offset_in_bytes, T* src_raw,
                                       arrayOop dst_obj, size_t dst_offset_in_bytes, T* dst_raw,
                                       size_t length) {
       T* src = arrayOopDesc::obj_offset_to_raw(src_obj, src_offset_in_bytes, src_raw);
