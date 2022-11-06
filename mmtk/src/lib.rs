@@ -187,5 +187,3 @@ lazy_static! {
 
 /// A counter tracking the total size of the `CODE_CACHE_ROOTS`.
 static CODE_CACHE_ROOTS_SIZE: AtomicUsize = AtomicUsize::new(0);
-
-const VM_REF_PROCESSOR: bool = true;

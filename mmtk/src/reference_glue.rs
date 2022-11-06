@@ -44,18 +44,15 @@ pub struct VMReferenceGlue {}
 impl ReferenceGlue<OpenJDK> for VMReferenceGlue {
     type FinalizableType = ObjectReference;
 
-    fn set_referent(_reff: ObjectReference, _referent: ObjectReference) {
-        unreachable!()
+    fn set_referent(reff: ObjectReference, referent: ObjectReference) {
+        let oop = Oop::from(reff);
+        unsafe { InstanceRefKlass::referent_address(oop).store(referent) };
     }
     fn get_referent(object: ObjectReference) -> ObjectReference {
         let oop = Oop::from(object);
         unsafe { InstanceRefKlass::referent_address(oop).load::<ObjectReference>() }
     }
-    fn enqueue_references(_references: &[ObjectReference], _tls: VMWorkerThread) {
-        // unsafe {
-        //     ((*UPCALLS).enqueue_references)(references.as_ptr(), references.len());
-        // }
-    }
+    fn enqueue_references(_references: &[ObjectReference], _tls: VMWorkerThread) {}
 }
 
 pub struct DiscoveredList {
@@ -72,15 +69,17 @@ impl DiscoveredList {
     }
 
     #[inline]
-    pub fn add(&self, obj: ObjectReference) {
-        let _ = mmtk::util::rc::inc(obj);
-        let _ = mmtk::util::rc::inc(get_referent(obj));
-        let oop = Oop::from(obj);
+    pub fn add(&self, reference: ObjectReference, referent: ObjectReference) {
+        // Keep reference and referent alive during SATB
+        SINGLETON.get_plan().discover_reference(reference, referent);
+        // Add to the corresponding list
+        // Note that the list is a singly-linked list, and the tail object should point to itself.
+        let oop = Oop::from(reference);
         let head = self.head.load(Ordering::Relaxed);
         let discovered_addr = unsafe {
             InstanceRefKlass::discovered_address(oop).as_ref::<Atomic<ObjectReference>>()
         };
-        let next_discovered = if head.is_null() { obj } else { head };
+        let next_discovered = if head.is_null() { reference } else { head };
         debug_assert!(!next_discovered.is_null());
         if discovered_addr
             .compare_exchange(
@@ -91,10 +90,9 @@ impl DiscoveredList {
             )
             .is_ok()
         {
-            // println!("add {:?} {:?}", self.rt, obj);
-            self.head.store(obj, Ordering::Relaxed);
+            self.head.store(reference, Ordering::Relaxed);
         }
-        debug_assert!(!get_next_reference(obj).is_null());
+        debug_assert!(!get_next_reference(reference).is_null());
     }
 }
 
@@ -183,7 +181,6 @@ impl DiscoveredLists {
         &self,
         worker: &mut GCWorker<OpenJDK>,
     ) {
-        println!("process_soft_weak_final_refs");
         self.allow_discover.store(false, Ordering::SeqCst);
         if !*SINGLETON.get_options().no_reference_types {
             self.process_lists::<E>(worker, ReferenceType::Soft, &self.soft, true);
@@ -198,7 +195,6 @@ impl DiscoveredLists {
         &self,
         worker: &mut GCWorker<OpenJDK>,
     ) {
-        println!("resurrect_final_refs");
         assert!(!*SINGLETON.get_options().no_finalizer);
         let lists = &self.r#final;
         let mut packets = vec![];
@@ -222,7 +218,6 @@ impl DiscoveredLists {
         &self,
         worker: &mut GCWorker<OpenJDK>,
     ) {
-        println!("process_phantom_refs");
         assert!(!*SINGLETON.get_options().no_reference_types);
         self.process_lists::<E>(worker, ReferenceType::Phantom, &self.phantom, true);
     }
@@ -253,8 +248,8 @@ impl<E: ProcessEdgesWork<VM = OpenJDK>> GCWork<OpenJDK> for ProcessDiscoveredLis
             } else if referent.is_reachable() || retain {
                 // Keep this referent
                 let forwarded = trace.trace_object(referent);
-                assert!(forwarded.get_forwarded_object().is_none());
-                assert!(reference.get_forwarded_object().is_none());
+                debug_assert!(forwarded.get_forwarded_object().is_none());
+                debug_assert!(reference.get_forwarded_object().is_none());
                 set_referent(reference, forwarded);
                 // Remove from the discovered list
                 return DiscoveredListIterationResult::Remove;
@@ -262,15 +257,6 @@ impl<E: ProcessEdgesWork<VM = OpenJDK>> GCWork<OpenJDK> for ProcessDiscoveredLis
                 if self.rt != ReferenceType::Final {
                     // Clear this referent
                     set_referent(reference, ObjectReference::NULL);
-                    println!(
-                        " - [{:?}] {:?} {} => {:?} {} {} swpt",
-                        self.rt,
-                        reference,
-                        mmtk::util::rc::count(reference),
-                        referent,
-                        mmtk::util::rc::count(referent),
-                        referent.get_forwarded_object().is_none()
-                    );
                 }
                 // Keep the reference
                 return DiscoveredListIterationResult::Enqueue;
@@ -278,8 +264,8 @@ impl<E: ProcessEdgesWork<VM = OpenJDK>> GCWork<OpenJDK> for ProcessDiscoveredLis
         });
         // Flush the list to the Universe::pending_list
         if let Some((head, tail)) = new_list {
-            assert!(!head.is_null() && !tail.is_null());
-            assert_eq!(ObjectReference::NULL, get_next_reference(tail));
+            debug_assert!(!head.is_null() && !tail.is_null());
+            debug_assert_eq!(ObjectReference::NULL, get_next_reference(tail));
             if self.rt == ReferenceType::Final {
                 DISCOVERED_LISTS.r#final[self.list_index]
                     .head
@@ -313,14 +299,13 @@ impl<E: ProcessEdgesWork<VM = OpenJDK>> GCWork<OpenJDK> for ResurrectFinalizable
             let referent = get_referent(reference);
             let forwarded = trace.trace_object(referent);
             set_referent(reference, forwarded);
-            assert!(forwarded.get_forwarded_object().is_none());
-            println!(" - [final] {:?} => {:?} forwarded", reference, forwarded);
+            debug_assert!(forwarded.get_forwarded_object().is_none());
             return DiscoveredListIterationResult::Enqueue;
         });
 
         if let Some((head, tail)) = new_list {
-            assert!(!head.is_null() && !tail.is_null());
-            assert_eq!(ObjectReference::NULL, get_next_reference(tail));
+            debug_assert!(!head.is_null() && !tail.is_null());
+            debug_assert_eq!(ObjectReference::NULL, get_next_reference(tail));
             DISCOVERED_LISTS.r#final[self.list_index]
                 .head
                 .store(ObjectReference::NULL, Ordering::SeqCst);
@@ -350,12 +335,12 @@ fn iterate_list(
         if let Some(forwarded) = reference.get_forwarded_object() {
             reference = forwarded;
         }
-        assert!(reference.get_forwarded_object().is_none());
-        assert!(reference.is_reachable());
+        debug_assert!(reference.get_forwarded_object().is_none());
+        debug_assert!(reference.is_reachable());
         // Update next_ref forwarding pointer
         let next_ref = get_next_reference(reference);
         let next_ref = next_ref.get_forwarded_object().unwrap_or(next_ref);
-        assert!(next_ref.get_forwarded_object().is_none());
+        debug_assert!(next_ref.get_forwarded_object().is_none());
         // Reaches the end of the list?
         let end_of_list = next_ref == reference || next_ref.is_null();
         // Process reference

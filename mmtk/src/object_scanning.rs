@@ -158,16 +158,9 @@ impl InstanceRefKlass {
     }
     #[inline]
     fn discover_reference(oop: Oop, rt: ReferenceType) -> bool {
-        use crate::api::{add_phantom_candidate, add_soft_candidate, add_weak_candidate};
         // Do not discover new refs during reference processing.
-        if crate::VM_REF_PROCESSOR {
-            if !DISCOVERED_LISTS.allow_discover() {
-                return false;
-            }
-        } else {
-            if !crate::SINGLETON.reference_processors.allow_new_candidate() {
-                return false;
-            }
+        if !DISCOVERED_LISTS.allow_discover() {
+            return false;
         }
         // Do not discover if the referent is live.
         let referent: ObjectReference = unsafe { InstanceRefKlass::referent_address(oop).load() };
@@ -177,27 +170,14 @@ impl InstanceRefKlass {
         }
         // Skip young referents
         let reference: ObjectReference = oop.into();
-        if mmtk::util::rc::count(reference) == 0 {
+        if !SINGLETON
+            .get_plan()
+            .should_process_reference(reference, referent)
+        {
             return false;
         }
-        if mmtk::util::rc::count(referent) == 0 {
-            return false;
-        }
-
         // Add to reference list
-        if crate::VM_REF_PROCESSOR {
-            if rt == ReferenceType::Final {
-                println!("{:?} {:?} -> {:?}", rt, reference, referent);
-            }
-            DISCOVERED_LISTS.get(rt).add(reference);
-        } else {
-            match rt {
-                ReferenceType::Weak => add_weak_candidate(reference),
-                ReferenceType::Soft => add_soft_candidate(reference),
-                ReferenceType::Phantom => add_phantom_candidate(reference),
-                _ => unreachable!(),
-            }
-        }
+        DISCOVERED_LISTS.get(rt).add(reference, referent);
         true
     }
 }
