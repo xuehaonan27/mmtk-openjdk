@@ -11,6 +11,7 @@ class MMTkBarrierSetC1 : public BarrierSetC1 {
 
 protected:
   CodeBlob* _write_barrier_c1_runtime_code_blob;
+  CodeBlob* _ref_load_barrier_c1_runtime_code_blob;
 
   /// Full pre-barrier
   virtual void object_reference_write_pre(LIRAccess& access, LIR_Opr src, LIR_Opr slot, LIR_Opr new_val) const {}
@@ -92,6 +93,25 @@ struct MMTkC1BarrierStub: CodeStub {
   }
 
   NOT_PRODUCT(virtual void print_name(outputStream* out) const { out->print("MMTkC1BarrierStub"); });
+};
+
+struct MMTkC1ReferenceLoadBarrierStub: CodeStub {
+  LIR_Opr val;
+  CodeEmitInfo* info; // Code patching info
+
+  MMTkC1ReferenceLoadBarrierStub(LIR_Opr val, CodeEmitInfo* info = NULL): val(val), info(info) {}
+
+  virtual void emit_code(LIR_Assembler* ce) override;
+
+  virtual void visit(LIR_OpVisitState* visitor) override {
+    if (info != NULL)
+        visitor->do_slow_case(info);
+      else
+        visitor->do_slow_case();
+    if (val != NULL) visitor->do_input(val);
+  }
+
+  NOT_PRODUCT(virtual void print_name(outputStream* out) const { out->print("MMTkC1ReferenceLoadBarrierStub"); });
 };
 
 #endif // MMTK_OPENJDK_MMTK_BARRIER_SET_C1_HPP

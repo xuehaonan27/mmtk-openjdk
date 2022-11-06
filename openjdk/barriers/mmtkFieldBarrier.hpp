@@ -19,18 +19,9 @@
 class MMTkFieldBarrierSetRuntime: public MMTkBarrierSetRuntime {
 public:
   // Interfaces called by `MMTkBarrierSet::AccessBarrier`
-  static void load_reference_call(void* ref);
   virtual void object_reference_write_pre(oop src, oop* slot, oop target) const override;
   virtual void object_reference_array_copy_pre(oop* src, oop* dst, size_t count) const override {
     object_reference_array_copy_pre_call((void*) src, (void*) dst, count);
-  }
-  virtual bool is_slow_path_call(address call) const override {
-    return call == CAST_FROM_FN_PTR(address, object_reference_write_pre_call)
-        || call == CAST_FROM_FN_PTR(address, object_reference_write_post_call)
-        || call == CAST_FROM_FN_PTR(address, object_reference_write_slow_call)
-        || call == CAST_FROM_FN_PTR(address, object_reference_array_copy_pre_call)
-        || call == CAST_FROM_FN_PTR(address, object_reference_array_copy_post_call)
-        || call == CAST_FROM_FN_PTR(address, load_reference_call);
   }
   virtual void load_reference(DecoratorSet decorators, oop value) const override {
     load_reference_call((void*) value);

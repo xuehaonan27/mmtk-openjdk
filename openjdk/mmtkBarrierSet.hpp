@@ -61,6 +61,8 @@ MMTkAllocatorOffsets get_tlab_top_and_end_offsets(AllocatorSelector selector);
 
 class MMTkBarrierSetRuntime: public CHeapObj<mtGC> {
 public:
+  /// Weak ref load barrier
+  static void load_reference_call(void* ref);
   /// Generic pre-write barrier. Called by fast-paths.
   static void object_reference_write_pre_call(void* src, void* slot, void* target);
   /// Generic post-write barrier. Called by fast-paths.
@@ -77,7 +79,8 @@ public:
         || call == CAST_FROM_FN_PTR(address, object_reference_write_post_call)
         || call == CAST_FROM_FN_PTR(address, object_reference_write_slow_call)
         || call == CAST_FROM_FN_PTR(address, object_reference_array_copy_pre_call)
-        || call == CAST_FROM_FN_PTR(address, object_reference_array_copy_post_call);
+        || call == CAST_FROM_FN_PTR(address, object_reference_array_copy_post_call)
+        || call == CAST_FROM_FN_PTR(address, load_reference_call);
   }
 
   /// Full pre-barrier

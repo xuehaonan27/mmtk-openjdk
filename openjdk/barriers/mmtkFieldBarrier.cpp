@@ -18,10 +18,6 @@ void MMTkFieldBarrierSetRuntime::object_reference_write_pre(oop src, oop* slot, 
 #endif
 }
 
-void MMTkFieldBarrierSetRuntime::load_reference_call(void* ref) {
-  ::mmtk_load_reference((MMTk_Mutator) &Thread::current()->third_party_heap_mutator, ref);
-}
-
 #define __ masm->
 
 void MMTkFieldBarrierSetAssembler::load_at(MacroAssembler* masm, DecoratorSet decorators, BasicType type, Register dst, Address src, Register tmp1, Register tmp_thread) {
@@ -33,7 +29,7 @@ void MMTkFieldBarrierSetAssembler::load_at(MacroAssembler* masm, DecoratorSet de
   if (on_oop && on_reference) {
     __ pusha();
     __ mov(c_rarg0, dst);
-    __ MacroAssembler::call_VM_leaf_base(FN_ADDR(MMTkFieldBarrierSetRuntime::load_reference_call), 1);
+    __ MacroAssembler::call_VM_leaf_base(FN_ADDR(MMTkBarrierSetRuntime::load_reference_call), 1);
     __ popa();
   }
 }
@@ -134,18 +130,18 @@ void MMTkFieldBarrierSetC1::load_at_resolved(LIRAccess& access, LIR_Opr result) 
   BarrierSetC1::load_at_resolved(access, result);
 
   if (access.is_oop() && (is_weak || is_phantom || is_anonymous)) {
-    Unimplemented();
-    // // Register the value in the referent field with the pre-barrier
-    // LabelObj *Lcont_anonymous;
-    // if (is_anonymous) {
-    //   Lcont_anonymous = new LabelObj();
-    //   generate_referent_check(access, Lcont_anonymous);
-    // }
-    // pre_barrier(access, LIR_OprFact::illegalOpr /* addr_opr */,
-    //             result /* pre_val */, access.patch_emit_info() /* info */);
-    // if (is_anonymous) {
-    //   __ branch_destination(Lcont_anonymous->label());
-    // }
+    // Register the value in the referent field with the pre-barrier
+    LabelObj *Lcont_anonymous;
+    if (is_anonymous) {
+      Lcont_anonymous = new LabelObj();
+      generate_referent_check(access, Lcont_anonymous);
+    }
+    auto slow = new MMTkC1ReferenceLoadBarrierStub(result, access.patch_emit_info());
+    __ jump(slow);
+    __ branch_destination(slow->continuation());
+    if (is_anonymous) {
+      __ branch_destination(Lcont_anonymous->label());
+    }
   }
 }
 
@@ -296,7 +292,7 @@ Node* MMTkFieldBarrierSetC2::load_at_resolved(C2Access& access, const Type* val_
 
   // TODO: Skip slow-call if concurrent marking is not in progress
   const TypeFunc* tf = __ func_type(TypeOopPtr::BOTTOM);
-  Node* x = __ make_leaf_call(tf, FN_ADDR(MMTkFieldBarrierSetRuntime::load_reference_call), "mmtk_barrier_call", load);
+  Node* x = __ make_leaf_call(tf, FN_ADDR(MMTkBarrierSetRuntime::load_reference_call), "mmtk_barrier_call", load);
   kit->sync_kit(ideal);
   kit->insert_mem_bar(Op_MemBarVolatile);
   kit->final_sync(ideal); // Final sync IdealKit and GraphKit.

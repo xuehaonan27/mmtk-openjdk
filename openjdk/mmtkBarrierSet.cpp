@@ -153,3 +153,7 @@ void MMTkBarrierSetRuntime::object_reference_array_copy_pre_call(void* src, void
 void MMTkBarrierSetRuntime::object_reference_array_copy_post_call(void* src, void* dst, size_t count) {
   ::mmtk_array_copy_post((MMTk_Mutator) &Thread::current()->third_party_heap_mutator, src, dst, count);
 }
+
+void MMTkBarrierSetRuntime::load_reference_call(void* ref) {
+  ::mmtk_load_reference((MMTk_Mutator) &Thread::current()->third_party_heap_mutator, ref);
+}
