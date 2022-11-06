@@ -24,7 +24,7 @@ public:
     object_reference_array_copy_pre_call((void*) src, (void*) dst, count);
   }
   virtual void load_reference(DecoratorSet decorators, oop value) const override {
-    if (CONCURRENT_MARKING_ACTIVE == 1) load_reference_call((void*) value);
+    if (CONCURRENT_MARKING_ACTIVE == 1 && value != NULL) load_reference_call((void*) value);
   };
 };
 

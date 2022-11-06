@@ -27,13 +27,17 @@ void MMTkFieldBarrierSetAssembler::load_at(MacroAssembler* masm, DecoratorSet de
   bool on_reference = on_weak || on_phantom;
   BarrierSetAssembler::load_at(masm, decorators, type, dst, src, tmp1, tmp_thread);
   if (on_oop && on_reference) {
-    // Call slow-path only when concurrent marking is active
     Label done;
+    // No slow-call if SATB is not active
     Register tmp = rscratch1;
     __ movptr(tmp, intptr_t(&CONCURRENT_MARKING_ACTIVE));
     __ movb(tmp, Address(tmp, 0));
     __ cmpptr(tmp, 1);
     __ jcc(Assembler::notEqual, done);
+    // No slow-call if dst is NULL
+    __ cmpptr(dst, 0);
+    __ jcc(Assembler::equal, done);
+    // Do slow-call
     __ pusha();
     __ mov(c_rarg0, dst);
     __ MacroAssembler::call_VM_leaf_base(FN_ADDR(MMTkBarrierSetRuntime::load_reference_call), 1);
@@ -144,6 +148,8 @@ void MMTkFieldBarrierSetC1::load_at_resolved(LIRAccess& access, LIR_Opr result) 
       Lcont_anonymous = new LabelObj();
       generate_referent_check(access, Lcont_anonymous);
     }
+    assert(result->is_register(), "must be");
+    assert(result->type() == T_OBJECT, "must be an object");
     auto slow = new MMTkC1ReferenceLoadBarrierStub(result, access.patch_emit_info());
     // Call slow-path only when concurrent marking is active
     LIR_Opr cm_flag_addr_opr = gen->new_pointer_register();
@@ -151,6 +157,7 @@ void MMTkFieldBarrierSetC1::load_at_resolved(LIRAccess& access, LIR_Opr result) 
     LIR_Address* cm_flag_addr = new LIR_Address(cm_flag_addr_opr, T_BYTE);
     LIR_Opr cm_flag = gen->new_register(T_INT);
     __ move(cm_flag_addr, cm_flag);
+    // No slow-call if SATB is not active
     __ cmp(lir_cond_equal, cm_flag, LIR_OprFact::intConst(1));
     __ branch(lir_cond_equal, T_BYTE, slow);
     __ branch_destination(slow->continuation());
@@ -274,6 +281,99 @@ void MMTkFieldBarrierSetC2::object_reference_write_pre(GraphKit* kit, Node* src,
   kit->final_sync(ideal); // Final sync IdealKit and GraphKit.
 }
 
+static void reference_load_barrier(GraphKit* kit, Node* val, bool emit_barrier) {
+  MMTkIdealKit ideal(kit, true);
+  Node* no_base = __ top();
+  float unlikely  = PROB_UNLIKELY(0.999);
+  Node* zero  = __ ConI(0);
+  Node* cm_flag = __ load(__ ctrl(), __ ConP(uintptr_t(&CONCURRENT_MARKING_ACTIVE)), TypeInt::INT, T_BYTE, Compile::AliasIdxRaw);
+  // No slow-call if SATB is not active
+  __ if_then(cm_flag, BoolTest::ne, zero, unlikely); {
+    // No slow-call if dst is NULL
+    __ if_then(val, BoolTest::ne, kit->null()); {
+      const TypeFunc* tf = __ func_type(TypeOopPtr::BOTTOM);
+      Node* x = __ make_leaf_call(tf, FN_ADDR(MMTkBarrierSetRuntime::load_reference_call), "mmtk_barrier_call", val);
+    } __ end_if();
+  } __ end_if();
+  kit->sync_kit(ideal);
+  if (emit_barrier) kit->insert_mem_bar(Op_MemBarCPUOrder);
+  kit->final_sync(ideal); // Final sync IdealKit and GraphKit.
+}
+
+static void reference_load_barrier_for_unknown_load(GraphKit* kit, Node* base_oop, Node* offset, Node* val, bool need_mem_bar) {
+  // We could be accessing the referent field of a reference object. If so, when G1
+  // is enabled, we need to log the value in the referent field in an SATB buffer.
+  // This routine performs some compile time filters and generates suitable
+  // runtime filters that guard the pre-barrier code.
+  // Also add memory barrier for non volatile load from the referent field
+  // to prevent commoning of loads across safepoint.
+
+  // Some compile time checks.
+
+  // If offset is a constant, is it java_lang_ref_Reference::_reference_offset?
+  const TypeX* otype = offset->find_intptr_t_type();
+  if (otype != NULL && otype->is_con() &&
+      otype->get_con() != java_lang_ref_Reference::referent_offset) {
+    // Constant offset but not the reference_offset so just return
+    return;
+  }
+
+  // We only need to generate the runtime guards for instances.
+  const TypeOopPtr* btype = base_oop->bottom_type()->isa_oopptr();
+  if (btype != NULL) {
+    if (btype->isa_aryptr()) {
+      // Array type so nothing to do
+      return;
+    }
+
+    const TypeInstPtr* itype = btype->isa_instptr();
+    if (itype != NULL) {
+      // Can the klass of base_oop be statically determined to be
+      // _not_ a sub-class of Reference and _not_ Object?
+      ciKlass* klass = itype->klass();
+      if ( klass->is_loaded() &&
+          !klass->is_subtype_of(kit->env()->Reference_klass()) &&
+          !kit->env()->Object_klass()->is_subtype_of(klass)) {
+        return;
+      }
+    }
+  }
+
+  float likely   = PROB_LIKELY(  0.999);
+  float unlikely = PROB_UNLIKELY(0.999);
+
+  IdealKit ideal(kit);
+
+  Node* referent_off = __ ConX(java_lang_ref_Reference::referent_offset);
+
+  __ if_then(offset, BoolTest::eq, referent_off, unlikely); {
+      // Update graphKit memory and control from IdealKit.
+      kit->sync_kit(ideal);
+      Node* ref_klass_con = kit->makecon(TypeKlassPtr::make(kit->env()->Reference_klass()));
+      Node* is_instof = kit->gen_instanceof(base_oop, ref_klass_con);
+      // Update IdealKit memory and control from graphKit.
+      __ sync_kit(kit);
+      Node* one = __ ConI(1);
+      // is_instof == 0 if base_oop == NULL
+      __ if_then(is_instof, BoolTest::eq, one, unlikely); {
+        // Update graphKit from IdeakKit.
+        kit->sync_kit(ideal);
+        // Use the pre-barrier to record the value in the referent field
+        reference_load_barrier(kit, val, false);
+        if (need_mem_bar) {
+          // Add memory barrier to prevent commoning reads from this field
+          // across safepoint since GC can change its value.
+          kit->insert_mem_bar(Op_MemBarCPUOrder);
+        }
+        // Update IdealKit from graphKit.
+        __ sync_kit(kit);
+      } __ end_if(); // _ref_type != ref_none
+  } __ end_if(); // offset == referent_offset
+
+  // Final sync IdealKit and GraphKit.
+  kit->final_sync(ideal);
+}
+
 Node* MMTkFieldBarrierSetC2::load_at_resolved(C2Access& access, const Type* val_type) const {
 
   DecoratorSet decorators = access.decorators();
@@ -304,19 +404,11 @@ Node* MMTkFieldBarrierSetC2::load_at_resolved(C2Access& access, const Type* val_
     return load;
   }
 
-  MMTkIdealKit ideal(kit, true);
-  // Call slow-path only when concurrent marking is active
-  Node* no_base = __ top();
-  float unlikely  = PROB_UNLIKELY(0.999);
-  Node* zero  = __ ConI(0);
-  Node* cm_flag = __ load(__ ctrl(), __ ConP(uintptr_t(&CONCURRENT_MARKING_ACTIVE)), TypeInt::INT, T_BYTE, Compile::AliasIdxRaw);
-  __ if_then(cm_flag, BoolTest::ne, zero, unlikely); {
-    const TypeFunc* tf = __ func_type(TypeOopPtr::BOTTOM);
-    Node* x = __ make_leaf_call(tf, FN_ADDR(MMTkBarrierSetRuntime::load_reference_call), "mmtk_barrier_call", load);
-  } __ end_if();
-  kit->sync_kit(ideal);
-  kit->insert_mem_bar(Op_MemBarVolatile);
-  kit->final_sync(ideal); // Final sync IdealKit and GraphKit.
+  if (on_weak) {
+    reference_load_barrier(kit, load, true);
+  } else if (unknown) {
+    reference_load_barrier_for_unknown_load(kit, obj, offset, load, !need_cpu_mem_bar);
+  }
 
   return load;
 }
