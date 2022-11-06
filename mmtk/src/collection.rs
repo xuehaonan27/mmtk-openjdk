@@ -121,4 +121,8 @@ impl Collection<OpenJDK> for VMCollection {
             ((*UPCALLS).update_weak_processor)();
         }
     }
+
+    fn set_concurrent_marking_state(active: bool) {
+        unsafe { crate::CONCURRENT_MARKING_ACTIVE = if active { 1 } else { 0 } }
+    }
 }

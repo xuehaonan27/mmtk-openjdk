@@ -136,6 +136,9 @@ pub static DISABLE_ALLOCATION_FAST_PATH: i32 = cfg!(feature = "no_fast_alloc") a
 pub static IMMIX_ALLOCATOR_SIZE: uintptr_t =
     std::mem::size_of::<mmtk::util::alloc::ImmixAllocator<OpenJDK>>();
 
+#[no_mangle]
+pub static mut CONCURRENT_MARKING_ACTIVE: u8 = 0;
+
 #[derive(Default)]
 pub struct OpenJDK;
 

@@ -27,10 +27,18 @@ void MMTkFieldBarrierSetAssembler::load_at(MacroAssembler* masm, DecoratorSet de
   bool on_reference = on_weak || on_phantom;
   BarrierSetAssembler::load_at(masm, decorators, type, dst, src, tmp1, tmp_thread);
   if (on_oop && on_reference) {
+    // Call slow-path only when concurrent marking is active
+    Label done;
+    Register tmp = rscratch1;
+    __ movptr(tmp, intptr_t(&CONCURRENT_MARKING_ACTIVE));
+    __ movb(tmp, Address(tmp, 0));
+    __ cmpptr(tmp, 1);
+    __ jcc(Assembler::notEqual, done);
     __ pusha();
     __ mov(c_rarg0, dst);
     __ MacroAssembler::call_VM_leaf_base(FN_ADDR(MMTkBarrierSetRuntime::load_reference_call), 1);
     __ popa();
+    __ bind(done);
   }
 }
 
@@ -137,7 +145,14 @@ void MMTkFieldBarrierSetC1::load_at_resolved(LIRAccess& access, LIR_Opr result) 
       generate_referent_check(access, Lcont_anonymous);
     }
     auto slow = new MMTkC1ReferenceLoadBarrierStub(result, access.patch_emit_info());
-    __ jump(slow);
+    // Call slow-path only when concurrent marking is active
+    LIR_Opr cm_flag_addr_opr = gen->new_pointer_register();
+    __ move(LIR_OprFact::longConst(uintptr_t(&CONCURRENT_MARKING_ACTIVE)), cm_flag_addr_opr);
+    LIR_Address* cm_flag_addr = new LIR_Address(cm_flag_addr_opr, T_BYTE);
+    LIR_Opr cm_flag = gen->new_register(T_INT);
+    __ move(cm_flag_addr, cm_flag);
+    __ cmp(lir_cond_equal, cm_flag, LIR_OprFact::intConst(1));
+    __ branch(lir_cond_equal, T_BYTE, slow);
     __ branch_destination(slow->continuation());
     if (is_anonymous) {
       __ branch_destination(Lcont_anonymous->label());
@@ -263,7 +278,6 @@ Node* MMTkFieldBarrierSetC2::load_at_resolved(C2Access& access, const Type* val_
 
   DecoratorSet decorators = access.decorators();
   GraphKit* kit = access.kit();
-  MMTkIdealKit ideal(kit, true);
 
   Node* adr = access.addr().node();
   Node* obj = access.base();
@@ -290,9 +304,16 @@ Node* MMTkFieldBarrierSetC2::load_at_resolved(C2Access& access, const Type* val_
     return load;
   }
 
-  // TODO: Skip slow-call if concurrent marking is not in progress
-  const TypeFunc* tf = __ func_type(TypeOopPtr::BOTTOM);
-  Node* x = __ make_leaf_call(tf, FN_ADDR(MMTkBarrierSetRuntime::load_reference_call), "mmtk_barrier_call", load);
+  MMTkIdealKit ideal(kit, true);
+  // Call slow-path only when concurrent marking is active
+  Node* no_base = __ top();
+  float unlikely  = PROB_UNLIKELY(0.999);
+  Node* zero  = __ ConI(0);
+  Node* cm_flag = __ load(__ ctrl(), __ ConP(uintptr_t(&CONCURRENT_MARKING_ACTIVE)), TypeInt::INT, T_BYTE, Compile::AliasIdxRaw);
+  __ if_then(cm_flag, BoolTest::ne, zero, unlikely); {
+    const TypeFunc* tf = __ func_type(TypeOopPtr::BOTTOM);
+    Node* x = __ make_leaf_call(tf, FN_ADDR(MMTkBarrierSetRuntime::load_reference_call), "mmtk_barrier_call", load);
+  } __ end_if();
   kit->sync_kit(ideal);
   kit->insert_mem_bar(Op_MemBarVolatile);
   kit->final_sync(ideal); // Final sync IdealKit and GraphKit.
