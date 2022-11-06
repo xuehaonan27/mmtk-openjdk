@@ -120,17 +120,10 @@ impl OopIterate for InstanceRefKlass {
                 ReferenceType::None => {
                     panic!("oop_iterate on InstanceRefKlass with reference_type as None")
                 }
-                rt @ (ReferenceType::Weak | ReferenceType::Phantom | ReferenceType::Soft) => {
+                rt => {
                     if !Self::discover_reference(oop, rt) {
                         Self::process_ref_as_strong(oop, closure)
                     }
-                }
-                // Process these two types normally (as if they are strong refs)
-                // We will handle final reference later
-                // ReferenceType::Weak
-                // | ReferenceType::Phantom
-                ReferenceType::Other | ReferenceType::Final => {
-                    Self::process_ref_as_strong(oop, closure)
                 }
             }
         } else {
@@ -141,7 +134,10 @@ impl OopIterate for InstanceRefKlass {
 
 impl InstanceRefKlass {
     #[inline]
-    fn should_discover_refs(rt: ReferenceType, disable_discovery: bool) -> bool {
+    fn should_discover_refs(mut rt: ReferenceType, disable_discovery: bool) -> bool {
+        if rt == ReferenceType::Other {
+            rt = ReferenceType::Weak;
+        }
         if disable_discovery {
             return false;
         }
@@ -180,15 +176,19 @@ impl InstanceRefKlass {
             return false;
         }
         // Skip young referents
+        let reference: ObjectReference = oop.into();
+        if mmtk::util::rc::count(reference) == 0 {
+            return false;
+        }
         if mmtk::util::rc::count(referent) == 0 {
             return false;
         }
-        // TODO: Do not discover if the referent is a nursery object.
 
         // Add to reference list
-        let reference: ObjectReference = oop.into();
         if crate::VM_REF_PROCESSOR {
-            // crate::reference_glue::set_referent(reference, ObjectReference::NULL);
+            if rt == ReferenceType::Final {
+                println!("{:?} {:?} -> {:?}", rt, reference, referent);
+            }
             DISCOVERED_LISTS.get(rt).add(reference);
         } else {
             match rt {

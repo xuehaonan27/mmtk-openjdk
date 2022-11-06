@@ -14,12 +14,7 @@ use mmtk::MMTK;
 #[inline(always)]
 pub fn set_referent(reff: ObjectReference, referent: ObjectReference) {
     let oop = Oop::from(reff);
-    mmtk::memory_manager::vm_write_field(
-        &SINGLETON,
-        reff,
-        InstanceRefKlass::referent_address(oop),
-        referent,
-    );
+    unsafe { InstanceRefKlass::referent_address(oop).store(referent) }
 }
 
 #[inline(always)]
@@ -41,7 +36,7 @@ fn get_next_reference(object: ObjectReference) -> ObjectReference {
 
 #[inline(always)]
 fn set_next_reference(object: ObjectReference, next: ObjectReference) {
-    mmtk::memory_manager::vm_write_field(&SINGLETON, object, get_next_reference_slot(object), next);
+    unsafe { get_next_reference_slot(object).store(next) }
 }
 
 pub struct VMReferenceGlue {}
@@ -79,6 +74,7 @@ impl DiscoveredList {
     #[inline]
     pub fn add(&self, obj: ObjectReference) {
         let _ = mmtk::util::rc::inc(obj);
+        let _ = mmtk::util::rc::inc(get_referent(obj));
         let oop = Oop::from(obj);
         let head = self.head.load(Ordering::Relaxed);
         let discovered_addr = unsafe {
@@ -259,7 +255,6 @@ impl<E: ProcessEdgesWork<VM = OpenJDK>> GCWork<OpenJDK> for ProcessDiscoveredLis
                 let forwarded = trace.trace_object(referent);
                 assert!(forwarded.get_forwarded_object().is_none());
                 assert!(reference.get_forwarded_object().is_none());
-                assert!(forwarded.is_reachable());
                 set_referent(reference, forwarded);
                 // Remove from the discovered list
                 return DiscoveredListIterationResult::Remove;
@@ -291,7 +286,6 @@ impl<E: ProcessEdgesWork<VM = OpenJDK>> GCWork<OpenJDK> for ProcessDiscoveredLis
                     .store(head, Ordering::SeqCst);
             } else {
                 let old_head = unsafe { ((*crate::UPCALLS).swap_reference_pending_list)(head) };
-                println!("swap_reference_pending_list {:?} {:?}\n", head, old_head);
                 set_next_reference(tail, old_head);
             }
         } else {
@@ -326,11 +320,10 @@ impl<E: ProcessEdgesWork<VM = OpenJDK>> GCWork<OpenJDK> for ResurrectFinalizable
 
         if let Some((head, tail)) = new_list {
             assert!(!head.is_null() && !tail.is_null());
-            assert_eq!(tail, get_next_reference(tail));
+            assert_eq!(ObjectReference::NULL, get_next_reference(tail));
             DISCOVERED_LISTS.r#final[self.list_index]
                 .head
                 .store(ObjectReference::NULL, Ordering::SeqCst);
-            println!("swap_reference_pending_list\n");
             let old_head = unsafe { ((*crate::UPCALLS).swap_reference_pending_list)(head) };
             set_next_reference(tail, old_head);
         }
@@ -353,23 +346,19 @@ fn iterate_list(
     loop {
         debug_assert!(!reference.is_null());
         debug_assert!(reference.is_live());
-        let old_ref = reference;
+        // Update reference forwarding pointer
         if let Some(forwarded) = reference.get_forwarded_object() {
             reference = forwarded;
         }
         assert!(reference.get_forwarded_object().is_none());
-        assert_ne!(mmtk::util::rc::count(reference), 0);
         assert!(reference.is_reachable());
-        let old_next_ref = get_next_reference(reference);
-
-        let next_ref = old_next_ref.get_forwarded_object().unwrap_or(old_next_ref);
-        let end_of_list = {
-            old_ref == next_ref
-                || old_ref == old_next_ref
-                || reference == next_ref
-                || reference == old_next_ref
-        };
+        // Update next_ref forwarding pointer
+        let next_ref = get_next_reference(reference);
+        let next_ref = next_ref.get_forwarded_object().unwrap_or(next_ref);
         assert!(next_ref.get_forwarded_object().is_none());
+        // Reaches the end of the list?
+        let end_of_list = next_ref == reference || next_ref.is_null();
+        // Process reference
         let result = visitor(reference);
         // Remove `reference` from current list
         set_next_reference(reference, ObjectReference::NULL);
