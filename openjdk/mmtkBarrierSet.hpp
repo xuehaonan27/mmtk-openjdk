@@ -88,6 +88,7 @@ public:
   virtual void object_reference_array_copy_pre(oop* src, oop* dst, size_t count) const {};
   /// Full arraycopy post-barrier
   virtual void object_reference_array_copy_post(oop* src, oop* dst, size_t count) const {};
+  /// java.lang.Reference load barrier
   virtual void load_reference(DecoratorSet decorators, oop value) const {};
 };
 
@@ -167,7 +168,6 @@ public:
   private:
     typedef BarrierSet::AccessBarrier<decorators, BarrierSetT> Raw;
   public:
-
     // Needed for weak references
     static oop oop_load_in_heap_at(oop base, ptrdiff_t offset) {
       oop value = Raw::oop_load_in_heap_at(base, offset);

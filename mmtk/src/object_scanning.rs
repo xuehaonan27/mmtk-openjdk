@@ -11,14 +11,6 @@ use std::{mem, slice};
 
 trait OopIterate: Sized {
     fn oop_iterate(&self, oop: Oop, closure: &mut impl EdgeVisitor<OpenJDKEdge>);
-    fn oop_iterate_with_discovery(
-        &self,
-        _oop: Oop,
-        _closure: &mut impl EdgeVisitor<OpenJDKEdge>,
-        _discover: bool,
-    ) {
-        unimplemented!()
-    }
 }
 
 impl OopIterate for OopMapBlock {
@@ -118,17 +110,10 @@ impl OopIterate for TypeArrayKlass {
 impl OopIterate for InstanceRefKlass {
     #[inline(always)]
     fn oop_iterate(&self, oop: Oop, closure: &mut impl EdgeVisitor<OpenJDKEdge>) {
-        unreachable!()
-    }
-
-    fn oop_iterate_with_discovery(
-        &self,
-        oop: Oop,
-        closure: &mut impl EdgeVisitor<OpenJDKEdge>,
-        disable_discovery: bool,
-    ) {
         use crate::abi::*;
         self.instance_klass.oop_iterate(oop, closure);
+
+        let disable_discovery = !closure.should_discover_references();
 
         if Self::should_discover_refs(self.instance_klass.reference_type, disable_discovery) {
             match self.instance_klass.reference_type {
@@ -225,7 +210,7 @@ fn oop_iterate_slow(oop: Oop, closure: &mut impl EdgeVisitor<OpenJDKEdge>, tls: 
 }
 
 #[inline(always)]
-fn oop_iterate(oop: Oop, closure: &mut impl EdgeVisitor<OpenJDKEdge>, disable_discovery: bool) {
+fn oop_iterate(oop: Oop, closure: &mut impl EdgeVisitor<OpenJDKEdge>) {
     let klass_id = oop.klass.id;
     debug_assert!(
         klass_id as i32 >= 0 && (klass_id as i32) < 6,
@@ -256,7 +241,7 @@ fn oop_iterate(oop: Oop, closure: &mut impl EdgeVisitor<OpenJDKEdge>, disable_di
         // }
         KlassID::InstanceRef => {
             let instance_klass = unsafe { oop.klass.cast::<InstanceRefKlass>() };
-            instance_klass.oop_iterate_with_discovery(oop, closure, disable_discovery);
+            instance_klass.oop_iterate(oop, closure);
         } // _ => oop_iterate_slow(oop, closure, tls),
         _ => {}
     }
@@ -281,12 +266,11 @@ pub fn scan_object(
     object: ObjectReference,
     closure: &mut impl EdgeVisitor<OpenJDKEdge>,
     _tls: VMWorkerThread,
-    discover_references: bool,
 ) {
     // println!("*****scan_object(0x{:x}) -> \n 0x{:x}, 0x{:x} \n",
     //     object,
     //     unsafe { *(object.value() as *const usize) },
     //     unsafe { *((object.value() + 8) as *const usize) }
     // );
-    unsafe { oop_iterate(mem::transmute(object), closure, discover_references) }
+    unsafe { oop_iterate(mem::transmute(object), closure) }
 }

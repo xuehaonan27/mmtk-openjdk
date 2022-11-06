@@ -49,7 +49,7 @@ pub struct VMReferenceGlue {}
 impl ReferenceGlue<OpenJDK> for VMReferenceGlue {
     type FinalizableType = ObjectReference;
 
-    fn set_referent(reff: ObjectReference, referent: ObjectReference) {
+    fn set_referent(_reff: ObjectReference, _referent: ObjectReference) {
         unreachable!()
     }
     fn get_referent(object: ObjectReference) -> ObjectReference {
@@ -78,7 +78,7 @@ impl DiscoveredList {
 
     #[inline]
     pub fn add(&self, obj: ObjectReference) {
-        mmtk::util::rc::inc(obj);
+        let _ = mmtk::util::rc::inc(obj);
         let oop = Oop::from(obj);
         let head = self.head.load(Ordering::Relaxed);
         let discovered_addr = unsafe {
@@ -353,9 +353,8 @@ fn iterate_list(
     loop {
         debug_assert!(!reference.is_null());
         debug_assert!(reference.is_live());
-        let mut old_ref = reference;
+        let old_ref = reference;
         if let Some(forwarded) = reference.get_forwarded_object() {
-            println!(" - {:?} => {:?}", reference, forwarded);
             reference = forwarded;
         }
         assert!(reference.get_forwarded_object().is_none());
