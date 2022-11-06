@@ -312,6 +312,11 @@ pub extern "C" fn executable() -> bool {
     true
 }
 
+#[no_mangle]
+pub extern "C" fn mmtk_load_reference(mutator: &'static mut Mutator<OpenJDK>, o: ObjectReference) {
+    mutator.barrier().load_reference(o);
+}
+
 /// Full pre barrier
 #[no_mangle]
 pub extern "C" fn mmtk_object_reference_write_pre(

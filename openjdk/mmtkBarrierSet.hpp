@@ -88,6 +88,7 @@ public:
   virtual void object_reference_array_copy_pre(oop* src, oop* dst, size_t count) const {};
   /// Full arraycopy post-barrier
   virtual void object_reference_array_copy_post(oop* src, oop* dst, size_t count) const {};
+  virtual void load_reference(DecoratorSet decorators, oop value) const {};
 };
 
 class MMTkBarrierC1;
@@ -166,6 +167,26 @@ public:
   private:
     typedef BarrierSet::AccessBarrier<decorators, BarrierSetT> Raw;
   public:
+
+    // Needed for weak references
+    static oop oop_load_in_heap_at(oop base, ptrdiff_t offset) {
+      oop value = Raw::oop_load_in_heap_at(base, offset);
+      const bool on_strong_oop_ref = (decorators & ON_STRONG_OOP_REF) != 0;
+      const bool peek              = (decorators & AS_NO_KEEPALIVE) != 0;
+      const bool needs_enqueue     = (!peek && !on_strong_oop_ref);
+      if (needs_enqueue && value != NULL) {
+        runtime()->load_reference(decorators, value);
+      }
+      return value;
+    }
+
+    // Defensive: will catch weak oops at addresses in heap
+    template <typename T>
+    static oop oop_load_in_heap(T* addr) {
+      UNREACHABLE();
+      return NULL;
+    }
+
     template <typename T>
     static void oop_store_in_heap(T* addr, oop value) {
       UNREACHABLE();

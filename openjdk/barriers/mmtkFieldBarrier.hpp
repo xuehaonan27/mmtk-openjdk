@@ -19,10 +19,22 @@
 class MMTkFieldBarrierSetRuntime: public MMTkBarrierSetRuntime {
 public:
   // Interfaces called by `MMTkBarrierSet::AccessBarrier`
+  static void load_reference_call(void* ref);
   virtual void object_reference_write_pre(oop src, oop* slot, oop target) const override;
   virtual void object_reference_array_copy_pre(oop* src, oop* dst, size_t count) const override {
     object_reference_array_copy_pre_call((void*) src, (void*) dst, count);
   }
+  virtual bool is_slow_path_call(address call) const override {
+    return call == CAST_FROM_FN_PTR(address, object_reference_write_pre_call)
+        || call == CAST_FROM_FN_PTR(address, object_reference_write_post_call)
+        || call == CAST_FROM_FN_PTR(address, object_reference_write_slow_call)
+        || call == CAST_FROM_FN_PTR(address, object_reference_array_copy_pre_call)
+        || call == CAST_FROM_FN_PTR(address, object_reference_array_copy_post_call)
+        || call == CAST_FROM_FN_PTR(address, load_reference_call);
+  }
+  virtual void load_reference(DecoratorSet decorators, oop value) const override {
+    load_reference_call((void*) value);
+  };
 };
 
 class MMTkFieldBarrierSetAssembler: public MMTkBarrierSetAssembler {
@@ -30,11 +42,15 @@ protected:
   virtual void object_reference_write_pre(MacroAssembler* masm, DecoratorSet decorators, Address dst, Register val, Register tmp1, Register tmp2) const override;
 public:
   virtual void arraycopy_prologue(MacroAssembler* masm, DecoratorSet decorators, BasicType type, Register src, Register dst, Register count) override;
+
+  virtual void load_at(MacroAssembler* masm, DecoratorSet decorators, BasicType type, Register dst, Address src, Register tmp1, Register tmp_thread) override;
 };
 
 class MMTkFieldBarrierSetC1: public MMTkBarrierSetC1 {
 protected:
   virtual void object_reference_write_pre(LIRAccess& access, LIR_Opr src, LIR_Opr slot, LIR_Opr new_val) const override;
+
+  virtual void load_at_resolved(LIRAccess& access, LIR_Opr result) override;
 
   virtual LIR_Opr resolve_address(LIRAccess& access, bool resolve_in_register) override {
     return MMTkBarrierSetC1::resolve_address_in_register(access, resolve_in_register);
@@ -48,6 +64,7 @@ public:
   virtual bool array_copy_requires_gc_barriers(BasicType type) const override {
     return false;
   }
+  virtual Node* load_at_resolved(C2Access& access, const Type* val_type) const override;
 };
 
 struct MMTkFieldBarrier: MMTkBarrierImpl<

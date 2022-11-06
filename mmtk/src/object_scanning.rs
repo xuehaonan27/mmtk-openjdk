@@ -11,6 +11,14 @@ use std::{mem, slice};
 
 trait OopIterate: Sized {
     fn oop_iterate(&self, oop: Oop, closure: &mut impl EdgeVisitor<OpenJDKEdge>);
+    fn oop_iterate_with_discovery(
+        &self,
+        _oop: Oop,
+        _closure: &mut impl EdgeVisitor<OpenJDKEdge>,
+        _discover: bool,
+    ) {
+        unimplemented!()
+    }
 }
 
 impl OopIterate for OopMapBlock {
@@ -110,18 +118,24 @@ impl OopIterate for TypeArrayKlass {
 impl OopIterate for InstanceRefKlass {
     #[inline(always)]
     fn oop_iterate(&self, oop: Oop, closure: &mut impl EdgeVisitor<OpenJDKEdge>) {
+        unreachable!()
+    }
+
+    fn oop_iterate_with_discovery(
+        &self,
+        oop: Oop,
+        closure: &mut impl EdgeVisitor<OpenJDKEdge>,
+        disable_discovery: bool,
+    ) {
         use crate::abi::*;
         self.instance_klass.oop_iterate(oop, closure);
 
-        if Self::should_discover_refs(self.instance_klass.reference_type) {
+        if Self::should_discover_refs(self.instance_klass.reference_type, disable_discovery) {
             match self.instance_klass.reference_type {
                 ReferenceType::None => {
                     panic!("oop_iterate on InstanceRefKlass with reference_type as None")
                 }
-                rt @ (ReferenceType::Weak
-                | ReferenceType::Soft
-                | ReferenceType::Phantom
-                | ReferenceType::Final) => {
+                rt @ (ReferenceType::Weak | ReferenceType::Phantom | ReferenceType::Soft) => {
                     if !Self::discover_reference(oop, rt) {
                         Self::process_ref_as_strong(oop, closure)
                     }
@@ -130,7 +144,9 @@ impl OopIterate for InstanceRefKlass {
                 // We will handle final reference later
                 // ReferenceType::Weak
                 // | ReferenceType::Phantom
-                ReferenceType::Other => Self::process_ref_as_strong(oop, closure),
+                ReferenceType::Other | ReferenceType::Final => {
+                    Self::process_ref_as_strong(oop, closure)
+                }
             }
         } else {
             Self::process_ref_as_strong(oop, closure);
@@ -140,14 +156,14 @@ impl OopIterate for InstanceRefKlass {
 
 impl InstanceRefKlass {
     #[inline]
-    fn should_discover_refs(rt: ReferenceType) -> bool {
+    fn should_discover_refs(rt: ReferenceType, disable_discovery: bool) -> bool {
+        if disable_discovery {
+            return false;
+        }
         if *SINGLETON.get_options().no_finalizer && rt == ReferenceType::Final {
             return false;
         }
         if *SINGLETON.get_options().no_reference_types && rt != ReferenceType::Final {
-            return false;
-        }
-        if !SINGLETON.get_plan().should_process_refs_at_current_gc() {
             return false;
         }
         true
@@ -174,7 +190,12 @@ impl InstanceRefKlass {
         }
         // Do not discover if the referent is live.
         let referent: ObjectReference = unsafe { InstanceRefKlass::referent_address(oop).load() };
-        if referent.is_live() {
+        // Skip live or null referents
+        if referent.is_reachable() || referent.is_null() {
+            return false;
+        }
+        // Skip young referents
+        if mmtk::util::rc::count(referent) == 0 {
             return false;
         }
         // TODO: Do not discover if the referent is a nursery object.
@@ -204,7 +225,7 @@ fn oop_iterate_slow(oop: Oop, closure: &mut impl EdgeVisitor<OpenJDKEdge>, tls: 
 }
 
 #[inline(always)]
-fn oop_iterate(oop: Oop, closure: &mut impl EdgeVisitor<OpenJDKEdge>) {
+fn oop_iterate(oop: Oop, closure: &mut impl EdgeVisitor<OpenJDKEdge>, disable_discovery: bool) {
     let klass_id = oop.klass.id;
     debug_assert!(
         klass_id as i32 >= 0 && (klass_id as i32) < 6,
@@ -235,7 +256,7 @@ fn oop_iterate(oop: Oop, closure: &mut impl EdgeVisitor<OpenJDKEdge>) {
         // }
         KlassID::InstanceRef => {
             let instance_klass = unsafe { oop.klass.cast::<InstanceRefKlass>() };
-            instance_klass.oop_iterate(oop, closure);
+            instance_klass.oop_iterate_with_discovery(oop, closure, disable_discovery);
         } // _ => oop_iterate_slow(oop, closure, tls),
         _ => {}
     }
@@ -260,11 +281,12 @@ pub fn scan_object(
     object: ObjectReference,
     closure: &mut impl EdgeVisitor<OpenJDKEdge>,
     _tls: VMWorkerThread,
+    discover_references: bool,
 ) {
     // println!("*****scan_object(0x{:x}) -> \n 0x{:x}, 0x{:x} \n",
     //     object,
     //     unsafe { *(object.value() as *const usize) },
     //     unsafe { *((object.value() + 8) as *const usize) }
     // );
-    unsafe { oop_iterate(mem::transmute(object), closure) }
+    unsafe { oop_iterate(mem::transmute(object), closure, discover_references) }
 }

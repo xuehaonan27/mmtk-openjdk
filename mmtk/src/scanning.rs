@@ -50,8 +50,9 @@ impl Scanning<OpenJDK> for VMScanning {
         tls: VMWorkerThread,
         object: ObjectReference,
         edge_visitor: &mut EV,
+        disable_discovery: bool,
     ) {
-        crate::object_scanning::scan_object(object, edge_visitor, tls)
+        crate::object_scanning::scan_object(object, edge_visitor, tls, disable_discovery)
     }
 
     #[inline(always)]

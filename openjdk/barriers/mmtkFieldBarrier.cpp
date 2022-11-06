@@ -18,7 +18,25 @@ void MMTkFieldBarrierSetRuntime::object_reference_write_pre(oop src, oop* slot, 
 #endif
 }
 
+void MMTkFieldBarrierSetRuntime::load_reference_call(void* ref) {
+  ::mmtk_load_reference((MMTk_Mutator) &Thread::current()->third_party_heap_mutator, ref);
+}
+
 #define __ masm->
+
+void MMTkFieldBarrierSetAssembler::load_at(MacroAssembler* masm, DecoratorSet decorators, BasicType type, Register dst, Address src, Register tmp1, Register tmp_thread) {
+  bool on_oop = type == T_OBJECT || type == T_ARRAY;
+  bool on_weak = (decorators & ON_WEAK_OOP_REF) != 0;
+  bool on_phantom = (decorators & ON_PHANTOM_OOP_REF) != 0;
+  bool on_reference = on_weak || on_phantom;
+  BarrierSetAssembler::load_at(masm, decorators, type, dst, src, tmp1, tmp_thread);
+  if (on_oop && on_reference) {
+    __ pusha();
+    __ mov(c_rarg0, dst);
+    __ MacroAssembler::call_VM_leaf_base(FN_ADDR(MMTkFieldBarrierSetRuntime::load_reference_call), 1);
+    __ popa();
+  }
+}
 
 void MMTkFieldBarrierSetAssembler::object_reference_write_pre(MacroAssembler* masm, DecoratorSet decorators, Address dst, Register val, Register tmp1, Register tmp2) const {
   if (can_remove_barrier(decorators, val, /* skip_const_null */ false)) return;
@@ -105,6 +123,31 @@ void MMTkFieldBarrierSetAssembler::arraycopy_prologue(MacroAssembler* masm, Deco
 #else
 #define __ gen->lir()->
 #endif
+
+void MMTkFieldBarrierSetC1::load_at_resolved(LIRAccess& access, LIR_Opr result) {
+  DecoratorSet decorators = access.decorators();
+  bool is_weak = (decorators & ON_WEAK_OOP_REF) != 0;
+  bool is_phantom = (decorators & ON_PHANTOM_OOP_REF) != 0;
+  bool is_anonymous = (decorators & ON_UNKNOWN_OOP_REF) != 0;
+  LIRGenerator *gen = access.gen();
+
+  BarrierSetC1::load_at_resolved(access, result);
+
+  if (access.is_oop() && (is_weak || is_phantom || is_anonymous)) {
+    Unimplemented();
+    // // Register the value in the referent field with the pre-barrier
+    // LabelObj *Lcont_anonymous;
+    // if (is_anonymous) {
+    //   Lcont_anonymous = new LabelObj();
+    //   generate_referent_check(access, Lcont_anonymous);
+    // }
+    // pre_barrier(access, LIR_OprFact::illegalOpr /* addr_opr */,
+    //             result /* pre_val */, access.patch_emit_info() /* info */);
+    // if (is_anonymous) {
+    //   __ branch_destination(Lcont_anonymous->label());
+    // }
+  }
+}
 
 void MMTkFieldBarrierSetC1::object_reference_write_pre(LIRAccess& access, LIR_Opr src, LIR_Opr slot, LIR_Opr new_val) const {
   LIRGenerator* gen = access.gen();
@@ -219,5 +262,47 @@ void MMTkFieldBarrierSetC2::object_reference_write_pre(GraphKit* kit, Node* src,
 
   kit->final_sync(ideal); // Final sync IdealKit and GraphKit.
 }
+
+Node* MMTkFieldBarrierSetC2::load_at_resolved(C2Access& access, const Type* val_type) const {
+
+  DecoratorSet decorators = access.decorators();
+  GraphKit* kit = access.kit();
+  MMTkIdealKit ideal(kit, true);
+
+  Node* adr = access.addr().node();
+  Node* obj = access.base();
+
+  bool mismatched = (decorators & C2_MISMATCHED) != 0;
+  bool unknown = (decorators & ON_UNKNOWN_OOP_REF) != 0;
+  bool in_heap = (decorators & IN_HEAP) != 0;
+  bool on_weak = (decorators & ON_WEAK_OOP_REF) != 0;
+  bool is_unordered = (decorators & MO_UNORDERED) != 0;
+  bool need_cpu_mem_bar = !is_unordered || mismatched || !in_heap;
+
+  Node* offset = adr->is_AddP() ? adr->in(AddPNode::Offset) : kit->top();
+  Node* load = BarrierSetC2::load_at_resolved(access, val_type);
+
+  // If we are reading the value of the referent field of a Reference
+  // object (either by using Unsafe directly or through reflection)
+  // then, if G1 is enabled, we need to record the referent in an
+  // SATB log buffer using the pre-barrier mechanism.
+  // Also we need to add memory barrier to prevent commoning reads
+  // from this field across safepoint since GC can change its value.
+  bool need_read_barrier = in_heap && (on_weak || (unknown && offset != kit->top() && obj != kit->top()));
+
+  if (!access.is_oop() || !need_read_barrier) {
+    return load;
+  }
+
+  // TODO: Skip slow-call if concurrent marking is not in progress
+  const TypeFunc* tf = __ func_type(TypeOopPtr::BOTTOM);
+  Node* x = __ make_leaf_call(tf, FN_ADDR(MMTkFieldBarrierSetRuntime::load_reference_call), "mmtk_barrier_call", load);
+  kit->sync_kit(ideal);
+  kit->insert_mem_bar(Op_MemBarVolatile);
+  kit->final_sync(ideal); // Final sync IdealKit and GraphKit.
+
+  return load;
+}
+
 
 #undef __

@@ -14,7 +14,12 @@ use mmtk::MMTK;
 #[inline(always)]
 pub fn set_referent(reff: ObjectReference, referent: ObjectReference) {
     let oop = Oop::from(reff);
-    unsafe { InstanceRefKlass::referent_address(oop).store(referent) };
+    mmtk::memory_manager::vm_write_field(
+        &SINGLETON,
+        reff,
+        InstanceRefKlass::referent_address(oop),
+        referent,
+    );
 }
 
 #[inline(always)]
@@ -36,7 +41,7 @@ fn get_next_reference(object: ObjectReference) -> ObjectReference {
 
 #[inline(always)]
 fn set_next_reference(object: ObjectReference, next: ObjectReference) {
-    unsafe { get_next_reference_slot(object).store(next) }
+    mmtk::memory_manager::vm_write_field(&SINGLETON, object, get_next_reference_slot(object), next);
 }
 
 pub struct VMReferenceGlue {}
@@ -45,8 +50,7 @@ impl ReferenceGlue<OpenJDK> for VMReferenceGlue {
     type FinalizableType = ObjectReference;
 
     fn set_referent(reff: ObjectReference, referent: ObjectReference) {
-        let oop = Oop::from(reff);
-        unsafe { InstanceRefKlass::referent_address(oop).store(referent) };
+        unreachable!()
     }
     fn get_referent(object: ObjectReference) -> ObjectReference {
         let oop = Oop::from(object);
@@ -74,6 +78,7 @@ impl DiscoveredList {
 
     #[inline]
     pub fn add(&self, obj: ObjectReference) {
+        mmtk::util::rc::inc(obj);
         let oop = Oop::from(obj);
         let head = self.head.load(Ordering::Relaxed);
         let discovered_addr = unsafe {
@@ -182,6 +187,7 @@ impl DiscoveredLists {
         &self,
         worker: &mut GCWorker<OpenJDK>,
     ) {
+        println!("process_soft_weak_final_refs");
         self.allow_discover.store(false, Ordering::SeqCst);
         if !*SINGLETON.get_options().no_reference_types {
             self.process_lists::<E>(worker, ReferenceType::Soft, &self.soft, true);
@@ -196,6 +202,7 @@ impl DiscoveredLists {
         &self,
         worker: &mut GCWorker<OpenJDK>,
     ) {
+        println!("resurrect_final_refs");
         assert!(!*SINGLETON.get_options().no_finalizer);
         let lists = &self.r#final;
         let mut packets = vec![];
@@ -219,6 +226,7 @@ impl DiscoveredLists {
         &self,
         worker: &mut GCWorker<OpenJDK>,
     ) {
+        println!("process_phantom_refs");
         assert!(!*SINGLETON.get_options().no_reference_types);
         self.process_lists::<E>(worker, ReferenceType::Phantom, &self.phantom, true);
     }
@@ -245,32 +253,45 @@ impl<E: ProcessEdgesWork<VM = OpenJDK>> GCWork<OpenJDK> for ProcessDiscoveredLis
             let referent = get_referent(reference);
             if referent.is_null() {
                 // Remove from the discovered list
-                return IterationResult::Removed;
-            } else if referent.is_live() || retain {
+                return DiscoveredListIterationResult::Remove;
+            } else if referent.is_reachable() || retain {
                 // Keep this referent
                 let forwarded = trace.trace_object(referent);
+                assert!(forwarded.get_forwarded_object().is_none());
+                assert!(reference.get_forwarded_object().is_none());
+                assert!(forwarded.is_reachable());
                 set_referent(reference, forwarded);
                 // Remove from the discovered list
-                return IterationResult::Removed;
+                return DiscoveredListIterationResult::Remove;
             } else {
                 if self.rt != ReferenceType::Final {
                     // Clear this referent
                     set_referent(reference, ObjectReference::NULL);
+                    println!(
+                        " - [{:?}] {:?} {} => {:?} {} {} swpt",
+                        self.rt,
+                        reference,
+                        mmtk::util::rc::count(reference),
+                        referent,
+                        mmtk::util::rc::count(referent),
+                        referent.get_forwarded_object().is_none()
+                    );
                 }
                 // Keep the reference
-                return IterationResult::Kept;
+                return DiscoveredListIterationResult::Enqueue;
             }
         });
         // Flush the list to the Universe::pending_list
         if let Some((head, tail)) = new_list {
             assert!(!head.is_null() && !tail.is_null());
-            assert_eq!(tail, get_next_reference(tail));
+            assert_eq!(ObjectReference::NULL, get_next_reference(tail));
             if self.rt == ReferenceType::Final {
                 DISCOVERED_LISTS.r#final[self.list_index]
                     .head
                     .store(head, Ordering::SeqCst);
             } else {
                 let old_head = unsafe { ((*crate::UPCALLS).swap_reference_pending_list)(head) };
+                println!("swap_reference_pending_list {:?} {:?}\n", head, old_head);
                 set_next_reference(tail, old_head);
             }
         } else {
@@ -298,7 +319,9 @@ impl<E: ProcessEdgesWork<VM = OpenJDK>> GCWork<OpenJDK> for ResurrectFinalizable
             let referent = get_referent(reference);
             let forwarded = trace.trace_object(referent);
             set_referent(reference, forwarded);
-            return IterationResult::Kept;
+            assert!(forwarded.get_forwarded_object().is_none());
+            println!(" - [final] {:?} => {:?} forwarded", reference, forwarded);
+            return DiscoveredListIterationResult::Enqueue;
         });
 
         if let Some((head, tail)) = new_list {
@@ -307,6 +330,7 @@ impl<E: ProcessEdgesWork<VM = OpenJDK>> GCWork<OpenJDK> for ResurrectFinalizable
             DISCOVERED_LISTS.r#final[self.list_index]
                 .head
                 .store(ObjectReference::NULL, Ordering::SeqCst);
+            println!("swap_reference_pending_list\n");
             let old_head = unsafe { ((*crate::UPCALLS).swap_reference_pending_list)(head) };
             set_next_reference(tail, old_head);
         }
@@ -314,68 +338,64 @@ impl<E: ProcessEdgesWork<VM = OpenJDK>> GCWork<OpenJDK> for ResurrectFinalizable
     }
 }
 
-enum IterationResult {
-    Kept,
-    Removed,
+enum DiscoveredListIterationResult {
+    Remove,
+    Enqueue,
 }
 
 fn iterate_list(
-    mut head: ObjectReference,
-    mut visitor: impl FnMut(ObjectReference) -> IterationResult,
+    head: ObjectReference,
+    mut visitor: impl FnMut(ObjectReference) -> DiscoveredListIterationResult,
 ) -> Option<(ObjectReference, ObjectReference)> {
-    let mut cursor = &mut head;
-    let mut holder: Option<ObjectReference> = None;
-    let tail: Option<ObjectReference>;
+    let mut new_head: Option<ObjectReference> = None;
+    let mut new_tail: Option<ObjectReference> = None;
+    let mut reference = head;
     loop {
-        debug_assert!(!cursor.is_null());
-        let reference = *cursor;
+        debug_assert!(!reference.is_null());
         debug_assert!(reference.is_live());
-        debug_assert!(reference.get_forwarded_object().is_none());
-        let next_ref = get_next_reference(reference);
+        let mut old_ref = reference;
+        if let Some(forwarded) = reference.get_forwarded_object() {
+            println!(" - {:?} => {:?}", reference, forwarded);
+            reference = forwarded;
+        }
+        assert!(reference.get_forwarded_object().is_none());
+        assert_ne!(mmtk::util::rc::count(reference), 0);
+        assert!(reference.is_reachable());
+        let old_next_ref = get_next_reference(reference);
+
+        let next_ref = old_next_ref.get_forwarded_object().unwrap_or(old_next_ref);
+        let end_of_list = {
+            old_ref == next_ref
+                || old_ref == old_next_ref
+                || reference == next_ref
+                || reference == old_next_ref
+        };
+        assert!(next_ref.get_forwarded_object().is_none());
         let result = visitor(reference);
+        // Remove `reference` from current list
+        set_next_reference(reference, ObjectReference::NULL);
         match result {
-            IterationResult::Removed => {
-                // Remove `reference` from list
-                let next_ref = get_next_reference(reference);
-                set_next_reference(reference, ObjectReference::NULL);
-                // Reached the end of the list?
-                if next_ref.is_live() {
-                    let next_ref = next_ref.get_forwarded_object().unwrap_or(next_ref);
-                    if next_ref == reference {
-                        // End of list
-                        if let Some(holder) = holder {
-                            set_next_reference(holder, holder);
-                            tail = Some(holder);
-                        } else {
-                            *cursor = ObjectReference::NULL;
-                            tail = None;
-                        }
-                        break;
-                    }
+            DiscoveredListIterationResult::Remove => {}
+            DiscoveredListIterationResult::Enqueue => {
+                // Add to new list
+                if let Some(new_head) = new_head {
+                    set_next_reference(reference, new_head)
+                } else {
+                    new_tail = Some(reference);
                 }
-                // Move to next
-                *cursor = next_ref;
-            }
-            IterationResult::Kept => {
-                // Reached the end of the list?
-                if next_ref.is_live() {
-                    let next_ref = next_ref.get_forwarded_object().unwrap_or(next_ref);
-                    if next_ref == reference {
-                        // End of list
-                        set_next_reference(reference, next_ref);
-                        tail = Some(reference);
-                        break;
-                    }
-                }
-                // Move to next
-                cursor = unsafe { &mut *get_next_reference_slot(reference).to_mut_ptr() };
-                holder = Some(reference);
+                new_head = Some(reference);
             }
         }
+        // Reached the end of the list?
+        if end_of_list {
+            break;
+        }
+        // Move to next
+        reference = next_ref;
     }
-    if head.is_null() {
+    if new_head.is_none() {
         None
     } else {
-        Some((head, tail.unwrap()))
+        Some((new_head.unwrap(), new_tail.unwrap()))
     }
 }
