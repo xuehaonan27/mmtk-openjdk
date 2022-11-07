@@ -229,8 +229,12 @@ fn oop_iterate(oop: Oop, closure: &mut impl EdgeVisitor<OpenJDKEdge>) {
 
 #[inline(always)]
 pub fn is_obj_array(oop: Oop) -> bool {
-    let klass_id = oop.klass.id;
-    klass_id == KlassID::ObjArray
+    oop.klass.id == KlassID::ObjArray
+}
+
+#[inline(always)]
+pub fn is_val_array(oop: Oop) -> bool {
+    oop.klass.id == KlassID::TypeArray
 }
 
 #[inline(always)]

@@ -59,43 +59,54 @@ public:
 
 class MMTkForwardClosure : public BasicOopIterateClosure {
  public:
-  inline size_t read_forwarding_word(oop o) const {
+  inline static size_t read_forwarding_word(oop o) {
     return *((size_t*) (void*) o);
   }
-  inline oop extract_forwarding_pointer(size_t status) const {
+  inline static oop extract_forwarding_pointer(size_t status) {
     return (oop) (void*) (status << 8 >> 8);
   }
-  inline bool is_forwarded(size_t status) const {
+  inline static bool is_forwarded(size_t status) {
     return (status & (0xffull << 56)) != 0;
   }
-  virtual void do_oop(oop* slot) {
+  inline virtual void do_oop(oop* slot) {
     // *slot = (oop) mmtk_get_forwarded_ref((void*) *slot);
-    auto o = *slot;
+    const auto o = *slot;
     if (o == NULL) return;
-    auto status = read_forwarding_word(o);
+    const auto status = read_forwarding_word(o);
     if (is_forwarded(status)) {
-      o = extract_forwarding_pointer(status);
-      auto status = read_forwarding_word(o);
-      if (is_forwarded(status)) {
-        o = extract_forwarding_pointer(status);
-      }
-      *slot = o;
+      *slot = extract_forwarding_pointer(status);
     }
   }
   virtual void do_oop(narrowOop* o) {}
   virtual ReferenceIterationMode reference_iteration_mode() { return DO_FIELDS; }
 };
 
+class MMTkLXRFastIsAliveClosure : public BoolObjectClosure {
+public:
+  inline virtual bool do_object_b(oop o) {
+    if (o == NULL) return false;
+    // is forwarded?
+    if (MMTkForwardClosure::is_forwarded(MMTkForwardClosure::read_forwarding_word(o))) return true;
+    // RC > 0?
+    const uintptr_t index = uintptr_t((void*)o) >> 4;
+    const uint8_t byte = *((uint8_t*) (uintptr_t(0xe0004000000) + (index >> 2)));
+    const uint8_t byte_mask = 0b11 << ((index & 0b11) << 1);
+    if ((byte & byte_mask) != 0) return true;
+    return false;
+  }
+};
+
 static void mmtk_stop_all_mutators(void *tls, bool scan_mutators_in_safepoint, MutatorClosure closure) {
+  log_debug(gc)("Requesting the VM to suspend all mutators...");
+  MMTkHeap::heap()->companion_thread()->request(MMTkVMCompanionThread::_threads_suspended, true);
+  log_debug(gc)("Mutators stopped. Now enumerate threads for scanning...");
+
   ClassLoaderDataGraph::clear_claimed_marks();
   CodeCache::gc_prologue();
 #if COMPILER2_OR_JVMCI
   DerivedPointerTable::clear();
 #endif
 
-  log_debug(gc)("Requesting the VM to suspend all mutators...");
-  MMTkHeap::heap()->companion_thread()->request(MMTkVMCompanionThread::_threads_suspended, true);
-  log_debug(gc)("Mutators stopped. Now enumerate threads for scanning...");
   mmtk_report_gc_start();
 
   if (!scan_mutators_in_safepoint) {
@@ -108,20 +119,19 @@ static void mmtk_stop_all_mutators(void *tls, bool scan_mutators_in_safepoint, M
   nmethod::oops_do_marking_prologue();
 }
 
-static void mmtk_update_weak_processor() {
+static void mmtk_update_weak_processor(bool lxr) {
   HandleMark hm;
-  MMTkIsAliveClosure is_alive;
   MMTkForwardClosure forward;
-  WeakProcessor::weak_oops_do(&is_alive, &forward);
+  if (lxr) {
+    MMTkLXRFastIsAliveClosure is_alive;
+    WeakProcessor::weak_oops_do(&is_alive, &forward);
+  } else {
+    MMTkIsAliveClosure is_alive;
+    WeakProcessor::weak_oops_do(&is_alive, &forward);
+  }
 }
 
 static void mmtk_resume_mutators(void *tls) {
-  {
-    HandleMark hm;
-    MMTkIsAliveClosure is_alive;
-    MMTkForwardClosure forward;
-    WeakProcessor::weak_oops_do(&is_alive, &forward);
-  }
   nmethod::oops_do_marking_epilogue();
   // ClassLoaderDataGraph::purge();
   // BiasedLocking::restore_marks();

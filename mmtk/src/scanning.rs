@@ -64,6 +64,11 @@ impl Scanning<OpenJDK> for VMScanning {
         crate::object_scanning::is_obj_array(unsafe { std::mem::transmute(o) })
     }
 
+    #[inline(always)]
+    fn is_val_array(o: ObjectReference) -> bool {
+        crate::object_scanning::is_val_array(unsafe { std::mem::transmute(o) })
+    }
+
     fn notify_initial_thread_scan_complete(_partial_scan: bool, _tls: VMWorkerThread) {
         // unimplemented!()
         // TODO

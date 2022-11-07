@@ -99,7 +99,7 @@ pub struct OpenJDK_Upcalls {
     pub number_of_mutators: extern "C" fn() -> usize,
     pub schedule_finalizer: extern "C" fn(),
     pub prepare_for_roots_re_scanning: extern "C" fn(),
-    pub update_weak_processor: extern "C" fn(),
+    pub update_weak_processor: extern "C" fn(lxr: bool),
     pub enqueue_references: extern "C" fn(objects: *const ObjectReference, len: usize),
     pub swap_reference_pending_list: extern "C" fn(objects: ObjectReference) -> ObjectReference,
 }

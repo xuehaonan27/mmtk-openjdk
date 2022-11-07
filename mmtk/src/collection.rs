@@ -110,9 +110,9 @@ impl Collection<OpenJDK> for VMCollection {
         DISCOVERED_LISTS.process_phantom_refs::<E>(worker)
     }
 
-    fn update_weak_processor() {
+    fn update_weak_processor(lxr: bool) {
         unsafe {
-            ((*UPCALLS).update_weak_processor)();
+            ((*UPCALLS).update_weak_processor)(lxr);
         }
     }
 
