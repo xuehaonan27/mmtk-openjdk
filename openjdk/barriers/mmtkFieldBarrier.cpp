@@ -30,9 +30,11 @@ void MMTkFieldBarrierSetAssembler::load_at(MacroAssembler* masm, DecoratorSet de
     Label done;
     // No slow-call if SATB is not active
     Register tmp = rscratch1;
+    Register tmp2 = rscratch2;
     __ movptr(tmp, intptr_t(&CONCURRENT_MARKING_ACTIVE));
-    __ movb(tmp, Address(tmp, 0));
-    __ cmpptr(tmp, 1);
+    __ xorq(tmp2, tmp2);
+    __ movb(tmp2, Address(tmp, 0));
+    __ cmpptr(tmp2, 1);
     __ jcc(Assembler::notEqual, done);
     // No slow-call if dst is NULL
     __ cmpptr(dst, 0);
