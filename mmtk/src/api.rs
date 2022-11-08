@@ -317,6 +317,14 @@ pub extern "C" fn mmtk_load_reference(mutator: &'static mut Mutator<OpenJDK>, o:
     mutator.barrier().load_reference(o);
 }
 
+#[no_mangle]
+pub extern "C" fn mmtk_object_reference_clone_pre(
+    mutator: &'static mut Mutator<OpenJDK>,
+    obj: ObjectReference,
+) {
+    mutator.barrier().object_reference_clone_pre(obj);
+}
+
 /// Full pre barrier
 #[no_mangle]
 pub extern "C" fn mmtk_object_reference_write_pre(

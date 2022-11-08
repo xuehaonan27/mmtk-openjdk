@@ -415,5 +415,35 @@ Node* MMTkFieldBarrierSetC2::load_at_resolved(C2Access& access, const Type* val_
   return load;
 }
 
+void MMTkFieldBarrierSetC2::clone(GraphKit* kit, Node* src, Node* dst, Node* size, bool is_array) const {
+  if (!is_array) {
+    MMTkIdealKit ideal(kit);
+#if MMTK_ENABLE_BARRIER_FASTPATH
+    Node* no_base = __ top();
+    float unlikely  = PROB_UNLIKELY(0.999);
+
+    Node* zero  = __ ConI(0);
+    Node* addr = __ CastPX(__ ctrl(), dst);
+    Node* meta_addr = __ AddP(no_base, __ ConP(SIDE_METADATA_BASE_ADDRESS), __ URShiftX(addr, __ ConI(6)));
+    Node* byte = __ load(__ ctrl(), meta_addr, TypeInt::INT, T_BYTE, Compile::AliasIdxRaw);
+    Node* shift = __ URShiftX(addr, __ ConI(3));
+    shift = __ AndI(__ ConvL2I(shift), __ ConI(7));
+    Node* result = __ AndI(__ URShiftI(byte, shift), __ ConI(1));
+
+    __ if_then(result, BoolTest::ne, zero, unlikely); {
+      const TypeFunc* tf = __ func_type(TypeOopPtr::BOTTOM);
+      Node* x = __ make_leaf_call(tf, FN_ADDR(MMTkBarrierSetRuntime::object_reference_clone_pre_call), "mmtk_barrier_call", dst);
+    } __ end_if();
+#else
+    const TypeFunc* tf = __ func_type(TypeOopPtr::BOTTOM);
+    Node* x = __ make_leaf_call(tf, FN_ADDR(MMTkBarrierSetRuntime::object_reference_clone_pre_call), "mmtk_barrier_call", dst);
+#endif
+    kit->sync_kit(ideal);
+    kit->insert_mem_bar(Op_MemBarVolatile);
+    kit->final_sync(ideal);
+  }
+  BarrierSetC2::clone(kit, src, dst, size, is_array);
+}
+
 
 #undef __

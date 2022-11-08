@@ -73,6 +73,7 @@ public:
   static void object_reference_array_copy_pre_call(void* src, void* dst, size_t count);
   /// Generic arraycopy pre-barrier. Called by fast-paths.
   static void object_reference_array_copy_post_call(void* src, void* dst, size_t count);
+  static void object_reference_clone_pre_call(void* obj);
   /// Check if the address is a slow-path function.
   virtual bool is_slow_path_call(address call) const {
     return call == CAST_FROM_FN_PTR(address, object_reference_write_pre_call)
@@ -80,7 +81,8 @@ public:
         || call == CAST_FROM_FN_PTR(address, object_reference_write_slow_call)
         || call == CAST_FROM_FN_PTR(address, object_reference_array_copy_pre_call)
         || call == CAST_FROM_FN_PTR(address, object_reference_array_copy_post_call)
-        || call == CAST_FROM_FN_PTR(address, load_reference_call);
+        || call == CAST_FROM_FN_PTR(address, load_reference_call)
+        || call == CAST_FROM_FN_PTR(address, object_reference_clone_pre_call);
   }
 
   /// Full pre-barrier
@@ -93,6 +95,7 @@ public:
   virtual void object_reference_array_copy_post(oop* src, oop* dst, size_t count) const {};
   /// java.lang.Reference load barrier
   virtual void load_reference(DecoratorSet decorators, oop value) const {};
+  virtual void clone_pre(DecoratorSet decorators, oop value) const {};
 };
 
 class MMTkBarrierC1;
@@ -243,6 +246,7 @@ public:
 
     static void clone_in_heap(oop src, oop dst, size_t size) {
       // TODO: We don't need clone barriers at the moment.
+      runtime()->clone_pre(decorators, dst);
       Raw::clone(src, dst, size);
     }
   };

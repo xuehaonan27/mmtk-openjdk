@@ -353,9 +353,16 @@ static int discovered_offset() {
   return java_lang_ref_Reference::discovered_offset;
 }
 
-static char* dump_object_string(void* object) {
+char data[1024];
+
+static const char* dump_object_string(void* object) {
+  HandleMark hm;
+  ResourceMark rm;
+  if (object == NULL) return NULL;
   oop o = (oop) object;
-  return o->print_value_string();
+  const char* c = o->klass()->internal_name();
+  strcpy(&data[0], c);
+  return &data[0];
 }
 
 static void mmtk_schedule_finalizer() {

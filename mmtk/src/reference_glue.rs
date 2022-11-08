@@ -14,7 +14,9 @@ use mmtk::MMTK;
 #[inline(always)]
 pub fn set_referent(reff: ObjectReference, referent: ObjectReference) {
     let oop = Oop::from(reff);
-    unsafe { InstanceRefKlass::referent_address(oop).store(referent) }
+    let slot = InstanceRefKlass::referent_address(oop);
+    mmtk::plan::lxr::record_edge_for_validation(slot, referent);
+    unsafe { slot.store(referent) }
 }
 
 #[inline(always)]
@@ -36,7 +38,9 @@ fn get_next_reference(object: ObjectReference) -> ObjectReference {
 
 #[inline(always)]
 fn set_next_reference(object: ObjectReference, next: ObjectReference) {
-    unsafe { get_next_reference_slot(object).store(next) }
+    let slot = get_next_reference_slot(object);
+    mmtk::plan::lxr::record_edge_for_validation(slot, next);
+    unsafe { slot.store(next) }
 }
 
 pub struct VMReferenceGlue {}

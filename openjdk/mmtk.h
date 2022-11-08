@@ -72,6 +72,8 @@ extern void mmtk_array_copy_pre(MMTk_Mutator mutator, void* src, void* dst, size
 /// Full array-copy post-barrier
 extern void mmtk_array_copy_post(MMTk_Mutator mutator, void* src, void* dst, size_t count);
 
+extern void mmtk_object_reference_clone_pre(MMTk_Mutator mutator, void* obj);
+
 extern void release_buffer(void** buffer, size_t len, size_t cap);
 
 extern bool is_in_mmtk_spaces(void* ref);
@@ -174,7 +176,7 @@ typedef struct {
     int (*static_oop_field_count_offset) ();
     int (*referent_offset) ();
     int (*discovered_offset) ();
-    char* (*dump_object_string) (void* object);
+    const char* (*dump_object_string) (void* object);
     void (*scan_all_thread_roots)(EdgesClosure closure);
     void (*scan_thread_roots)(EdgesClosure closure, void* tls);
     void (*scan_universe_roots) (EdgesClosure closure);

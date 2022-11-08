@@ -26,6 +26,9 @@ public:
   virtual void load_reference(DecoratorSet decorators, oop value) const override {
     if (CONCURRENT_MARKING_ACTIVE == 1 && value != NULL) load_reference_call((void*) value);
   };
+  virtual void clone_pre(DecoratorSet decorators, oop value) const override {
+    // object_reference_clone_pre_call((void*) value);
+  };
 };
 
 class MMTkFieldBarrierSetAssembler: public MMTkBarrierSetAssembler {
@@ -56,6 +59,7 @@ public:
     return false;
   }
   virtual Node* load_at_resolved(C2Access& access, const Type* val_type) const override;
+  virtual void clone(GraphKit* kit, Node* src, Node* dst, Node* size, bool is_array) const override;
 };
 
 struct MMTkFieldBarrier: MMTkBarrierImpl<
