@@ -101,13 +101,13 @@ static void mmtk_stop_all_mutators(void *tls, bool scan_mutators_in_safepoint, M
   MMTkHeap::heap()->companion_thread()->request(MMTkVMCompanionThread::_threads_suspended, true);
   log_debug(gc)("Mutators stopped. Now enumerate threads for scanning...");
 
-  ClassLoaderDataGraph::clear_claimed_marks();
+  mmtk_report_gc_start();
+
+  // ClassLoaderDataGraph::clear_claimed_marks();
   CodeCache::gc_prologue();
 #if COMPILER2_OR_JVMCI
   DerivedPointerTable::clear();
 #endif
-
-  mmtk_report_gc_start();
 
   if (!scan_mutators_in_safepoint) {
     JavaThreadIteratorWithHandle jtiwh;
