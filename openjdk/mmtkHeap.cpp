@@ -67,11 +67,6 @@ MMTkHeap::MMTkHeap(MMTkCollectorPolicy* policy) : CollectedHeap(), _last_gc_time
 // , _par_state_string(StringTable::weak_storage())
 {
   _heap = this;
-  unsigned int ncpus = (unsigned int) os::initial_active_processor_count();
-  _safepoint_workers = new WorkGang("GC Thread", ncpus,
-    /* are_GC_task_threads */true,
-    /* are_ConcurrentGC_threads */false);
-  _safepoint_workers->initialize_workers();
 }
 
 jint MMTkHeap::initialize() {
