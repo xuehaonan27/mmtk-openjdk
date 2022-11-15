@@ -57,7 +57,7 @@ public:
   }
 };
 
-class MMTkForwardClosure : public BasicOopIterateClosure {
+class MMTkForwardClosure : public OopClosure {
  public:
   inline static size_t read_forwarding_word(oop o) {
     return *((size_t*) (void*) o);
@@ -68,7 +68,7 @@ class MMTkForwardClosure : public BasicOopIterateClosure {
   inline static bool is_forwarded(size_t status) {
     return (status & (0xffull << 56)) != 0;
   }
-  inline virtual void do_oop(oop* slot) {
+  inline void do_oop(oop* slot) {
     // *slot = (oop) mmtk_get_forwarded_ref((void*) *slot);
     const auto o = *slot;
     if (o == NULL) return;
@@ -78,21 +78,18 @@ class MMTkForwardClosure : public BasicOopIterateClosure {
     }
   }
   virtual void do_oop(narrowOop* o) {}
-  virtual ReferenceIterationMode reference_iteration_mode() { return DO_FIELDS; }
 };
 
 class MMTkLXRFastIsAliveClosure : public BoolObjectClosure {
 public:
-  inline virtual bool do_object_b(oop o) {
+  inline bool do_object_b(oop o) {
     if (o == NULL) return false;
-    // is forwarded?
-    if (MMTkForwardClosure::is_forwarded(MMTkForwardClosure::read_forwarding_word(o))) return true;
     // RC > 0?
+    // Note: forwarded objects should have zero RC count.
     const uintptr_t index = uintptr_t((void*)o) >> 4;
     const uint8_t byte = *((uint8_t*) (uintptr_t(0xe0004000000) + (index >> 2)));
     const uint8_t byte_mask = 0b11 << ((index & 0b11) << 1);
-    if ((byte & byte_mask) != 0) return true;
-    return false;
+    return (byte & byte_mask) != 0;
   }
 };
 
