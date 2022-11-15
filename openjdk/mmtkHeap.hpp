@@ -60,6 +60,7 @@ class MMTkHeap : public CollectedHeap {
   int _num_root_scan_tasks;
   MMTkVMCompanionThread* _companion_thread;
 public:
+  AllocatorSelector default_allocator_selector;
 
   MMTkHeap(MMTkCollectorPolicy* policy);
 

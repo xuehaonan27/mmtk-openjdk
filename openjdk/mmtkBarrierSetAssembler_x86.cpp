@@ -31,6 +31,7 @@
 #include "mmtkBarrierSetAssembler_x86.hpp"
 #include "mmtkBarrierSetC1.hpp"
 #include "mmtkMutator.hpp"
+#include "mmtkHeap.hpp"
 #include "runtime/sharedRuntime.hpp"
 #include "utilities/macros.hpp"
 #include "c1/c1_LIRAssembler.hpp"
@@ -55,7 +56,7 @@ void MMTkBarrierSetAssembler::eden_allocate(MacroAssembler* masm, Register threa
     // fastpath, we only use default allocator
     Allocator allocator = AllocatorDefault;
     // We need to figure out which allocator we are using by querying MMTk.
-    AllocatorSelector selector = get_allocator_mapping(allocator);
+    AllocatorSelector selector = MMTkHeap::heap()->default_allocator_selector;
     if (selector.tag == TAG_MARK_COMPACT) extra_header = MMTK_MARK_COMPACT_HEADER_RESERVED_IN_BYTES;
 
     if (var_size_in_bytes == noreg) {

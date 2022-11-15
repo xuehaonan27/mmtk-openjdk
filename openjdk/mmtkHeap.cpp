@@ -109,6 +109,7 @@ jint MMTkHeap::initialize() {
 
   initialize_reserved_region(_start, _end);
 
+  default_allocator_selector = get_allocator_mapping(AllocatorDefault);
 
   MMTkBarrierSet* const barrier_set = new MMTkBarrierSet(reserved_region());
   //barrier_set->initialize();
@@ -447,13 +448,41 @@ void MMTkHeap::scan_roots(OopClosure& cl) {
   WeakProcessor::oops_do(&cl);
 }
 
+static inline HeapWord* alloc_fast(size_t bytes, Allocator allocator) {
+  // All allocations with size larger than max non-los bytes will get to this slowpath here.
+  // We will use LOS for those.
+  assert(MMTkMutatorContext::max_non_los_default_alloc_bytes != 0, "max_non_los_default_alloc_bytes hasn't been initialized");
+  if (bytes >= MMTkMutatorContext::max_non_los_default_alloc_bytes) {
+    allocator = AllocatorLos;
+  } else if (allocator == AllocatorDefault) {
+    AllocatorSelector selector = MMTkHeap::heap()->default_allocator_selector;
+    if (selector.tag == TAG_IMMIX) {
+      auto& allocator = Thread::current()->third_party_heap_mutator.allocators.immix[selector.index];
+      auto cursor = uintptr_t(allocator.cursor);
+      auto limit = uintptr_t(allocator.limit);
+      if (cursor + bytes <= limit) {
+        allocator.cursor = (void*) (cursor + bytes);
+        return (HeapWord*) cursor;
+      }
+    }
+  }
+
+  // FIXME: Proper use of slow-path api
+  HeapWord* o = (HeapWord*) ::alloc((MMTk_Mutator) &Thread::current()->third_party_heap_mutator, bytes, HeapWordSize, 0, allocator);
+  // Post allocation hooks. Note that we can get a nullptr from mmtk core in the case of OOM.
+  // Hence, only call post allocation hooks if we have a proper object.
+  if (o != nullptr && allocator != AllocatorDefault) {
+    ::post_alloc((MMTk_Mutator) &Thread::current()->third_party_heap_mutator, o, bytes, allocator);
+  }
+  return o;
+}
+
 HeapWord* MMTkHeap::mem_allocate(size_t size, bool* gc_overhead_limit_was_exceeded) {
-  HeapWord* obj = Thread::current()->third_party_heap_mutator.alloc(size << LogHeapWordSize);
-  return obj;
+  return alloc_fast(size << LogHeapWordSize, AllocatorDefault);
 }
 
 HeapWord* MMTkHeap::mem_allocate_nonmove(size_t size, bool* gc_overhead_limit_was_exceeded) {
-  return Thread::current()->third_party_heap_mutator.alloc(size << LogHeapWordSize, AllocatorLos);
+  return alloc_fast(size << LogHeapWordSize, AllocatorLos);
 }
 
 /*

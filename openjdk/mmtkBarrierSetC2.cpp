@@ -27,6 +27,7 @@
 #include "mmtkBarrierSet.hpp"
 #include "mmtkBarrierSetC2.hpp"
 #include "mmtkMutator.hpp"
+#include "mmtkHeap.hpp"
 #include "opto/addnode.hpp"
 #include "opto/arraycopynode.hpp"
 #include "opto/callnode.hpp"
@@ -84,7 +85,7 @@ void MMTkBarrierSetC2::expand_allocate(PhaseMacroExpand* x,
   size_t extra_header = 0;
   // We always use the default allocator.
   // But we need to figure out which allocator we are using by querying MMTk.
-  AllocatorSelector selector = get_allocator_mapping(AllocatorDefault);
+  AllocatorSelector selector = MMTkHeap::heap()->default_allocator_selector;
   if (selector.tag == TAG_MARK_COMPACT) extra_header = MMTK_MARK_COMPACT_HEADER_RESERVED_IN_BYTES;
 
   // Check if allocation size is constant
