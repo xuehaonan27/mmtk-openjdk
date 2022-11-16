@@ -45,6 +45,13 @@
 #include "jfr/jfr.hpp"
 #include "gc/shared/oopStorage.inline.hpp"
 #include "utilities/debug.hpp"
+#include "classfile/systemDictionary.hpp"
+#include "prims/jvmtiExport.hpp"
+#include "runtime/jniHandles.hpp"
+#include "utilities/macros.hpp"
+#if INCLUDE_JFR
+#include "jfr/jfr.hpp"
+#endif
 
 // Note: This counter must be accessed using the Atomic class.
 static volatile size_t mmtk_start_the_world_count = 0;
@@ -66,7 +73,7 @@ class MMTkForwardClosure : public OopClosure {
     return (oop) (void*) (status << 8 >> 8);
   }
   inline static bool is_forwarded(size_t status) {
-    return (status & (0xffull << 56)) != 0;
+    return (status >> 56) != 0;
   }
   inline void do_oop(oop* slot) {
     // *slot = (oop) mmtk_get_forwarded_ref((void*) *slot);
@@ -82,15 +89,34 @@ class MMTkForwardClosure : public OopClosure {
 
 class MMTkLXRFastIsAliveClosure : public BoolObjectClosure {
 public:
-  inline bool do_object_b(oop o) {
-    if (o == NULL) return false;
-    // RC > 0?
-    // Note: forwarded objects should have zero RC count.
-    const uintptr_t index = uintptr_t((void*)o) >> 4;
+  static inline bool rc_live(oop o) {
+    const uintptr_t index = uintptr_t(o) >> 4;
     const uint8_t byte = *((uint8_t*) (uintptr_t(0xe0004000000) + (index >> 2)));
     const uint8_t byte_mask = 0b11 << ((index & 0b11) << 1);
     return (byte & byte_mask) != 0;
   }
+
+  static inline bool is_forwarded(oop o) {
+    return (*(uint8_t*)(uintptr_t(o) + 7)) != 0;
+  }
+
+  inline bool do_object_b(oop o) {
+    return o != NULL && (rc_live(o) || is_forwarded(o));
+  }
+};
+
+class MMTkLXRFastUpdateClosure : public OopClosure {
+ public:
+  inline void do_oop(oop* slot) {
+    const auto o = *slot;
+    const auto status = MMTkForwardClosure::read_forwarding_word(o);
+    if (MMTkForwardClosure::is_forwarded(status)) {
+      *slot = MMTkForwardClosure::extract_forwarding_pointer(status);
+    } else if (!MMTkLXRFastIsAliveClosure::rc_live(o)) {
+      *slot = NULL;
+    }
+  }
+  virtual void do_oop(narrowOop* o) {}
 };
 
 static void mmtk_stop_all_mutators(void *tls, bool scan_mutators_in_safepoint, MutatorClosure closure) {
@@ -121,7 +147,11 @@ static void mmtk_update_weak_processor(bool lxr) {
   MMTkForwardClosure forward;
   if (lxr) {
     MMTkLXRFastIsAliveClosure is_alive;
-    WeakProcessor::weak_oops_do(&is_alive, &forward);
+    MMTkLXRFastUpdateClosure fast_update;
+    JNIHandles::weak_global_handles()->weak_oops_do(&fast_update);
+    JvmtiExport::weak_oops_do(&is_alive, &forward);
+    SystemDictionary::vm_weak_oop_storage()->weak_oops_do(&fast_update);
+    JFR_ONLY(Jfr::weak_oops_do(&is_alive, &forward);)
   } else {
     MMTkIsAliveClosure is_alive;
     WeakProcessor::weak_oops_do(&is_alive, &forward);
