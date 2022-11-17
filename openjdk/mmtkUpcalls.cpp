@@ -90,14 +90,14 @@ class MMTkForwardClosure : public OopClosure {
 class MMTkLXRFastIsAliveClosure : public BoolObjectClosure {
 public:
   static inline bool rc_live(oop o) {
-    const uintptr_t index = uintptr_t(o) >> 4;
+    const uintptr_t index = uintptr_t((void*) o) >> 4;
     const uint8_t byte = *((uint8_t*) (uintptr_t(0xe0004000000) + (index >> 2)));
     const uint8_t byte_mask = 0b11 << ((index & 0b11) << 1);
     return (byte & byte_mask) != 0;
   }
 
   static inline bool is_forwarded(oop o) {
-    return (*(uint8_t*)(uintptr_t(o) + 7)) != 0;
+    return (*(uint8_t*)(uintptr_t((void*) o) + 7)) != 0;
   }
 
   inline bool do_object_b(oop o) {
