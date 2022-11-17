@@ -111,7 +111,7 @@ impl Scanning<OpenJDK> for VMScanning {
         if !(Self::SCAN_MUTATORS_IN_SAFEPOINT && Self::SINGLE_THREAD_MUTATOR_SCANNING) {
             memory_manager::add_work_packet(
                 &SINGLETON,
-                WorkBucketStage::Unconstrained,
+                WorkBucketStage::RCProcessIncs,
                 ScanVMThreadRoots::new(factory),
             );
         }
