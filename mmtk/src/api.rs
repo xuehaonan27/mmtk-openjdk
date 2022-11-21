@@ -34,6 +34,7 @@ pub extern "C" fn get_mmtk_version() -> *const c_char {
 
 #[no_mangle]
 pub extern "C" fn mmtk_active_barrier() -> *const c_char {
+    println!("{:?}", SINGLETON.get_plan().constraints().barrier);
     match SINGLETON.get_plan().constraints().barrier {
         BarrierSelector::NoBarrier => NO_BARRIER.as_ptr(),
         BarrierSelector::ObjectBarrier => OBJECT_BARRIER.as_ptr(),

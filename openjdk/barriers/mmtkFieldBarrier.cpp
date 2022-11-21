@@ -252,11 +252,7 @@ void MMTkFieldBarrierSetC1::object_reference_write_pre(LIRAccess& access, LIR_Op
 #define __ ideal.
 
 
-void MMTkFieldBarrierSetC2::object_reference_write_pre(GraphKit* kit, Node* src, Node* slot, Node* val) const {
-  if (can_remove_barrier(kit, &kit->gvn(), src, slot, val, /* skip_const_null */ false)) return;
-
-  MMTkIdealKit ideal(kit, true);
-
+static void insert_write_barrier_common(MMTkIdealKit& ideal, Node* src, Node* slot, Node* val) {
 #if MMTK_ENABLE_BARRIER_FASTPATH
   Node* no_base = __ top();
   float unlikely  = PROB_UNLIKELY(0.999);
@@ -277,13 +273,22 @@ void MMTkFieldBarrierSetC2::object_reference_write_pre(GraphKit* kit, Node* src,
   const TypeFunc* tf = __ func_type(TypeOopPtr::BOTTOM, TypeOopPtr::BOTTOM, TypeOopPtr::BOTTOM);
   Node* x = __ make_leaf_call(tf, FN_ADDR(MMTkBarrierSetRuntime::object_reference_write_pre_call), "mmtk_barrier_call", src, slot, val);
 #endif
+}
+
+void MMTkFieldBarrierSetC2::object_reference_write_pre(GraphKit* kit, Node* src, Node* slot, Node* val) const {
+  if (can_remove_barrier(kit, &kit->gvn(), src, slot, val, /* skip_const_null */ false)) return;
+
+  MMTkIdealKit ideal(kit, true);
+
+  insert_write_barrier_common(ideal, src, slot, val);
+
   kit->sync_kit(ideal);
   kit->insert_mem_bar(Op_MemBarVolatile);
 
   kit->final_sync(ideal); // Final sync IdealKit and GraphKit.
 }
 
-static void reference_load_barrier(GraphKit* kit, Node* val, bool emit_barrier) {
+static void reference_load_barrier(GraphKit* kit, Node* slot, Node* val, bool emit_barrier) {
   MMTkIdealKit ideal(kit, true);
   Node* no_base = __ top();
   float unlikely  = PROB_UNLIKELY(0.999);
@@ -293,8 +298,7 @@ static void reference_load_barrier(GraphKit* kit, Node* val, bool emit_barrier) 
   __ if_then(cm_flag, BoolTest::ne, zero, unlikely); {
     // No slow-call if dst is NULL
     __ if_then(val, BoolTest::ne, kit->null()); {
-      const TypeFunc* tf = __ func_type(TypeOopPtr::BOTTOM);
-      Node* x = __ make_leaf_call(tf, FN_ADDR(MMTkBarrierSetRuntime::load_reference_call), "mmtk_barrier_call", val);
+      insert_write_barrier_common(ideal, val, slot, val);
     } __ end_if();
   } __ end_if();
   kit->sync_kit(ideal);
@@ -302,7 +306,7 @@ static void reference_load_barrier(GraphKit* kit, Node* val, bool emit_barrier) 
   kit->final_sync(ideal); // Final sync IdealKit and GraphKit.
 }
 
-static void reference_load_barrier_for_unknown_load(GraphKit* kit, Node* base_oop, Node* offset, Node* val, bool need_mem_bar) {
+static void reference_load_barrier_for_unknown_load(GraphKit* kit, Node* base_oop, Node* offset, Node* slot, Node* val, bool need_mem_bar) {
   // We could be accessing the referent field of a reference object. If so, when G1
   // is enabled, we need to log the value in the referent field in an SATB buffer.
   // This routine performs some compile time filters and generates suitable
@@ -361,7 +365,7 @@ static void reference_load_barrier_for_unknown_load(GraphKit* kit, Node* base_oo
         // Update graphKit from IdeakKit.
         kit->sync_kit(ideal);
         // Use the pre-barrier to record the value in the referent field
-        reference_load_barrier(kit, val, false);
+        reference_load_barrier(kit, slot, val, false);
         if (need_mem_bar) {
           // Add memory barrier to prevent commoning reads from this field
           // across safepoint since GC can change its value.
@@ -407,16 +411,16 @@ Node* MMTkFieldBarrierSetC2::load_at_resolved(C2Access& access, const Type* val_
   }
 
   if (on_weak) {
-    reference_load_barrier(kit, load, true);
+    reference_load_barrier(kit, adr, load, true);
   } else if (unknown) {
-    reference_load_barrier_for_unknown_load(kit, obj, offset, load, !need_cpu_mem_bar);
+    reference_load_barrier_for_unknown_load(kit, obj, offset, adr, load, !need_cpu_mem_bar);
   }
 
   return load;
 }
 
 void MMTkFieldBarrierSetC2::clone(GraphKit* kit, Node* src, Node* dst, Node* size, bool is_array) const {
-  if (!is_array) {
+  if (!is_array && dst != kit->just_allocated_object(kit->control())) {
     MMTkIdealKit ideal(kit);
 #if MMTK_ENABLE_BARRIER_FASTPATH
     Node* no_base = __ top();
