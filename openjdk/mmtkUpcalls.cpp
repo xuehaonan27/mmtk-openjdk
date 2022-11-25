@@ -97,10 +97,12 @@ public:
   }
 
   static inline bool is_forwarded(oop o) {
-    return (*(uint8_t*)(uintptr_t((void*) o) + 7)) != 0;
+    return MMTkForwardClosure::is_forwarded(MMTkForwardClosure::read_forwarding_word(o));
   }
 
   inline bool do_object_b(oop o) {
+    const uintptr_t v = uintptr_t((void*) o);
+    if (v >= 0x220000000000ULL || v < 0x20000000000ULL) return false;
     return o != NULL && (rc_live(o) || is_forwarded(o));
   }
 };
@@ -109,6 +111,11 @@ class MMTkLXRFastUpdateClosure : public OopClosure {
  public:
   inline void do_oop(oop* slot) {
     const auto o = *slot;
+    const uintptr_t v = uintptr_t((void*) o);
+    if (v >= 0x220000000000ULL || v < 0x20000000000ULL) {
+      *slot = NULL;
+      return;
+    }
     const auto status = MMTkForwardClosure::read_forwarding_word(o);
     if (MMTkForwardClosure::is_forwarded(status)) {
       *slot = MMTkForwardClosure::extract_forwarding_pointer(status);
