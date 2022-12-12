@@ -7,8 +7,8 @@ use mmtk::util::constants::*;
 use mmtk::util::opaque_pointer::*;
 use mmtk::util::{Address, ObjectReference};
 use mmtk::vm::EdgeVisitor;
+use std::cell::UnsafeCell;
 use std::{mem, slice};
-
 trait OopIterate: Sized {
     fn oop_iterate(&self, oop: Oop, closure: &mut impl EdgeVisitor<OpenJDKEdge>);
 }
@@ -27,6 +27,9 @@ impl OopIterate for OopMapBlock {
 impl OopIterate for InstanceKlass {
     #[inline(always)]
     fn oop_iterate(&self, oop: Oop, closure: &mut impl EdgeVisitor<OpenJDKEdge>) {
+        if closure.should_follow_clds() {
+            do_klass(&oop.klass, closure);
+        }
         let oop_maps = self.nonstatic_oop_maps();
         for map in oop_maps {
             map.oop_iterate(oop, closure)
@@ -38,32 +41,21 @@ impl OopIterate for InstanceMirrorKlass {
     #[inline(always)]
     fn oop_iterate(&self, oop: Oop, closure: &mut impl EdgeVisitor<OpenJDKEdge>) {
         self.instance_klass.oop_iterate(oop, closure);
-        // if (Devirtualizer::do_metadata(closure)) {
-        //     Klass* klass = java_lang_Class::as_Klass(obj);
-        //     // We'll get NULL for primitive mirrors.
-        //     if (klass != NULL) {
-        //       if (klass->is_instance_klass() && InstanceKlass::cast(klass)->is_anonymous()) {
-        //         // An anonymous class doesn't have its own class loader, so when handling
-        //         // the java mirror for an anonymous class we need to make sure its class
-        //         // loader data is claimed, this is done by calling do_cld explicitly.
-        //         // For non-anonymous classes the call to do_cld is made when the class
-        //         // loader itself is handled.
-        //         Devirtualizer::do_cld(closure, klass->class_loader_data());
-        //       } else {
-        //         Devirtualizer::do_klass(closure, klass);
-        //       }
-        //     } else {
-        //       // We would like to assert here (as below) that if klass has been NULL, then
-        //       // this has been a mirror for a primitive type that we do not need to follow
-        //       // as they are always strong roots.
-        //       // However, we might get across a klass that just changed during CMS concurrent
-        //       // marking if allocation occurred in the old generation.
-        //       // This is benign here, as we keep alive all CLDs that were loaded during the
-        //       // CMS concurrent phase in the class loading, i.e. they will be iterated over
-        //       // and kept alive during remark.
-        //       // assert(java_lang_Class::is_primitive(obj), "Sanity check");
-        //     }
-        // }
+        if closure.should_follow_clds() {
+            let klass = unsafe {
+                (oop.start() + *crate::JAVA_LANG_CLASS_KLASS_OFFSET_IN_BYTES).load::<*mut Klass>()
+            };
+            if !klass.is_null() {
+                let klass = unsafe { &mut *klass };
+                if klass.is_instance_klass()
+                    && (unsafe { klass.cast::<InstanceKlass>().is_anonymous() })
+                {
+                    do_cld(&klass.class_loader_data, closure)
+                } else {
+                    do_klass(klass, closure)
+                }
+            }
+        }
 
         // static fields
         let start: *const Oop = Self::start_of_static_fields(oop).to_ptr::<Oop>();
@@ -79,19 +71,24 @@ impl OopIterate for InstanceClassLoaderKlass {
     #[inline]
     fn oop_iterate(&self, oop: Oop, closure: &mut impl EdgeVisitor<OpenJDKEdge>) {
         self.instance_klass.oop_iterate(oop, closure);
-        // if (Devirtualizer::do_metadata(closure)) {
-        //     ClassLoaderData* cld = java_lang_ClassLoader::loader_data(obj);
-        //     // cld can be null if we have a non-registered class loader.
-        //     if (cld != NULL) {
-        //         Devirtualizer::do_cld(closure, cld);
-        //     }
-        // }
+        if closure.should_follow_clds() {
+            let cld = unsafe {
+                (oop.start() + *crate::JAVA_LANG_CLASSLOADER_LOADER_DATA_OFFSET)
+                    .load::<*mut ClassLoaderData>()
+            };
+            if !cld.is_null() {
+                do_cld(unsafe { &*cld }, closure);
+            }
+        }
     }
 }
 
 impl OopIterate for ObjArrayKlass {
     #[inline(always)]
     fn oop_iterate(&self, oop: Oop, closure: &mut impl EdgeVisitor<OpenJDKEdge>) {
+        if closure.should_follow_clds() {
+            do_klass(&oop.klass, closure);
+        }
         let array = unsafe { oop.as_array_oop() };
         for oop in unsafe { array.data::<Oop>(BasicType::T_OBJECT) } {
             closure.visit_edge(Address::from_ref(oop as &Oop));
@@ -183,14 +180,24 @@ impl InstanceRefKlass {
 }
 
 #[allow(unused)]
-fn oop_iterate_slow(oop: Oop, closure: &mut impl EdgeVisitor<OpenJDKEdge>, tls: OpaquePointer) {
+fn oop_iterate_slow<V: EdgeVisitor<OpenJDKEdge>>(oop: Oop, closure: &mut V, tls: OpaquePointer) {
     unsafe {
-        ((*UPCALLS).scan_object)(closure as *mut _ as _, mem::transmute(oop), tls);
+        CLOSURE.with(|x| *x.get() = closure as *mut V as *mut u8);
+        ((*UPCALLS).scan_object)(
+            mem::transmute(scan_object_fn::<V> as *const unsafe extern "C" fn(edge: Address)),
+            mem::transmute(oop),
+            tls,
+            closure.should_follow_clds(),
+            closure.should_claim_clds(),
+        );
     }
 }
 
 #[inline(always)]
-fn oop_iterate(oop: Oop, closure: &mut impl EdgeVisitor<OpenJDKEdge>) {
+fn oop_iterate<V: EdgeVisitor<OpenJDKEdge>>(oop: Oop, closure: &mut V) {
+    unsafe {
+        CLOSURE.with(|x| *x.get() = closure as *mut V as *mut u8);
+    }
     let klass_id = oop.klass.id;
     debug_assert!(
         klass_id as i32 >= 0 && (klass_id as i32) < 6,
@@ -222,9 +229,24 @@ fn oop_iterate(oop: Oop, closure: &mut impl EdgeVisitor<OpenJDKEdge>) {
         KlassID::InstanceRef => {
             let instance_klass = unsafe { oop.klass.cast::<InstanceRefKlass>() };
             instance_klass.oop_iterate(oop, closure);
-        } // _ => oop_iterate_slow(oop, closure, tls),
+        }
+        // _ => oop_iterate_slow(oop, closure, OpaquePointer::UNINITIALIZED),
         _ => {}
     }
+}
+
+fn do_cld<V: EdgeVisitor<OpenJDKEdge>>(cld: &ClassLoaderData, closure: &mut V) {
+    if !closure.should_follow_clds() {
+        return;
+    }
+    cld.oops_do(closure)
+}
+
+fn do_klass<V: EdgeVisitor<OpenJDKEdge>>(klass: &Klass, closure: &mut V) {
+    if !closure.should_follow_clds() {
+        return;
+    }
+    do_cld(&klass.class_loader_data, closure)
 }
 
 #[inline(always)]
@@ -243,6 +265,16 @@ pub fn obj_array_data(oop: Oop) -> &'static [ObjectReference] {
         let array = oop.as_array_oop();
         array.data::<ObjectReference>(BasicType::T_OBJECT)
     }
+}
+
+thread_local! {
+    static CLOSURE: UnsafeCell<*mut u8> = UnsafeCell::new(std::ptr::null_mut());
+}
+
+pub unsafe extern "C" fn scan_object_fn<V: EdgeVisitor<OpenJDKEdge>>(edge: Address) {
+    let ptr: *mut u8 = CLOSURE.with(|x| *x.get());
+    let closure = &mut *(ptr as *mut V);
+    closure.visit_edge(edge);
 }
 
 #[inline]

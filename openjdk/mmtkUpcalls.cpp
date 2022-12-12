@@ -126,14 +126,15 @@ class MMTkLXRFastUpdateClosure : public OopClosure {
   virtual void do_oop(narrowOop* o) {}
 };
 
-static void mmtk_stop_all_mutators(void *tls, bool scan_mutators_in_safepoint, MutatorClosure closure) {
+static void mmtk_stop_all_mutators(void *tls, bool scan_mutators_in_safepoint, MutatorClosure closure, bool current_gc_should_unload_classes) {
   log_debug(gc)("Requesting the VM to suspend all mutators...");
   MMTkHeap::heap()->companion_thread()->request(MMTkVMCompanionThread::_threads_suspended, true);
   log_debug(gc)("Mutators stopped. Now enumerate threads for scanning...");
 
   mmtk_report_gc_start();
-
-  // ClassLoaderDataGraph::clear_claimed_marks();
+  if (ClassUnloading && current_gc_should_unload_classes) {
+    ClassLoaderDataGraph::clear_claimed_marks();
+  }
   CodeCache::gc_prologue();
 #if COMPILER2_OR_JVMCI
   DerivedPointerTable::clear();
@@ -165,9 +166,23 @@ static void mmtk_update_weak_processor(bool lxr) {
   }
 }
 
-static void mmtk_resume_mutators(void *tls) {
+static void mmtk_resume_mutators(void *tls, bool lxr, bool current_gc_should_unload_classes) {
   nmethod::oops_do_marking_epilogue();
-  // ClassLoaderDataGraph::purge();
+  if (ClassUnloading && current_gc_should_unload_classes) {
+    // Unload classes and purge SystemDictionary.
+    auto purged_classes = SystemDictionary::do_unloading(NULL, false /* Defer cleaning */);
+    if (lxr) {
+      MMTkLXRFastIsAliveClosure is_alive;
+      MMTkHeap::heap()->complete_cleaning(&is_alive, purged_classes);
+    } else {
+      MMTkIsAliveClosure is_alive;
+      MMTkHeap::heap()->complete_cleaning(&is_alive, purged_classes);
+    }
+    ClassLoaderDataGraph::purge();
+    // Resize and verify metaspace
+    MetaspaceGC::compute_new_size();
+    MetaspaceUtils::verify_metrics();
+  }
   // BiasedLocking::restore_marks();
   CodeCache::gc_epilogue();
   JvmtiExport::gc_epilogue();
@@ -323,8 +338,8 @@ static void mmtk_scan_thread_roots(EdgesClosure closure, void* tls) {
   thread->oops_do(&cl, NULL);
 }
 
-static void mmtk_scan_object(void* trace, void* object, void* tls) {
-  MMTkScanObjectClosure cl(trace);
+static void mmtk_scan_object(void* trace, void* object, void* tls, bool follow_clds, bool claim_clds) {
+  MMTkScanObjectClosure cl(trace, follow_clds, claim_clds);
   ((oop) object)->oop_iterate(&cl);
 }
 
@@ -412,7 +427,7 @@ static void mmtk_scan_aot_loader_roots(EdgesClosure closure) { MMTkRootsClosure2
 static void mmtk_scan_system_dictionary_roots(EdgesClosure closure) { MMTkRootsClosure2 cl(closure); MMTkHeap::heap()->scan_system_dictionary_roots(cl); }
 static void mmtk_scan_code_cache_roots(EdgesClosure closure) { MMTkRootsClosure2 cl(closure); MMTkHeap::heap()->scan_code_cache_roots(cl); }
 static void mmtk_scan_string_table_roots(EdgesClosure closure) { MMTkRootsClosure2 cl(closure); MMTkHeap::heap()->scan_string_table_roots(cl); }
-static void mmtk_scan_class_loader_data_graph_roots(EdgesClosure closure) { MMTkRootsClosure2 cl(closure); MMTkHeap::heap()->scan_class_loader_data_graph_roots(cl); }
+static void mmtk_scan_class_loader_data_graph_roots(EdgesClosure closure, bool scan_weak) { MMTkRootsClosure2 cl(closure); MMTkHeap::heap()->scan_class_loader_data_graph_roots(cl, scan_weak); }
 static void mmtk_scan_weak_processor_roots(EdgesClosure closure) { MMTkRootsClosure2 cl(closure); MMTkHeap::heap()->scan_weak_processor_roots(cl); }
 static void mmtk_scan_vm_thread_roots(EdgesClosure closure) { MMTkRootsClosure2 cl(closure); MMTkHeap::heap()->scan_vm_thread_roots(cl); }
 
@@ -450,6 +465,18 @@ static void mmtk_enqueue_references(void** objects, size_t len) {
 
 static void* mmtk_swap_reference_pending_list(void* object) {
   return Universe::swap_reference_pending_list((oop) object);
+}
+
+static size_t mmtk_java_lang_class_klass_offset_in_bytes() {
+  auto v = java_lang_Class::klass_offset_in_bytes();
+  guarantee(v != 0 && v != -1, "checking");
+  return v;
+}
+
+static size_t mmtk_java_lang_classloader_loader_data_offset() {
+  auto v = java_lang_ClassLoader::loader_data_offset();
+  guarantee(v != 0 && v != -1, "checking");
+  return v;
 }
 
 OpenJDK_Upcalls mmtk_upcalls = {
@@ -492,5 +519,7 @@ OpenJDK_Upcalls mmtk_upcalls = {
   mmtk_prepare_for_roots_re_scanning,
   mmtk_update_weak_processor,
   mmtk_enqueue_references,
-  mmtk_swap_reference_pending_list
+  mmtk_swap_reference_pending_list,
+  mmtk_java_lang_class_klass_offset_in_bytes,
+  mmtk_java_lang_classloader_loader_data_offset,
 };

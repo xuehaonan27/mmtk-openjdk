@@ -25,7 +25,7 @@ codegen-units = 1
 [package.metadata.openjdk]
 # Our CI matches the following line and extract mmtk/openjdk. If this line is updated, please check ci yaml files and make sure it works.
 openjdk_repo = "https://github.com/mmtk/openjdk.git"
-openjdk_version = "b3c5f77563332565639abd027d5a375d0622b295"
+openjdk_version = "7e481ee4704870ac796f3830c48eb4018db4c512"
 
 [dependencies]
 libc = "0.2"

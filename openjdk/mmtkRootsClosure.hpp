@@ -6,6 +6,7 @@
 #include "oops/oop.hpp"
 #include "oops/oop.inline.hpp"
 #include "utilities/globalDefinitions.hpp"
+#include "classfile/classLoaderData.inline.hpp"
 
 #define ROOTS_BUFFER_SIZE 4096
 
@@ -95,17 +96,18 @@ public:
 };
 
 class MMTkScanObjectClosure : public BasicOopIterateClosure {
-  void* _trace;
-  CLDToOopClosure follow_cld_closure;
+  void (*_trace)(void*);
+  bool _follow_clds;
+  bool _claim_clds;
 
   template <class T>
   void do_oop_work(T* p) {
     // oop ref = (void*) oopDesc::decode_heap_oop(oopDesc::load_heap_oop(p));
-    // process_edge(_trace, (void*) p);
+    _trace((void*) p);
   }
 
 public:
-  MMTkScanObjectClosure(void* trace): _trace(trace), follow_cld_closure(this, false) {}
+  MMTkScanObjectClosure(void* trace, bool follow_clds, bool claim_clds): _trace((void (*)(void*)) trace), _follow_clds(follow_clds), _claim_clds(claim_clds) {}
 
   virtual void do_oop(oop* p)       { do_oop_work(p); }
   virtual void do_oop(narrowOop* p) {
@@ -114,18 +116,17 @@ public:
   }
 
   virtual bool do_metadata() {
-    return true;
+    return _follow_clds;
   }
 
   virtual void do_klass(Klass* k) {
-  //  follow_cld_closure.do_cld(k->class_loader_data());
-    // oop op = k->klass_holder();
-    // oop new_op = (oop) trace_root_object(_trace, op);
-    // guarantee(new_op == op, "trace_root_object returned a different value %p -> %p", op, new_op);
+    if (!_follow_clds) return;
+    do_cld(k->class_loader_data());
   }
 
   virtual void do_cld(ClassLoaderData* cld) {
-    follow_cld_closure.do_cld(cld);
+    if (!_follow_clds) return;
+    cld->oops_do(this, _claim_clds);
   }
 
   virtual ReferenceIterationMode reference_iteration_mode() { return DO_FIELDS; }

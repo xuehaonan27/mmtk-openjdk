@@ -62,14 +62,22 @@ pub struct OpenJDK_Upcalls {
         tls: VMWorkerThread,
         scan_mutators_in_safepoint: bool,
         closure: MutatorClosure,
+        current_gc_should_unload_classes: bool,
     ),
-    pub resume_mutators: extern "C" fn(tls: VMWorkerThread),
+    pub resume_mutators:
+        extern "C" fn(tls: VMWorkerThread, lxr: bool, current_gc_should_unload_classes: bool),
     pub spawn_gc_thread: extern "C" fn(tls: VMThread, kind: libc::c_int, ctx: *mut libc::c_void),
     pub block_for_gc: extern "C" fn(),
     pub out_of_memory: extern "C" fn(tls: VMThread, err_kind: AllocationError),
     pub get_next_mutator: extern "C" fn() -> *mut Mutator<OpenJDK>,
     pub reset_mutator_iterator: extern "C" fn(),
-    pub scan_object: extern "C" fn(trace: *mut c_void, object: ObjectReference, tls: OpaquePointer),
+    pub scan_object: extern "C" fn(
+        trace: *mut c_void,
+        object: ObjectReference,
+        tls: OpaquePointer,
+        follow_clds: bool,
+        claim_clds: bool,
+    ),
     pub dump_object: extern "C" fn(object: ObjectReference),
     pub get_object_size: extern "C" fn(object: ObjectReference) -> usize,
     pub get_mmtk_mutator: extern "C" fn(tls: VMMutatorThread) -> *mut Mutator<OpenJDK>,
@@ -93,7 +101,7 @@ pub struct OpenJDK_Upcalls {
     pub scan_system_dictionary_roots: extern "C" fn(closure: EdgesClosure),
     pub scan_code_cache_roots: extern "C" fn(closure: EdgesClosure),
     pub scan_string_table_roots: extern "C" fn(closure: EdgesClosure),
-    pub scan_class_loader_data_graph_roots: extern "C" fn(closure: EdgesClosure),
+    pub scan_class_loader_data_graph_roots: extern "C" fn(closure: EdgesClosure, scan_weak: bool),
     pub scan_weak_processor_roots: extern "C" fn(closure: EdgesClosure),
     pub scan_vm_thread_roots: extern "C" fn(closure: EdgesClosure),
     pub number_of_mutators: extern "C" fn() -> usize,
@@ -102,7 +110,20 @@ pub struct OpenJDK_Upcalls {
     pub update_weak_processor: extern "C" fn(lxr: bool),
     pub enqueue_references: extern "C" fn(objects: *const ObjectReference, len: usize),
     pub swap_reference_pending_list: extern "C" fn(objects: ObjectReference) -> ObjectReference,
+    pub java_lang_class_klass_offset_in_bytes: extern "C" fn() -> usize,
+    pub java_lang_classloader_loader_data_offset: extern "C" fn() -> usize,
+    pub claim_cld: extern "C" fn(cld: *mut ()) -> bool,
+    pub scan_cld:
+        extern "C" fn(trace: *mut c_void, cld: *mut c_void, follow_clds: bool, claim_clds: bool),
 }
+
+lazy_static! {
+    pub static ref JAVA_LANG_CLASS_KLASS_OFFSET_IN_BYTES: usize =
+        unsafe { ((*UPCALLS).java_lang_class_klass_offset_in_bytes)() };
+    pub static ref JAVA_LANG_CLASSLOADER_LOADER_DATA_OFFSET: usize =
+        unsafe { ((*UPCALLS).java_lang_classloader_loader_data_offset)() };
+}
+
 thread_local! {
     pub static CURRENT_WORKER: RefCell<Option<*mut GCWorker<OpenJDK>>> = RefCell::new(None);
 }

@@ -48,6 +48,7 @@
 #include "services/memoryManager.hpp"
 #include "services/memTracker.hpp"
 #include "utilities/vmError.hpp"
+#include "mmtkParallelCleaning.hpp"
 /*
 needed support from rust
 heap capacity
@@ -121,6 +122,16 @@ jint MMTkHeap::initialize() {
     fprintf(stderr, "Failed to create thread");
     guarantee(false, "panic");
   }
+  if (ClassUnloading) {
+    printf("ClassUnloading Enabled\n");
+  } else {
+    printf("ClassUnloading Disabled\n");
+  }
+
+  unsigned int ncpus = (unsigned int) os::initial_active_processor_count();
+  _workers = new WorkGang("GC Thread", ncpus, /* are_GC_task_threads */true, /* are_ConcurrentGC_threads */false);
+  _workers->initialize_workers();
+
   os::start_thread(_companion_thread);
   // Set up the GCTaskManager
   //  _mmtk_gc_task_manager = mmtkGCTaskManager::create(ParallelGCThreads);
@@ -397,9 +408,9 @@ void MMTkHeap::scan_code_cache_roots(OopClosure& cl) {
 void MMTkHeap::scan_string_table_roots(OopClosure& cl) {
   StringTable::oops_do(&cl);
 }
-void MMTkHeap::scan_class_loader_data_graph_roots(OopClosure& cl) {
+void MMTkHeap::scan_class_loader_data_graph_roots(OopClosure& cl, bool scan_weak) {
   CLDToOopClosure cld_cl(&cl, false);
-  ClassLoaderDataGraph::cld_do(&cld_cl);
+  ClassLoaderDataGraph::roots_cld_do(&cld_cl, ClassUnloading && !scan_weak ? NULL : &cld_cl);
 }
 void MMTkHeap::scan_weak_processor_roots(OopClosure& cl) {
   ShouldNotReachHere();
@@ -457,6 +468,13 @@ HeapWord* MMTkHeap::mem_allocate_nonmove(size_t size, bool* gc_overhead_limit_wa
   return Thread::current()->third_party_heap_mutator.alloc(size << LogHeapWordSize, AllocatorLos);
 }
 
+void MMTkHeap::complete_cleaning(BoolObjectClosure* is_alive, bool purged_classes) {
+  ResourceMark rm;
+  HandleMark hm;
+  uint num_workers = _workers->active_workers();
+  mmtk::ParallelCleaningTask unlink_task(is_alive, num_workers, purged_classes);
+  _workers->run_task(&unlink_task);
+}
 /*
  * files with prints currently:
  * collectedHeap.inline.hpp, mmtkHeap.cpp,

@@ -36,8 +36,11 @@ impl Collection<OpenJDK> for VMCollection {
     /// the OpenJDK binding allows any MMTk GC thread to stop/start the world.
     const COORDINATOR_ONLY_STW: bool = false;
 
-    fn stop_all_mutators<F>(tls: VMWorkerThread, mut mutator_visitor: F)
-    where
+    fn stop_all_mutators<F>(
+        tls: VMWorkerThread,
+        mut mutator_visitor: F,
+        current_gc_should_unload_classes: bool,
+    ) where
         F: FnMut(&'static mut Mutator<OpenJDK>),
     {
         let scan_mutators_in_safepoint =
@@ -48,14 +51,15 @@ impl Collection<OpenJDK> for VMCollection {
                 tls,
                 scan_mutators_in_safepoint,
                 to_mutator_closure(&mut mutator_visitor),
+                current_gc_should_unload_classes,
             );
         }
     }
 
-    fn resume_mutators(tls: VMWorkerThread) {
+    fn resume_mutators(tls: VMWorkerThread, lxr: bool, current_gc_should_unload_classes: bool) {
         DISCOVERED_LISTS.enable_discover();
         unsafe {
-            ((*UPCALLS).resume_mutators)(tls);
+            ((*UPCALLS).resume_mutators)(tls, lxr, current_gc_should_unload_classes);
         }
     }
 

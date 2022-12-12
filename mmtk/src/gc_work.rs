@@ -36,11 +36,29 @@ scan_roots_work!(ScanJvmtiExportRoots, scan_jvmti_export_roots);
 scan_roots_work!(ScanAOTLoaderRoots, scan_aot_loader_roots);
 scan_roots_work!(ScanSystemDictionaryRoots, scan_system_dictionary_roots);
 scan_roots_work!(ScanStringTableRoots, scan_string_table_roots);
-scan_roots_work!(
-    ScanClassLoaderDataGraphRoots,
-    scan_class_loader_data_graph_roots
-);
 scan_roots_work!(ScanVMThreadRoots, scan_vm_thread_roots);
+
+pub struct ScanClassLoaderDataGraphRoots<F: RootsWorkFactory<OpenJDKEdge>> {
+    factory: F,
+}
+
+impl<F: RootsWorkFactory<OpenJDKEdge>> ScanClassLoaderDataGraphRoots<F> {
+    pub fn new(factory: F) -> Self {
+        Self { factory }
+    }
+}
+
+impl<F: RootsWorkFactory<OpenJDKEdge>> GCWork<OpenJDK> for ScanClassLoaderDataGraphRoots<F> {
+    fn do_work(&mut self, _worker: &mut GCWorker<OpenJDK>, mmtk: &'static MMTK<OpenJDK>) {
+        unsafe {
+            ((*UPCALLS).scan_class_loader_data_graph_roots)(
+                to_edges_closure(&mut self.factory),
+                mmtk.get_plan()
+                    .current_gc_should_scan_weak_classloader_roots(),
+            );
+        }
+    }
+}
 
 pub struct ScanCodeCacheRoots<F: RootsWorkFactory<OpenJDKEdge>> {
     factory: F,

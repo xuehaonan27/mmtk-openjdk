@@ -157,14 +157,14 @@ struct EdgesClosure {
  * OpenJDK-specific
  */
 typedef struct {
-    void (*stop_all_mutators) (void *tls, bool scan_mutators_in_safepoint, MutatorClosure closure);
-    void (*resume_mutators) (void *tls);
+    void (*stop_all_mutators) (void *tls, bool scan_mutators_in_safepoint, MutatorClosure closure, bool current_gc_should_unload_classes);
+    void (*resume_mutators) (void *tls, bool lxr, bool current_gc_should_unload_classes);
     void (*spawn_gc_thread) (void *tls, int kind, void *ctx);
     void (*block_for_gc) ();
     void (*out_of_memory) (void *tls, MMTkAllocationError err_kind);
     void* (*get_next_mutator) ();
     void (*reset_mutator_iterator) ();
-    void (*scan_object) (void* trace, void* object, void* tls);
+    void (*scan_object) (void* trace, void* object, void* tls, bool follow_clds, bool claim_clds);
     void (*dump_object) (void* object);
     size_t (*get_object_size) (void* object);
     void* (*get_mmtk_mutator) (void* tls);
@@ -188,7 +188,7 @@ typedef struct {
     void (*scan_system_dictionary_roots) (EdgesClosure closure);
     void (*scan_code_cache_roots) (EdgesClosure closure);
     void (*scan_string_table_roots) (EdgesClosure closure);
-    void (*scan_class_loader_data_graph_roots) (EdgesClosure closure);
+    void (*scan_class_loader_data_graph_roots) (EdgesClosure closure, bool scan_weak);
     void (*scan_weak_processor_roots) (EdgesClosure closure);
     void (*scan_vm_thread_roots) (EdgesClosure closure);
     size_t (*number_of_mutators)();
@@ -197,6 +197,8 @@ typedef struct {
     void (*mmtk_update_weak_processor)(bool lxr);
     void (*enqueue_references)(void** objects, size_t len);
     void* (*swap_reference_pending_list)(void* objects);
+    size_t (*java_lang_class_klass_offset_in_bytes)();
+    size_t (*java_lang_classloader_loader_data_offset)();
 } OpenJDK_Upcalls;
 
 extern void openjdk_gc_init(OpenJDK_Upcalls *calls);

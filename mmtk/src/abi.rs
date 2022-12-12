@@ -1,11 +1,17 @@
+use crate::OpenJDKEdge;
+
 use super::UPCALLS;
+use atomic::Ordering;
 use mmtk::util::constants::*;
 use mmtk::util::conversions;
 use mmtk::util::ObjectReference;
 use mmtk::util::{Address, OpaquePointer};
+use mmtk::vm::EdgeVisitor;
 use std::ffi::CStr;
 use std::fmt;
 use std::ops::Range;
+use std::sync::atomic::AtomicPtr;
+use std::sync::atomic::AtomicU32;
 use std::{mem, slice};
 
 #[repr(i32)]
@@ -61,7 +67,7 @@ pub struct Klass {
     pub subklass: &'static Klass,
     pub next_sibling: &'static Klass,
     pub next_link: &'static Klass,
-    pub class_loader_data: OpaquePointer, // ClassLoaderData*
+    pub class_loader_data: &'static ClassLoaderData,
     pub modifier_flags: i32,
     pub access_flags: i32, // AccessFlags
     pub trace_id: u64,     // JFR_ONLY(traceid _trace_id;)
@@ -98,6 +104,11 @@ impl Klass {
     #[inline(always)]
     const fn layout_helper_header_size(lh: i32) -> i32 {
         (lh >> Self::LH_HEADER_SIZE_SHIFT) & Self::LH_HEADER_SIZE_MASK
+    }
+
+    #[inline(always)]
+    pub const fn is_instance_klass(&self) -> bool {
+        self.layout_helper > Self::LH_NEUTRAL_VALUE
     }
 }
 
@@ -171,6 +182,7 @@ pub enum ReferenceType {
 impl InstanceKlass {
     const HEADER_SIZE: usize = mem::size_of::<Self>() / BYTES_IN_WORD;
     const VTABLE_START_OFFSET: usize = Self::HEADER_SIZE * BYTES_IN_WORD;
+    const MISC_IS_ANONYMOUS: u16 = 1 << 5;
     #[inline(always)]
     fn start_of_vtable(&self) -> *const usize {
         unsafe { (self as *const _ as *const u8).add(Self::VTABLE_START_OFFSET) as _ }
@@ -192,6 +204,10 @@ impl InstanceKlass {
         let start = unsafe { start_of_itable.add(self.itable_len as _) as *const OopMapBlock };
         let count = self.nonstatic_oop_map_count();
         unsafe { slice::from_raw_parts(start, count) }
+    }
+    #[inline(always)]
+    pub fn is_anonymous(&self) -> bool {
+        self.misc_flags & Self::MISC_IS_ANONYMOUS != 0
     }
 }
 
@@ -434,4 +450,89 @@ pub fn validate_memory_layouts() {
             ^ mem::size_of::<ObjArrayKlass>()
     };
     assert_eq!(vm_checksum, binding_checksum);
+}
+
+#[repr(C)]
+#[derive(Debug)]
+struct Chunk {
+    #[cfg(debug_assertions)]
+    vptr: OpaquePointer,
+    data: [*mut OopDesc; 32],
+    size: AtomicU32,
+    next: *mut Chunk,
+}
+
+#[repr(C)]
+#[derive(Debug)]
+struct ChunkedHandleList {
+    head: AtomicPtr<Chunk>,
+}
+
+impl ChunkedHandleList {
+    unsafe fn oops_do_chunk(
+        &self,
+        chunk: &'static Chunk,
+        size: u32,
+        closure: &mut impl EdgeVisitor<OpenJDKEdge>,
+    ) {
+        for i in 0..size {
+            if !chunk.data[i as usize].is_null() {
+                closure.visit_edge(Address::from_ref::<*mut OopDesc>(&chunk.data[i as usize]))
+            }
+        }
+    }
+
+    fn oops_do(&self, closure: &mut impl EdgeVisitor<OpenJDKEdge>) {
+        let head = self.head.load(Ordering::Acquire);
+        if !head.is_null() {
+            let head = unsafe { &*head };
+            let size = head.size.load(Ordering::Acquire);
+            unsafe { self.oops_do_chunk(head, size, closure) };
+            let mut c = head.next;
+            while !c.is_null() {
+                let chunk = unsafe { &*c };
+                let size = chunk.size.load(Ordering::Relaxed);
+                unsafe { self.oops_do_chunk(chunk, size, closure) };
+                c = chunk.next;
+            }
+        }
+    }
+}
+
+#[repr(C)]
+#[derive(Debug)]
+pub struct ClassLoaderData {
+    #[cfg(debug_assertions)]
+    vptr: OpaquePointer,
+    holder: OpaquePointer,           // WeakHandle<vm_class_loader_data>
+    class_loader: OpaquePointer,     // OopHandle
+    metaspace: OpaquePointer,        // ClassLoaderMetaspace*volatile
+    metaspace_lock: OpaquePointer,   // Mutex*
+    unloading: bool,                 // bool
+    is_anonymous: bool,              // bool
+    modified_oops: bool,             // bool
+    accumulated_modified_oops: bool, // bool
+    keep_alive: i16,
+    claimed: AtomicU32,
+    handles: ChunkedHandleList,
+}
+
+impl ClassLoaderData {
+    #[inline]
+    fn claim(&self) -> bool {
+        if self.claimed.load(Ordering::Relaxed) == 1 {
+            return false;
+        }
+        self.claimed
+            .compare_exchange(0, 1, Ordering::SeqCst, Ordering::SeqCst)
+            .is_ok()
+    }
+
+    #[inline]
+    pub fn oops_do<V: EdgeVisitor<OpenJDKEdge>>(&self, closure: &mut V) {
+        if closure.should_claim_clds() && !self.claim() {
+            return;
+        }
+        self.handles.oops_do(closure);
+    }
 }

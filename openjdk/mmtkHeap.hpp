@@ -59,10 +59,13 @@ class MMTkHeap : public CollectedHeap {
   ContiguousSpace* _space;
   int _num_root_scan_tasks;
   MMTkVMCompanionThread* _companion_thread;
+  WorkGang* _workers;
 public:
   AllocatorSelector default_allocator_selector;
 
   MMTkHeap(MMTkCollectorPolicy* policy);
+
+  WorkGang* workers() const { return _workers; }
 
   void schedule_finalizer();
 
@@ -207,9 +210,11 @@ public:
   void scan_system_dictionary_roots(OopClosure& cl);
   void scan_code_cache_roots(OopClosure& cl);
   void scan_string_table_roots(OopClosure& cl);
-  void scan_class_loader_data_graph_roots(OopClosure& cl);
+  void scan_class_loader_data_graph_roots(OopClosure& cl, bool scan_weak);
   void scan_weak_processor_roots(OopClosure& cl);
   void scan_vm_thread_roots(OopClosure& cl);
+
+  void complete_cleaning(BoolObjectClosure* is_alive, bool class_unloading_occurred);
 
   jlong _last_gc_time;
 };
