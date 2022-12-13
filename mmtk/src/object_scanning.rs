@@ -82,7 +82,7 @@ impl OopIterate for InstanceMirrorKlass {
         // static fields
         let start = Self::start_of_static_fields(oop);
         let len = Self::static_oop_field_count(oop);
-        if *crate::USE_COMPRESSED_OOPS {
+        if crate::use_compressed_oops() {
             let start: *const NarrowOop = start.to_ptr::<NarrowOop>();
             let slice = unsafe { slice::from_raw_parts(start, len as _) };
             for narrow_oop in slice {

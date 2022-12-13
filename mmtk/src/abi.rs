@@ -294,7 +294,7 @@ impl OopDesc {
     #[inline(always)]
     pub fn klass(&self) -> &'static Klass {
         // self.klass
-        if *crate::USE_COMPRESSED_OOPS {
+        if crate::use_compressed_oops() {
             lazy_static! {
                 static ref COMPRESSED_KLASS_BASE: Address =
                     unsafe { ((*UPCALLS).compressed_klass_base)() };
@@ -397,7 +397,7 @@ pub type ArrayOop = &'static ArrayOopDesc;
 
 impl ArrayOopDesc {
     fn length_offset() -> usize {
-        if *crate::USE_COMPRESSED_OOPS {
+        if crate::use_compressed_oops() {
             mem::size_of::<usize>() + mem::size_of::<u32>()
         } else {
             mem::size_of::<Self>()

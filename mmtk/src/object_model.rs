@@ -93,6 +93,6 @@ impl ObjectModel<OpenJDK> for VMObjectModel {
     }
 
     fn compressed_pointers_enabled() -> bool {
-        *crate::USE_COMPRESSED_OOPS
+        crate::use_compressed_oops()
     }
 }

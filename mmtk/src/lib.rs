@@ -117,12 +117,11 @@ pub static GLOBAL_SIDE_METADATA_VM_BASE_ADDRESS: uintptr_t =
 pub static GLOBAL_ALLOC_BIT_ADDRESS: uintptr_t =
     crate::mmtk::util::metadata::side_metadata::ALLOC_SIDE_METADATA_ADDR.as_usize();
 
-lazy_static! {
-    static ref USE_COMPRESSED_OOPS: bool = {
-        std::env::var("MMTK_COMPRESSED_PTRS")
-            .map(|s| s.trim() != "0" || s.trim() != "false")
-            .unwrap_or(false)
-    };
+static mut USE_COMPRESSED_OOPS: bool = false;
+
+#[inline(always)]
+fn use_compressed_oops() -> bool {
+    unsafe { USE_COMPRESSED_OOPS }
 }
 
 static mut BASE: Address = Address::ZERO;
@@ -190,13 +189,13 @@ impl Edge for OpenJDKEdge {
     fn load<const ROOT: bool, const COMPRESSED: bool>(&self) -> ObjectReference {
         if cfg!(debug_assertions) {
             if !ROOT {
-                if *USE_COMPRESSED_OOPS {
+                if use_compressed_oops() {
                     assert!(self.is_compressed())
                 } else {
                     assert!(self.0.as_usize() & Self::MASK == 0)
                 }
             } else {
-                if !*USE_COMPRESSED_OOPS {
+                if !use_compressed_oops() {
                     assert!(self.0.as_usize() & Self::MASK == 0)
                 }
             }
@@ -320,14 +319,14 @@ lazy_static! {
     pub static ref BUILDER: Mutex<MMTKBuilder> = Mutex::new(MMTKBuilder::new());
     pub static ref SINGLETON: MMTK<OpenJDK> = {
         let mut builder = BUILDER.lock().unwrap();
-        if *USE_COMPRESSED_OOPS {
+        if use_compressed_oops() {
             builder.set_option("use_35bit_address_space", "true");
             builder.set_option("use_35bit_address_space", "true");
         }
         assert!(!MMTK_INITIALIZED.load(Ordering::Relaxed));
         let ret = mmtk::memory_manager::mmtk_init(&builder);
         MMTK_INITIALIZED.store(true, std::sync::atomic::Ordering::SeqCst);
-        if *USE_COMPRESSED_OOPS {
+        if use_compressed_oops() {
             initialize_compressed_oops();
         }
         *ret
