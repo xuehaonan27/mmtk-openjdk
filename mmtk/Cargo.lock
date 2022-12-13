@@ -339,13 +339,14 @@ dependencies = [
 
 [[package]]
 name = "mmtk"
-version = "0.14.0"
-source = "git+https://github.com/mmtk/mmtk-core.git?rev=9473d7b4b92747d3c0998af3c41a6ef50c9c94e3#9473d7b4b92747d3c0998af3c41a6ef50c9c94e3"
+version = "0.15.0"
+source = "git+https://github.com/mmtk/mmtk-core.git?rev=f82848847a6392537fec6b914d7ad95fbf28b0a2#f82848847a6392537fec6b914d7ad95fbf28b0a2"
 dependencies = [
  "atomic",
  "atomic-traits",
  "atomic_refcell",
  "built",
+ "cfg-if 1.0.0",
  "crossbeam",
  "downcast-rs",
  "enum-map",
@@ -363,8 +364,8 @@ dependencies = [
 
 [[package]]
 name = "mmtk-macros"
-version = "0.14.0"
-source = "git+https://github.com/mmtk/mmtk-core.git?rev=9473d7b4b92747d3c0998af3c41a6ef50c9c94e3#9473d7b4b92747d3c0998af3c41a6ef50c9c94e3"
+version = "0.15.0"
+source = "git+https://github.com/mmtk/mmtk-core.git?rev=f82848847a6392537fec6b914d7ad95fbf28b0a2#f82848847a6392537fec6b914d7ad95fbf28b0a2"
 dependencies = [
  "proc-macro-error",
  "proc-macro2",
@@ -374,7 +375,7 @@ dependencies = [
 
 [[package]]
 name = "mmtk_openjdk"
-version = "0.14.1"
+version = "0.15.0"
 dependencies = [
  "built",
  "lazy_static",
