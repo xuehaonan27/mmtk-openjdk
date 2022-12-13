@@ -71,12 +71,12 @@ MMTkHeap::MMTkHeap(MMTkCollectorPolicy* policy) : CollectedHeap(), _last_gc_time
 
 jint MMTkHeap::initialize() {
   assert(!UseTLAB , "should disable UseTLAB");
-  auto compressed_oops = mmtk_use_compressed_ptrs();
-  if (compressed_oops) {
-    assert(UseCompressedOops , "should enable CompressedOops");
+  if (UseCompressedOops) {
+    mmtk_use_compressed_ptrs();
+  }
+  if (UseCompressedOops) {
     assert(UseCompressedClassPointers , "should enable UseCompressedClassPointers");
   } else {
-    assert(!UseCompressedOops , "should disable CompressedOops");
     assert(!UseCompressedClassPointers , "should disable UseCompressedClassPointers");
   }
   const size_t heap_size = collector_policy()->max_heap_byte_size();
@@ -112,7 +112,7 @@ jint MMTkHeap::initialize() {
   _start = (HeapWord*) starting_heap_address();
   _end = (HeapWord*) last_heap_address();
   printf("start: %p, end: %p\n", _start, _end);
-  if (compressed_oops) {
+  if (UseCompressedOops) {
     Universe::set_narrow_oop_base((address) mmtk_narrow_oop_base());
     Universe::set_narrow_oop_shift(mmtk_narrow_oop_shift());
     printf("narrow_oop_mode: %s\n", Universe::narrow_oop_mode_to_string(Universe::narrow_oop_mode()));

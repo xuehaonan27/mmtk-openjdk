@@ -212,8 +212,8 @@ pub extern "C" fn handle_user_collection_request(tls: VMMutatorThread) {
 }
 
 #[no_mangle]
-pub extern "C" fn mmtk_use_compressed_ptrs() -> bool {
-    *crate::USE_COMPRESSED_OOPS
+pub extern "C" fn mmtk_use_compressed_ptrs() {
+    unsafe { crate::USE_COMPRESSED_OOPS = true }
 }
 
 #[no_mangle]
