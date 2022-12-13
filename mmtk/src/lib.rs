@@ -187,29 +187,14 @@ impl OpenJDKEdge {
 impl Edge for OpenJDKEdge {
     /// Load object reference from the edge.
     #[inline(always)]
-    fn load<const ROOT: bool, const COMPRESSED: bool>(&self) -> ObjectReference {
-        if cfg!(debug_assertions) {
-            if !ROOT {
-                if *USE_COMPRESSED_OOPS {
-                    assert!(self.is_compressed())
-                } else {
-                    assert!(self.0.as_usize() & Self::MASK == 0)
-                }
-            } else {
-                if !*USE_COMPRESSED_OOPS {
-                    assert!(self.0.as_usize() & Self::MASK == 0)
-                }
-            }
-        }
-        if ROOT && COMPRESSED {
+    fn load<const COMPRESSED: bool>(&self) -> ObjectReference {
+        if COMPRESSED {
             let slot = self.untagged_address();
             if self.is_compressed() {
                 decompress(unsafe { slot.load::<u32>() })
             } else {
                 unsafe { slot.load::<ObjectReference>() }
             }
-        } else if COMPRESSED {
-            decompress(unsafe { self.0.load::<u32>() })
         } else {
             unsafe { self.0.load::<ObjectReference>() }
         }
@@ -217,16 +202,14 @@ impl Edge for OpenJDKEdge {
 
     /// Store the object reference `object` into the edge.
     #[inline(always)]
-    fn store<const ROOT: bool, const COMPRESSED: bool>(&self, object: ObjectReference) {
-        if ROOT && COMPRESSED {
+    fn store<const COMPRESSED: bool>(&self, object: ObjectReference) {
+        if COMPRESSED {
             let slot = self.untagged_address();
             if self.is_compressed() {
                 unsafe { slot.store(compress(object)) }
             } else {
                 unsafe { slot.store(object) }
             }
-        } else if COMPRESSED {
-            unsafe { self.0.store(compress(object)) }
         } else {
             unsafe { self.0.store(object) }
         }
