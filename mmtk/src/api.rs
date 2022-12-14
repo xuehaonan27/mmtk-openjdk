@@ -1,4 +1,6 @@
 use crate::OpenJDK;
+use crate::OpenJDKEdge;
+use crate::OpenJDKEdgeRange;
 use crate::OpenJDK_Upcalls;
 use crate::BUILDER;
 use crate::SINGLETON;
@@ -214,6 +216,11 @@ pub extern "C" fn handle_user_collection_request(tls: VMMutatorThread) {
 }
 
 #[no_mangle]
+pub extern "C" fn mmtk_use_compressed_ptrs() {
+    unsafe { crate::USE_COMPRESSED_OOPS = true }
+}
+
+#[no_mangle]
 pub extern "C" fn is_in_mmtk_spaces(object: ObjectReference) -> bool {
     memory_manager::is_in_mmtk_spaces(object)
 }
@@ -294,6 +301,16 @@ pub extern "C" fn process_bulk(options: *const c_char) -> bool {
 }
 
 #[no_mangle]
+pub extern "C" fn mmtk_narrow_oop_base() -> Address {
+    unsafe { crate::BASE }
+}
+
+#[no_mangle]
+pub extern "C" fn mmtk_narrow_oop_shift() -> usize {
+    unsafe { crate::SHIFT }
+}
+
+#[no_mangle]
 pub extern "C" fn starting_heap_address() -> Address {
     memory_manager::starting_heap_address()
 }
@@ -336,7 +353,7 @@ pub extern "C" fn mmtk_object_reference_write_pre(
 ) {
     mutator
         .barrier()
-        .object_reference_write_pre(src, slot, target);
+        .object_reference_write_pre(src, OpenJDKEdge(slot), target);
 }
 
 /// Full post barrier
@@ -349,7 +366,7 @@ pub extern "C" fn mmtk_object_reference_write_post(
 ) {
     mutator
         .barrier()
-        .object_reference_write_post(src, slot, target);
+        .object_reference_write_post(src, OpenJDKEdge(slot), target);
 }
 
 /// Barrier slow-path call
@@ -362,7 +379,7 @@ pub extern "C" fn mmtk_object_reference_write_slow(
 ) {
     mutator
         .barrier()
-        .object_reference_write_slow(src, slot, target);
+        .object_reference_write_slow(src, OpenJDKEdge(slot), target);
 }
 
 /// Array-copy pre-barrier
@@ -374,9 +391,16 @@ pub extern "C" fn mmtk_array_copy_pre(
     count: usize,
 ) {
     let bytes = count << LOG_BYTES_IN_ADDRESS;
-    mutator
-        .barrier()
-        .memory_region_copy_pre(src..src + bytes, dst..dst + bytes);
+    mutator.barrier().memory_region_copy_pre(
+        OpenJDKEdgeRange {
+            start: OpenJDKEdge(src),
+            end: OpenJDKEdge(src + bytes),
+        },
+        OpenJDKEdgeRange {
+            start: OpenJDKEdge(dst),
+            end: OpenJDKEdge(dst + bytes),
+        },
+    );
 }
 
 /// Array-copy post-barrier
@@ -388,9 +412,16 @@ pub extern "C" fn mmtk_array_copy_post(
     count: usize,
 ) {
     let bytes = count << LOG_BYTES_IN_ADDRESS;
-    mutator
-        .barrier()
-        .memory_region_copy_post(src..src + bytes, dst..dst + bytes);
+    mutator.barrier().memory_region_copy_post(
+        OpenJDKEdgeRange {
+            start: OpenJDKEdge(src),
+            end: OpenJDKEdge(src + bytes),
+        },
+        OpenJDKEdgeRange {
+            start: OpenJDKEdge(dst),
+            end: OpenJDKEdge(dst + bytes),
+        },
+    );
 }
 
 // finalization

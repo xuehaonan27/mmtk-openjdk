@@ -199,12 +199,19 @@ typedef struct {
     void* (*swap_reference_pending_list)(void* objects);
     size_t (*java_lang_class_klass_offset_in_bytes)();
     size_t (*java_lang_classloader_loader_data_offset)();
+    void* (*compressed_klass_base)();
+    size_t (*compressed_klass_shift)();
+    void (*nmethod_fix_relocation)(void* nmethod);
 } OpenJDK_Upcalls;
 
 extern void openjdk_gc_init(OpenJDK_Upcalls *calls);
 extern bool openjdk_is_gc_initialized();
 
 extern bool mmtk_set_heap_size(size_t size);
+
+extern bool mmtk_use_compressed_ptrs();
+extern void* mmtk_narrow_oop_base();
+extern size_t mmtk_narrow_oop_shift();
 
 extern size_t used_bytes();
 extern void* starting_heap_address();

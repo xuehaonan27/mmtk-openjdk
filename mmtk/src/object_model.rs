@@ -101,4 +101,8 @@ impl ObjectModel<OpenJDK> for VMObjectModel {
         let s: &str = c_str.to_str().unwrap();
         s.to_string()
     }
+
+    fn compressed_pointers_enabled() -> bool {
+        crate::use_compressed_oops()
+    }
 }

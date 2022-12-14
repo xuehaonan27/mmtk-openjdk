@@ -72,8 +72,14 @@ MMTkHeap::MMTkHeap(MMTkCollectorPolicy* policy) : CollectedHeap(), _last_gc_time
 
 jint MMTkHeap::initialize() {
   assert(!UseTLAB , "should disable UseTLAB");
-  assert(!UseCompressedOops , "should disable CompressedOops");
-  assert(!UseCompressedClassPointers , "should disable UseCompressedClassPointers");
+  if (UseCompressedOops) {
+    mmtk_use_compressed_ptrs();
+  }
+  if (UseCompressedOops) {
+    assert(UseCompressedClassPointers , "should enable UseCompressedClassPointers");
+  } else {
+    assert(!UseCompressedClassPointers , "should disable UseCompressedClassPointers");
+  }
   const size_t heap_size = collector_policy()->max_heap_byte_size();
   //  printf("policy max heap size %zu, min heap size %zu\n", heap_size, collector_policy()->min_heap_byte_size());
 
@@ -107,7 +113,12 @@ jint MMTkHeap::initialize() {
 
   _start = (HeapWord*) starting_heap_address();
   _end = (HeapWord*) last_heap_address();
-  //  printf("start: %p, end: %p\n", _start, _end);
+  printf("start: %p, end: %p\n", _start, _end);
+  if (UseCompressedOops) {
+    Universe::set_narrow_oop_base((address) mmtk_narrow_oop_base());
+    Universe::set_narrow_oop_shift(mmtk_narrow_oop_shift());
+    printf("narrow_oop_mode: %s\n", Universe::narrow_oop_mode_to_string(Universe::narrow_oop_mode()));
+  }
 
   initialize_reserved_region(_start, _end);
 
@@ -294,18 +305,15 @@ void MMTkHeap::safe_object_iterate(ObjectClosure* cl) { //not sure..many depende
 }
 
 HeapWord* MMTkHeap::block_start(const void* addr) const {//OK
-  guarantee(false, "block start not supported");
-  return NULL;
+  return (HeapWord*) starting_heap_address();
 }
 
 size_t MMTkHeap::block_size(const HeapWord* addr) const { //OK
-  guarantee(false, "block size not supported");
-  return 0;
+  return size_t(last_heap_address()) - size_t(starting_heap_address());
 }
 
 bool MMTkHeap::block_is_obj(const HeapWord* addr) const { //OK
-  guarantee(false, "block is obj not supported");
-  return false;
+  return size_t(addr) >= size_t(starting_heap_address()) && size_t(addr) < size_t(last_heap_address());
 }
 
 jlong MMTkHeap::millis_since_last_gc() {//later when gc is implemented in rust
@@ -356,12 +364,16 @@ void MMTkHeap::print_tracing_info() const {
 // Registering and unregistering an nmethod (compiled code) with the heap.
 // Override with specific mechanism for each specialized heap type.
 class MMTkRegisterNMethodOopClosure: public OopClosure {
-  template <class T> void do_oop_work(T* p) {
+  template <class T> void do_oop_work(T* p, bool narrow) {
+    if (UseCompressedOops && !narrow) {
+      guarantee((uintptr_t(p) & (1ull << 63)) == 0, "test");
+      p = (T*) (uintptr_t(p) | (1ull << 63));
+    }
     mmtk_add_nmethod_oop((void*) p);
   }
 public:
-  void do_oop(oop* p)       { do_oop_work(p); }
-  void do_oop(narrowOop* p) { do_oop_work(p); }
+  void do_oop(oop* p)       { do_oop_work(p, false); }
+  void do_oop(narrowOop* p) { do_oop_work(p, true); }
 };
 
 

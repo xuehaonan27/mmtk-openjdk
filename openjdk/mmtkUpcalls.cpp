@@ -75,8 +75,7 @@ class MMTkForwardClosure : public OopClosure {
   inline static bool is_forwarded(size_t status) {
     return (status >> 56) != 0;
   }
-  inline void do_oop(oop* slot) {
-    // *slot = (oop) mmtk_get_forwarded_ref((void*) *slot);
+  inline virtual void do_oop(oop* slot) {
     const auto o = *slot;
     if (o == NULL) return;
     const auto status = read_forwarding_word(o);
@@ -84,7 +83,15 @@ class MMTkForwardClosure : public OopClosure {
       *slot = extract_forwarding_pointer(status);
     }
   }
-  virtual void do_oop(narrowOop* o) {}
+  inline virtual void do_oop(narrowOop* slot) {
+    narrowOop heap_oop = RawAccess<>::oop_load(slot);
+    if (CompressedOops::is_null(heap_oop)) return;
+    oop o = CompressedOops::decode_not_null(heap_oop);
+    const auto status = read_forwarding_word(o);
+    if (is_forwarded(status)) {
+      RawAccess<>::oop_store(slot, CompressedOops::encode_not_null(extract_forwarding_pointer(status)));
+    }
+  }
 };
 
 class MMTkLXRFastIsAliveClosure : public BoolObjectClosure {
@@ -100,7 +107,7 @@ public:
     return MMTkForwardClosure::is_forwarded(MMTkForwardClosure::read_forwarding_word(o));
   }
 
-  inline bool do_object_b(oop o) {
+  inline virtual bool do_object_b(oop o) {
     const uintptr_t v = uintptr_t((void*) o);
     if (v >= 0x220000000000ULL || v < 0x20000000000ULL) return false;
     return o != NULL && (rc_live(o) || is_forwarded(o));
@@ -109,7 +116,7 @@ public:
 
 class MMTkLXRFastUpdateClosure : public OopClosure {
  public:
-  inline void do_oop(oop* slot) {
+  inline virtual void do_oop(oop* slot) {
     const auto o = *slot;
     const uintptr_t v = uintptr_t((void*) o);
     if (v >= 0x220000000000ULL || v < 0x20000000000ULL) {
@@ -123,7 +130,22 @@ class MMTkLXRFastUpdateClosure : public OopClosure {
       *slot = NULL;
     }
   }
-  virtual void do_oop(narrowOop* o) {}
+  inline virtual void do_oop(narrowOop* slot) {
+    narrowOop heap_oop = RawAccess<>::oop_load(slot);
+    if (CompressedOops::is_null(heap_oop)) return;
+    oop o = CompressedOops::decode_not_null(heap_oop);
+    const uintptr_t v = uintptr_t((void*) o);
+    if (v >= 0x220000000000ULL || v < 0x20000000000ULL) {
+      RawAccess<>::oop_store(slot, CompressedOops::encode(oop(NULL)));
+      return;
+    }
+    const auto status = MMTkForwardClosure::read_forwarding_word(o);
+    if (MMTkForwardClosure::is_forwarded(status)) {
+      RawAccess<>::oop_store(slot, CompressedOops::encode_not_null(MMTkForwardClosure::extract_forwarding_pointer(status)));
+    } else if (!MMTkLXRFastIsAliveClosure::rc_live(o)) {
+      RawAccess<>::oop_store(slot, CompressedOops::encode(oop(NULL)));
+    }
+  }
 };
 
 static void mmtk_stop_all_mutators(void *tls, bool scan_mutators_in_safepoint, MutatorClosure closure, bool current_gc_should_unload_classes) {
@@ -479,6 +501,18 @@ static size_t mmtk_java_lang_classloader_loader_data_offset() {
   return v;
 }
 
+static void* mmtk_compressed_klass_base() {
+  return (void*) Universe::narrow_klass_base();
+}
+
+static size_t mmtk_compressed_klass_shift() {
+  return (size_t) Universe::narrow_klass_shift();
+}
+
+static void nmethod_fix_relocation(void* nm) {
+  ((nmethod*) nm)->fix_oop_relocations();
+}
+
 OpenJDK_Upcalls mmtk_upcalls = {
   mmtk_stop_all_mutators,
   mmtk_resume_mutators,
@@ -522,4 +556,7 @@ OpenJDK_Upcalls mmtk_upcalls = {
   mmtk_swap_reference_pending_list,
   mmtk_java_lang_class_klass_offset_in_bytes,
   mmtk_java_lang_classloader_loader_data_offset,
+  mmtk_compressed_klass_base,
+  mmtk_compressed_klass_shift,
+  nmethod_fix_relocation,
 };

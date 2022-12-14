@@ -7,40 +7,41 @@ use crate::{OpenJDK, SINGLETON};
 use atomic::{Atomic, Ordering};
 use mmtk::scheduler::{GCWork, GCWorker, ProcessEdgesWork, WorkBucketStage};
 use mmtk::util::opaque_pointer::VMWorkerThread;
-use mmtk::util::{Address, ObjectReference};
+use mmtk::util::ObjectReference;
+use mmtk::vm::edge_shape::Edge;
 use mmtk::vm::ReferenceGlue;
 use mmtk::MMTK;
 
 #[inline(always)]
-pub fn set_referent(reff: ObjectReference, referent: ObjectReference) {
+pub fn set_referent<const COMPRESSED: bool>(reff: ObjectReference, referent: ObjectReference) {
     let oop = Oop::from(reff);
     let slot = InstanceRefKlass::referent_address(oop);
     mmtk::plan::lxr::record_edge_for_validation(slot, referent);
-    unsafe { slot.store(referent) }
+    slot.store::<COMPRESSED>(referent)
 }
 
 #[inline(always)]
-fn get_referent(object: ObjectReference) -> ObjectReference {
+fn get_referent<const COMPRESSED: bool>(object: ObjectReference) -> ObjectReference {
     let oop = Oop::from(object);
-    unsafe { InstanceRefKlass::referent_address(oop).load::<ObjectReference>() }
+    InstanceRefKlass::referent_address(oop).load::<COMPRESSED>()
 }
 
 #[inline(always)]
-fn get_next_reference_slot(object: ObjectReference) -> Address {
+fn get_next_reference_slot(object: ObjectReference) -> crate::OpenJDKEdge {
     let oop = Oop::from(object);
     InstanceRefKlass::discovered_address(oop)
 }
 
 #[inline(always)]
-fn get_next_reference(object: ObjectReference) -> ObjectReference {
-    unsafe { get_next_reference_slot(object).load() }
+fn get_next_reference<const COMPRESSED: bool>(object: ObjectReference) -> ObjectReference {
+    get_next_reference_slot(object).load::<COMPRESSED>()
 }
 
 #[inline(always)]
-fn set_next_reference(object: ObjectReference, next: ObjectReference) {
+fn set_next_reference<const COMPRESSED: bool>(object: ObjectReference, next: ObjectReference) {
     let slot = get_next_reference_slot(object);
     mmtk::plan::lxr::record_edge_for_validation(slot, next);
-    unsafe { slot.store(next) }
+    slot.store::<COMPRESSED>(next)
 }
 
 pub struct VMReferenceGlue {}
@@ -48,13 +49,11 @@ pub struct VMReferenceGlue {}
 impl ReferenceGlue<OpenJDK> for VMReferenceGlue {
     type FinalizableType = ObjectReference;
 
-    fn set_referent(reff: ObjectReference, referent: ObjectReference) {
-        let oop = Oop::from(reff);
-        unsafe { InstanceRefKlass::referent_address(oop).store(referent) };
+    fn set_referent(_reff: ObjectReference, _referent: ObjectReference) {
+        unreachable!();
     }
-    fn get_referent(object: ObjectReference) -> ObjectReference {
-        let oop = Oop::from(object);
-        unsafe { InstanceRefKlass::referent_address(oop).load::<ObjectReference>() }
+    fn get_referent(_object: ObjectReference) -> ObjectReference {
+        unreachable!();
     }
     fn enqueue_references(_references: &[ObjectReference], _tls: VMWorkerThread) {}
 }
@@ -73,30 +72,51 @@ impl DiscoveredList {
     }
 
     #[inline]
-    pub fn add(&self, reference: ObjectReference, referent: ObjectReference) {
+    pub fn add<const COMPRESSED: bool>(
+        &self,
+        reference: ObjectReference,
+        referent: ObjectReference,
+    ) {
         // Keep reference and referent alive during SATB
         SINGLETON.get_plan().discover_reference(reference, referent);
         // Add to the corresponding list
         // Note that the list is a singly-linked list, and the tail object should point to itself.
         let oop = Oop::from(reference);
         let head = self.head.load(Ordering::Relaxed);
-        let discovered_addr = unsafe {
-            InstanceRefKlass::discovered_address(oop).as_ref::<Atomic<ObjectReference>>()
-        };
-        let next_discovered = if head.is_null() { reference } else { head };
-        debug_assert!(!next_discovered.is_null());
-        if discovered_addr
-            .compare_exchange(
-                ObjectReference::NULL,
-                next_discovered,
-                Ordering::SeqCst,
-                Ordering::SeqCst,
-            )
-            .is_ok()
-        {
-            self.head.store(reference, Ordering::Relaxed);
+        let addr = InstanceRefKlass::discovered_address(oop);
+        if crate::use_compressed_oops() {
+            let discovered_addr = unsafe { addr.to_address().as_ref::<Atomic<u32>>() };
+            let next_discovered = if head.is_null() { reference } else { head };
+            debug_assert!(!next_discovered.is_null());
+            if discovered_addr
+                .compare_exchange(
+                    0,
+                    crate::compress(next_discovered),
+                    Ordering::SeqCst,
+                    Ordering::SeqCst,
+                )
+                .is_ok()
+            {
+                self.head.store(reference, Ordering::Relaxed);
+            }
+            debug_assert!(!get_next_reference::<COMPRESSED>(reference).is_null());
+        } else {
+            let discovered_addr = unsafe { addr.to_address().as_ref::<Atomic<ObjectReference>>() };
+            let next_discovered = if head.is_null() { reference } else { head };
+            debug_assert!(!next_discovered.is_null());
+            if discovered_addr
+                .compare_exchange(
+                    ObjectReference::NULL,
+                    next_discovered,
+                    Ordering::SeqCst,
+                    Ordering::SeqCst,
+                )
+                .is_ok()
+            {
+                self.head.store(reference, Ordering::Relaxed);
+            }
+            debug_assert!(!get_next_reference::<COMPRESSED>(reference).is_null());
         }
-        debug_assert!(!get_next_reference(reference).is_null());
     }
 }
 
@@ -245,7 +265,11 @@ impl<E: ProcessEdgesWork<VM = OpenJDK>> GCWork<OpenJDK> for ProcessDiscoveredLis
         trace.set_worker(worker);
         let retain = self.rt == ReferenceType::Soft && !mmtk.get_plan().is_emergency_collection();
         let new_list = iterate_list(self.head, |reference| {
-            let referent = get_referent(reference);
+            let referent = if crate::use_compressed_oops() {
+                get_referent::<true>(reference)
+            } else {
+                get_referent::<false>(reference)
+            };
             if referent.is_null() {
                 // Remove from the discovered list
                 return DiscoveredListIterationResult::Remove;
@@ -254,13 +278,22 @@ impl<E: ProcessEdgesWork<VM = OpenJDK>> GCWork<OpenJDK> for ProcessDiscoveredLis
                 let forwarded = trace.trace_object(referent);
                 debug_assert!(forwarded.get_forwarded_object().is_none());
                 debug_assert!(reference.get_forwarded_object().is_none());
-                set_referent(reference, forwarded);
+                if crate::use_compressed_oops() {
+                    set_referent::<true>(reference, forwarded);
+                } else {
+                    set_referent::<false>(reference, forwarded);
+                }
                 // Remove from the discovered list
                 return DiscoveredListIterationResult::Remove;
             } else {
                 if self.rt != ReferenceType::Final {
                     // Clear this referent
-                    set_referent(reference, ObjectReference::NULL);
+                    if crate::use_compressed_oops() {
+                        set_referent::<true>(reference, ObjectReference::NULL);
+                    } else {
+                        set_referent::<false>(reference, ObjectReference::NULL);
+                    }
+                    // set_referent(reference, ObjectReference::NULL);
                 }
                 // Keep the reference
                 return DiscoveredListIterationResult::Enqueue;
@@ -269,14 +302,18 @@ impl<E: ProcessEdgesWork<VM = OpenJDK>> GCWork<OpenJDK> for ProcessDiscoveredLis
         // Flush the list to the Universe::pending_list
         if let Some((head, tail)) = new_list {
             debug_assert!(!head.is_null() && !tail.is_null());
-            debug_assert_eq!(ObjectReference::NULL, get_next_reference(tail));
+            // debug_assert_eq!(ObjectReference::NULL, get_next_reference(tail));
             if self.rt == ReferenceType::Final {
                 DISCOVERED_LISTS.r#final[self.list_index]
                     .head
                     .store(head, Ordering::SeqCst);
             } else {
                 let old_head = unsafe { ((*crate::UPCALLS).swap_reference_pending_list)(head) };
-                set_next_reference(tail, old_head);
+                if crate::use_compressed_oops() {
+                    set_next_reference::<true>(tail, old_head);
+                } else {
+                    set_next_reference::<false>(tail, old_head);
+                }
             }
         } else {
             if self.rt == ReferenceType::Final {
@@ -300,21 +337,33 @@ impl<E: ProcessEdgesWork<VM = OpenJDK>> GCWork<OpenJDK> for ResurrectFinalizable
         let mut trace = E::new(vec![], false, mmtk);
         trace.set_worker(worker);
         let new_list = iterate_list(self.head, |reference| {
-            let referent = get_referent(reference);
+            let referent = if crate::use_compressed_oops() {
+                get_referent::<true>(reference)
+            } else {
+                get_referent::<false>(reference)
+            };
             let forwarded = trace.trace_object(referent);
-            set_referent(reference, forwarded);
+            if crate::use_compressed_oops() {
+                set_referent::<true>(reference, forwarded);
+            } else {
+                set_referent::<false>(reference, forwarded);
+            }
             debug_assert!(forwarded.get_forwarded_object().is_none());
             return DiscoveredListIterationResult::Enqueue;
         });
 
         if let Some((head, tail)) = new_list {
             debug_assert!(!head.is_null() && !tail.is_null());
-            debug_assert_eq!(ObjectReference::NULL, get_next_reference(tail));
+            // debug_assert_eq!(ObjectReference::NULL, get_next_reference(tail));
             DISCOVERED_LISTS.r#final[self.list_index]
                 .head
                 .store(ObjectReference::NULL, Ordering::SeqCst);
             let old_head = unsafe { ((*crate::UPCALLS).swap_reference_pending_list)(head) };
-            set_next_reference(tail, old_head);
+            if crate::use_compressed_oops() {
+                set_next_reference::<true>(tail, old_head);
+            } else {
+                set_next_reference::<false>(tail, old_head);
+            }
         }
         trace.flush();
     }
@@ -342,7 +391,11 @@ fn iterate_list(
         debug_assert!(reference.get_forwarded_object().is_none());
         debug_assert!(reference.is_reachable());
         // Update next_ref forwarding pointer
-        let next_ref = get_next_reference(reference);
+        let next_ref = if crate::use_compressed_oops() {
+            get_next_reference::<true>(reference)
+        } else {
+            get_next_reference::<false>(reference)
+        };
         let next_ref = next_ref.get_forwarded_object().unwrap_or(next_ref);
         debug_assert!(next_ref.get_forwarded_object().is_none());
         // Reaches the end of the list?
@@ -350,13 +403,21 @@ fn iterate_list(
         // Process reference
         let result = visitor(reference);
         // Remove `reference` from current list
-        set_next_reference(reference, ObjectReference::NULL);
+        if crate::use_compressed_oops() {
+            set_next_reference::<true>(reference, ObjectReference::NULL);
+        } else {
+            set_next_reference::<false>(reference, ObjectReference::NULL);
+        }
         match result {
             DiscoveredListIterationResult::Remove => {}
             DiscoveredListIterationResult::Enqueue => {
                 // Add to new list
                 if let Some(new_head) = new_head {
-                    set_next_reference(reference, new_head)
+                    if crate::use_compressed_oops() {
+                        set_next_reference::<true>(reference, new_head)
+                    } else {
+                        set_next_reference::<false>(reference, new_head)
+                    };
                 } else {
                     new_tail = Some(reference);
                 }

@@ -8,7 +8,6 @@ extern crate spin;
 
 use std::cell::RefCell;
 use std::collections::HashMap;
-use std::ops::Range;
 use std::ptr::null_mut;
 use std::sync::atomic::AtomicUsize;
 use std::sync::Mutex;
@@ -16,8 +15,11 @@ use std::sync::Mutex;
 use libc::{c_char, c_void, uintptr_t};
 use mmtk::scheduler::GCWorker;
 use mmtk::util::alloc::AllocationError;
+use mmtk::util::constants::{BYTES_IN_ADDRESS, LOG_BYTES_IN_ADDRESS};
+use mmtk::util::heap::layout::vm_layout_constants::VM_LAYOUT_CONSTANTS;
 use mmtk::util::opaque_pointer::*;
 use mmtk::util::{Address, ObjectReference};
+use mmtk::vm::edge_shape::{Edge, MemorySlice};
 use mmtk::vm::VMBinding;
 use mmtk::MMTKBuilder;
 use mmtk::Mutator;
@@ -112,9 +114,9 @@ pub struct OpenJDK_Upcalls {
     pub swap_reference_pending_list: extern "C" fn(objects: ObjectReference) -> ObjectReference,
     pub java_lang_class_klass_offset_in_bytes: extern "C" fn() -> usize,
     pub java_lang_classloader_loader_data_offset: extern "C" fn() -> usize,
-    pub claim_cld: extern "C" fn(cld: *mut ()) -> bool,
-    pub scan_cld:
-        extern "C" fn(trace: *mut c_void, cld: *mut c_void, follow_clds: bool, claim_clds: bool),
+    pub compressed_klass_base: extern "C" fn() -> Address,
+    pub compressed_klass_shift: extern "C" fn() -> usize,
+    pub nmethod_fix_relocation: extern "C" fn(Address),
 }
 
 lazy_static! {
@@ -160,15 +162,180 @@ pub static IMMIX_ALLOCATOR_SIZE: uintptr_t =
 #[no_mangle]
 pub static mut CONCURRENT_MARKING_ACTIVE: u8 = 0;
 
+static mut USE_COMPRESSED_OOPS: bool = false;
+
+#[inline(always)]
+fn use_compressed_oops() -> bool {
+    unsafe { USE_COMPRESSED_OOPS }
+}
+
+static mut BASE: Address = Address::ZERO;
+static mut SHIFT: usize = 0;
+
+fn compress(o: ObjectReference) -> u32 {
+    if o.is_null() {
+        0u32
+    } else {
+        unsafe { ((o.to_address() - BASE) >> SHIFT) as u32 }
+    }
+}
+
+fn decompress(v: u32) -> ObjectReference {
+    if v == 0 {
+        ObjectReference::NULL
+    } else {
+        unsafe { (BASE + ((v as usize) << SHIFT)).to_object_reference() }
+    }
+}
+
+fn initialize_compressed_oops() {
+    let heap_end = VM_LAYOUT_CONSTANTS.heap_end.as_usize();
+    if heap_end <= (4usize << 30) {
+        unsafe {
+            BASE = Address::ZERO;
+            SHIFT = 0;
+        }
+    } else if heap_end <= (32usize << 30) {
+        unsafe {
+            BASE = Address::ZERO;
+            SHIFT = 3;
+        }
+    } else {
+        unsafe {
+            BASE = VM_LAYOUT_CONSTANTS.heap_start - 4096;
+            SHIFT = 3;
+        }
+    }
+}
+
 #[derive(Default)]
 pub struct OpenJDK;
 
 /// The type of edges in OpenJDK.
-///
-/// TODO: We currently make it an alias to Address to make the change minimal.
-/// If we support CompressedOOPs, we should define an enum type to support both
-/// compressed and uncompressed OOPs.
-pub type OpenJDKEdge = Address;
+#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
+#[repr(transparent)]
+pub struct OpenJDKEdge(pub Address);
+
+impl OpenJDKEdge {
+    const MASK: usize = 1usize << 63;
+
+    const fn is_compressed(&self) -> bool {
+        self.0.as_usize() & Self::MASK == 0
+    }
+
+    const fn untagged_address(&self) -> Address {
+        unsafe { Address::from_usize(self.0.as_usize() << 1 >> 1) }
+    }
+}
+
+impl Edge for OpenJDKEdge {
+    /// Load object reference from the edge.
+    #[inline(always)]
+    fn load<const COMPRESSED: bool>(&self) -> ObjectReference {
+        if COMPRESSED {
+            let slot = self.untagged_address();
+            if self.is_compressed() {
+                decompress(unsafe { slot.load::<u32>() })
+            } else {
+                unsafe { slot.load::<ObjectReference>() }
+            }
+        } else {
+            unsafe { self.0.load::<ObjectReference>() }
+        }
+    }
+
+    /// Store the object reference `object` into the edge.
+    #[inline(always)]
+    fn store<const COMPRESSED: bool>(&self, object: ObjectReference) {
+        if COMPRESSED {
+            let slot = self.untagged_address();
+            if self.is_compressed() {
+                unsafe { slot.store(compress(object)) }
+            } else {
+                unsafe { slot.store(object) }
+            }
+        } else {
+            unsafe { self.0.store(object) }
+        }
+    }
+
+    #[inline(always)]
+    fn to_address(&self) -> Address {
+        self.0
+    }
+
+    #[inline(always)]
+    fn from_address(a: Address) -> Self {
+        OpenJDKEdge(a)
+    }
+}
+
+#[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
+pub struct OpenJDKEdgeRange {
+    pub start: OpenJDKEdge,
+    pub end: OpenJDKEdge,
+}
+
+/// Iterate edges within `Range<Address>`.
+pub struct AddressRangeIterator {
+    cursor: Address,
+    limit: Address,
+}
+
+impl Iterator for AddressRangeIterator {
+    type Item = OpenJDKEdge;
+
+    #[inline]
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.cursor >= self.limit {
+            None
+        } else {
+            let edge = self.cursor;
+            self.cursor += BYTES_IN_ADDRESS;
+            Some(OpenJDKEdge(edge))
+        }
+    }
+}
+
+impl MemorySlice for OpenJDKEdgeRange {
+    type Edge = OpenJDKEdge;
+    type EdgeIterator = AddressRangeIterator;
+
+    #[inline]
+    fn iter_edges(&self) -> Self::EdgeIterator {
+        AddressRangeIterator {
+            cursor: self.start.0,
+            limit: self.end.0,
+        }
+    }
+
+    #[inline]
+    fn start(&self) -> Address {
+        self.start.0
+    }
+
+    #[inline]
+    fn bytes(&self) -> usize {
+        self.end.0 - self.start.0
+    }
+
+    #[inline]
+    fn copy(src: &Self, tgt: &Self) {
+        debug_assert_eq!(src.bytes(), tgt.bytes());
+        debug_assert_eq!(
+            src.bytes() & ((1 << LOG_BYTES_IN_ADDRESS) - 1),
+            0,
+            "bytes are not a multiple of words"
+        );
+        // Raw memory copy
+        unsafe {
+            let words = tgt.bytes() >> LOG_BYTES_IN_ADDRESS;
+            let src = src.start().to_ptr::<usize>();
+            let tgt = tgt.start().to_mut_ptr::<usize>();
+            std::ptr::copy(src, tgt, words)
+        }
+    }
+}
 
 impl VMBinding for OpenJDK {
     type VMObjectModel = object_model::VMObjectModel;
@@ -178,7 +345,7 @@ impl VMBinding for OpenJDK {
     type VMReferenceGlue = reference_glue::VMReferenceGlue;
 
     type VMEdge = OpenJDKEdge;
-    type VMMemorySlice = Range<Address>;
+    type VMMemorySlice = OpenJDKEdgeRange;
 }
 
 use std::sync::atomic::AtomicBool;
@@ -189,10 +356,17 @@ pub static MMTK_INITIALIZED: AtomicBool = AtomicBool::new(false);
 lazy_static! {
     pub static ref BUILDER: Mutex<MMTKBuilder> = Mutex::new(MMTKBuilder::new());
     pub static ref SINGLETON: MMTK<OpenJDK> = {
-        let builder = BUILDER.lock().unwrap();
+        let mut builder = BUILDER.lock().unwrap();
+        if use_compressed_oops() {
+            builder.set_option("use_35bit_address_space", "true");
+            builder.set_option("use_35bit_address_space", "true");
+        }
         assert!(!MMTK_INITIALIZED.load(Ordering::Relaxed));
         let ret = mmtk::memory_manager::mmtk_init(&builder);
         MMTK_INITIALIZED.store(true, std::sync::atomic::Ordering::SeqCst);
+        if use_compressed_oops() {
+            initialize_compressed_oops();
+        }
         *ret
     };
 }

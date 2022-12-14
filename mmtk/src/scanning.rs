@@ -20,7 +20,8 @@ extern "C" fn report_edges_and_renew_buffer<F: RootsWorkFactory<OpenJDKEdge>>(
     factory_ptr: *mut F,
 ) -> NewBuffer {
     if !ptr.is_null() {
-        let buf = unsafe { Vec::<Address>::from_raw_parts(ptr, length, capacity) };
+        let ptr = ptr as *mut OpenJDKEdge;
+        let buf = unsafe { Vec::<OpenJDKEdge>::from_raw_parts(ptr, length, capacity) };
         let factory: &mut F = unsafe { &mut *factory_ptr };
         factory.create_process_edge_roots_work(buf);
     }
@@ -46,12 +47,12 @@ impl Scanning<OpenJDK> for VMScanning {
     const SINGLE_THREAD_MUTATOR_SCANNING: bool = false;
 
     #[inline]
-    fn scan_object<EV: EdgeVisitor<OpenJDKEdge>>(
+    fn scan_object<EV: EdgeVisitor<OpenJDKEdge>, const COMPRESSED: bool>(
         tls: VMWorkerThread,
         object: ObjectReference,
         edge_visitor: &mut EV,
     ) {
-        crate::object_scanning::scan_object(object, edge_visitor, tls)
+        crate::object_scanning::scan_object::<EV, COMPRESSED>(object, edge_visitor, tls);
     }
 
     #[inline(always)]

@@ -291,25 +291,48 @@ impl InstanceRefKlass {
         *DISCOVERED_OFFSET
     }
     #[inline(always)]
-    pub fn referent_address(oop: Oop) -> Address {
-        oop.get_field_address(Self::referent_offset())
+    pub fn referent_address(oop: Oop) -> OpenJDKEdge {
+        OpenJDKEdge(oop.get_field_address(Self::referent_offset()))
     }
     #[inline(always)]
-    pub fn discovered_address(oop: Oop) -> Address {
-        oop.get_field_address(Self::discovered_offset())
+    pub fn discovered_address(oop: Oop) -> OpenJDKEdge {
+        OpenJDKEdge(oop.get_field_address(Self::discovered_offset()))
     }
+}
+
+#[repr(C)]
+union KlassField {
+    klass: &'static Klass,
+    narrow_klass: u32,
 }
 
 #[repr(C)]
 pub struct OopDesc {
     pub mark: usize,
-    pub klass: &'static Klass,
+    klass: KlassField,
 }
 
 impl OopDesc {
     #[inline(always)]
     pub fn start(&self) -> Address {
         unsafe { mem::transmute(self) }
+    }
+    #[inline(always)]
+    pub fn klass(&self) -> &'static Klass {
+        // self.klass
+        if crate::use_compressed_oops() {
+            lazy_static! {
+                static ref COMPRESSED_KLASS_BASE: Address =
+                    unsafe { ((*UPCALLS).compressed_klass_base)() };
+                static ref COMPRESSED_KLASS_SHIFT: usize =
+                    unsafe { ((*UPCALLS).compressed_klass_shift)() };
+            }
+            let compressed = unsafe { self.klass.narrow_klass };
+            let addr = *COMPRESSED_KLASS_BASE + ((compressed as usize) << *COMPRESSED_KLASS_SHIFT);
+            unsafe { &*addr.to_ptr::<Klass>() }
+        } else {
+            unsafe { self.klass.klass }
+        }
     }
 }
 
@@ -324,7 +347,18 @@ impl fmt::Debug for OopDesc {
 
 pub type Oop = &'static OopDesc;
 
-impl From<ObjectReference> for Oop {
+#[repr(transparent)]
+#[derive(Clone, Copy)]
+pub struct NarrowOop(u32);
+
+impl NarrowOop {
+    pub fn slot(&self) -> Address {
+        Address::from_ref(self)
+    }
+}
+
+/// Convert ObjectReference to Oop
+impl From<ObjectReference> for &OopDesc {
     #[inline(always)]
     fn from(o: ObjectReference) -> Self {
         unsafe { mem::transmute(o) }
@@ -358,7 +392,7 @@ impl OopDesc {
     /// Calculate object instance size
     #[inline(always)]
     pub unsafe fn size(&self) -> usize {
-        let klass = self.klass;
+        let klass = self.klass();
         let lh = klass.layout_helper;
         // The (scalar) instance size is pre-recorded in the TIB?
         if lh > Klass::LH_NEUTRAL_VALUE {
@@ -390,7 +424,13 @@ pub struct ArrayOopDesc(OopDesc);
 pub type ArrayOop = &'static ArrayOopDesc;
 
 impl ArrayOopDesc {
-    const LENGTH_OFFSET: usize = mem::size_of::<Self>();
+    fn length_offset() -> usize {
+        if crate::use_compressed_oops() {
+            mem::size_of::<usize>() + mem::size_of::<u32>()
+        } else {
+            mem::size_of::<Self>()
+        }
+    }
 
     fn element_type_should_be_aligned(ty: BasicType) -> bool {
         ty == BasicType::T_DOUBLE || ty == BasicType::T_LONG
@@ -399,7 +439,7 @@ impl ArrayOopDesc {
     #[inline(always)]
     fn header_size(ty: BasicType) -> usize {
         let typesize_in_bytes =
-            conversions::raw_align_up(Self::LENGTH_OFFSET + BYTES_IN_INT, BYTES_IN_LONG);
+            conversions::raw_align_up(Self::length_offset() + BYTES_IN_INT, BYTES_IN_LONG);
         if Self::element_type_should_be_aligned(ty) {
             conversions::raw_align_up(typesize_in_bytes / BYTES_IN_WORD, BYTES_IN_LONG)
         } else {
@@ -408,7 +448,7 @@ impl ArrayOopDesc {
     }
     #[inline(always)]
     fn length(&self) -> i32 {
-        unsafe { *((self as *const _ as *const u8).add(Self::LENGTH_OFFSET) as *const i32) }
+        unsafe { *((self as *const _ as *const u8).add(Self::length_offset()) as *const i32) }
     }
     #[inline(always)]
     fn base(&self, ty: BasicType) -> Address {
@@ -477,7 +517,12 @@ impl ChunkedHandleList {
     ) {
         for i in 0..size {
             if !chunk.data[i as usize].is_null() {
-                closure.visit_edge(Address::from_ref::<*mut OopDesc>(&chunk.data[i as usize]))
+                let mut word =
+                    Address::from_ref::<*mut OopDesc>(&chunk.data[i as usize]).as_usize();
+                if crate::use_compressed_oops() {
+                    word = word | (1usize << 63);
+                }
+                closure.visit_edge(OpenJDKEdge(Address::from_usize(word)))
             }
         }
     }
