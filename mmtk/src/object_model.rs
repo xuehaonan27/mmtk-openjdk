@@ -102,7 +102,14 @@ impl ObjectModel<OpenJDK> for VMObjectModel {
         s.to_string()
     }
 
+    #[inline(always)]
     fn compressed_pointers_enabled() -> bool {
         crate::use_compressed_oops()
+    }
+
+    #[inline(always)]
+    fn get_class_pointer(object: ObjectReference) -> Address {
+        let oop: Oop = unsafe { std::mem::transmute(object) };
+        oop.klass_ptr()
     }
 }

@@ -318,6 +318,23 @@ impl OopDesc {
         unsafe { mem::transmute(self) }
     }
     #[inline(always)]
+    pub(crate) fn klass_ptr(&self) -> Address {
+        // self.klass
+        if crate::use_compressed_oops() {
+            lazy_static! {
+                static ref COMPRESSED_KLASS_BASE: Address =
+                    unsafe { ((*UPCALLS).compressed_klass_base)() };
+                static ref COMPRESSED_KLASS_SHIFT: usize =
+                    unsafe { ((*UPCALLS).compressed_klass_shift)() };
+            }
+            let compressed = unsafe { self.klass.narrow_klass };
+            let addr = *COMPRESSED_KLASS_BASE + ((compressed as usize) << *COMPRESSED_KLASS_SHIFT);
+            addr
+        } else {
+            unsafe { Address::from_ref(self.klass.klass) }
+        }
+    }
+    #[inline(always)]
     pub fn klass(&self) -> &'static Klass {
         // self.klass
         if crate::use_compressed_oops() {

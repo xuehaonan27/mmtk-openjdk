@@ -442,9 +442,11 @@ pub extern "C" fn get_finalized_object() -> ObjectReference {
 /// Note: only call this method after the liveness tracing and before gc release.
 #[no_mangle]
 pub extern "C" fn mmtk_is_live(object: ObjectReference) -> usize {
-    if object.is_null() || !object.to_address().is_mapped() || !object.class_is_valid() {
+    if object.is_null() {
         return 0;
     }
+    debug_assert!(object.to_address().is_mapped());
+    debug_assert!(object.class_is_valid::<OpenJDK>());
     object.is_live() as _
 }
 
