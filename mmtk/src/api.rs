@@ -11,7 +11,7 @@ use mmtk::plan::BarrierSelector;
 use mmtk::scheduler::GCController;
 use mmtk::scheduler::GCWorker;
 use mmtk::util::alloc::AllocatorSelector;
-use mmtk::util::constants::LOG_BYTES_IN_ADDRESS;
+use mmtk::util::constants::{LOG_BYTES_IN_ADDRESS, LOG_BYTES_IN_INT};
 use mmtk::util::opaque_pointer::*;
 use mmtk::util::{Address, ObjectReference};
 use mmtk::AllocationSemantics;
@@ -390,7 +390,12 @@ pub extern "C" fn mmtk_array_copy_pre(
     dst: Address,
     count: usize,
 ) {
-    let bytes = count << LOG_BYTES_IN_ADDRESS;
+    let bytes = count
+        << if crate::use_compressed_oops() {
+            LOG_BYTES_IN_INT
+        } else {
+            LOG_BYTES_IN_ADDRESS
+        };
     mutator.barrier().memory_region_copy_pre(
         OpenJDKEdgeRange {
             start: OpenJDKEdge(src),
@@ -411,7 +416,12 @@ pub extern "C" fn mmtk_array_copy_post(
     dst: Address,
     count: usize,
 ) {
-    let bytes = count << LOG_BYTES_IN_ADDRESS;
+    let bytes = count
+        << if crate::use_compressed_oops() {
+            LOG_BYTES_IN_INT
+        } else {
+            LOG_BYTES_IN_ADDRESS
+        };
     mutator.barrier().memory_region_copy_post(
         OpenJDKEdgeRange {
             start: OpenJDKEdge(src),

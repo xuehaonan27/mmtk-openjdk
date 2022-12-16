@@ -480,12 +480,6 @@ impl ArrayOopDesc {
     pub unsafe fn data<T>(&self, ty: BasicType) -> &[T] {
         slice::from_raw_parts(self.base(ty).to_ptr(), self.length() as _)
     }
-    #[inline(always)]
-    pub fn data_range(&self) -> Range<Address> {
-        let base = self.base(BasicType::T_OBJECT);
-        let len = self.length() as usize;
-        base..(base + (len << BYTES_IN_ADDRESS))
-    }
 }
 
 #[repr(C)]

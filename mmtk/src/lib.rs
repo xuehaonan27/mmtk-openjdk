@@ -15,7 +15,9 @@ use std::sync::Mutex;
 use libc::{c_char, c_void, uintptr_t};
 use mmtk::scheduler::GCWorker;
 use mmtk::util::alloc::AllocationError;
-use mmtk::util::constants::{BYTES_IN_ADDRESS, LOG_BYTES_IN_ADDRESS};
+use mmtk::util::constants::{
+    BYTES_IN_ADDRESS, BYTES_IN_INT, LOG_BYTES_IN_ADDRESS, LOG_BYTES_IN_INT,
+};
 use mmtk::util::heap::layout::vm_layout_constants::VM_LAYOUT_CONSTANTS;
 use mmtk::util::opaque_pointer::*;
 use mmtk::util::{Address, ObjectReference};
@@ -261,12 +263,12 @@ impl Edge for OpenJDKEdge {
 
     #[inline(always)]
     fn to_address(&self) -> Address {
-        self.0
+        self.untagged_address()
     }
 
     #[inline(always)]
     fn from_address(a: Address) -> Self {
-        OpenJDKEdge(a)
+        unreachable!();
     }
 }
 
@@ -280,6 +282,7 @@ pub struct OpenJDKEdgeRange {
 pub struct AddressRangeIterator {
     cursor: Address,
     limit: Address,
+    width: usize,
 }
 
 impl Iterator for AddressRangeIterator {
@@ -291,7 +294,7 @@ impl Iterator for AddressRangeIterator {
             None
         } else {
             let edge = self.cursor;
-            self.cursor += BYTES_IN_ADDRESS;
+            self.cursor += self.width;
             Some(OpenJDKEdge(edge))
         }
     }
@@ -306,6 +309,11 @@ impl MemorySlice for OpenJDKEdgeRange {
         AddressRangeIterator {
             cursor: self.start.0,
             limit: self.end.0,
+            width: if crate::use_compressed_oops() {
+                BYTES_IN_INT
+            } else {
+                BYTES_IN_ADDRESS
+            },
         }
     }
 
@@ -328,11 +336,20 @@ impl MemorySlice for OpenJDKEdgeRange {
             "bytes are not a multiple of words"
         );
         // Raw memory copy
-        unsafe {
-            let words = tgt.bytes() >> LOG_BYTES_IN_ADDRESS;
-            let src = src.start().to_ptr::<usize>();
-            let tgt = tgt.start().to_mut_ptr::<usize>();
-            std::ptr::copy(src, tgt, words)
+        if crate::use_compressed_oops() {
+            unsafe {
+                let words = tgt.bytes() >> LOG_BYTES_IN_INT;
+                let src = src.start().to_ptr::<u32>();
+                let tgt = tgt.start().to_mut_ptr::<u32>();
+                std::ptr::copy(src, tgt, words)
+            }
+        } else {
+            unsafe {
+                let words = tgt.bytes() >> LOG_BYTES_IN_ADDRESS;
+                let src = src.start().to_ptr::<usize>();
+                let tgt = tgt.start().to_mut_ptr::<usize>();
+                std::ptr::copy(src, tgt, words)
+            }
         }
     }
 }
