@@ -109,7 +109,7 @@ public:
 
   inline virtual bool do_object_b(oop o) {
     const uintptr_t v = uintptr_t((void*) o);
-    if (v >= 0x220000000000ULL || v < 0x20000000000ULL) return false;
+    // if (v >= 0x220000000000ULL || v < 0x20000000000ULL) return false;
     return o != NULL && (rc_live(o) || is_forwarded(o));
   }
 };
@@ -119,10 +119,10 @@ class MMTkLXRFastUpdateClosure : public OopClosure {
   inline virtual void do_oop(oop* slot) {
     const auto o = *slot;
     const uintptr_t v = uintptr_t((void*) o);
-    if (v >= 0x220000000000ULL || v < 0x20000000000ULL) {
-      *slot = NULL;
-      return;
-    }
+    // if (v >= 0x220000000000ULL || v < 0x20000000000ULL) {
+    //   *slot = NULL;
+    //   return;
+    // }
     const auto status = MMTkForwardClosure::read_forwarding_word(o);
     if (MMTkForwardClosure::is_forwarded(status)) {
       *slot = MMTkForwardClosure::extract_forwarding_pointer(status);
@@ -135,10 +135,10 @@ class MMTkLXRFastUpdateClosure : public OopClosure {
     if (CompressedOops::is_null(heap_oop)) return;
     oop o = CompressedOops::decode_not_null(heap_oop);
     const uintptr_t v = uintptr_t((void*) o);
-    if (v >= 0x220000000000ULL || v < 0x20000000000ULL) {
-      RawAccess<>::oop_store(slot, CompressedOops::encode(oop(NULL)));
-      return;
-    }
+    // if (v >= 0x220000000000ULL || v < 0x20000000000ULL) {
+    //   RawAccess<>::oop_store(slot, CompressedOops::encode(oop(NULL)));
+    //   return;
+    // }
     const auto status = MMTkForwardClosure::read_forwarding_word(o);
     if (MMTkForwardClosure::is_forwarded(status)) {
       RawAccess<>::oop_store(slot, CompressedOops::encode_not_null(MMTkForwardClosure::extract_forwarding_pointer(status)));
