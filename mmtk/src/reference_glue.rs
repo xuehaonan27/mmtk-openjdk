@@ -84,7 +84,7 @@ impl DiscoveredList {
         let oop = Oop::from(reference);
         let head = self.head.load(Ordering::Relaxed);
         let addr = InstanceRefKlass::discovered_address(oop);
-        if crate::use_compressed_oops() {
+        if COMPRESSED {
             let discovered_addr = unsafe { addr.to_address().as_ref::<Atomic<u32>>() };
             let next_discovered = if head.is_null() { reference } else { head };
             debug_assert!(!next_discovered.is_null());
@@ -168,7 +168,7 @@ impl DiscoveredLists {
         self.get_by_rt_and_index(rt, id)
     }
 
-    pub fn process_lists<E: ProcessEdgesWork<VM = OpenJDK>>(
+    pub fn process_lists<E: ProcessEdgesWork<VM = OpenJDK>, const COMPRESSED: bool>(
         &self,
         worker: &mut GCWorker<OpenJDK>,
         rt: ReferenceType,
@@ -184,7 +184,7 @@ impl DiscoveredLists {
             if head.is_null() {
                 continue;
             }
-            let w = ProcessDiscoveredList {
+            let w = ProcessDiscoveredList::<_, COMPRESSED> {
                 list_index: i,
                 head,
                 rt,
@@ -201,21 +201,24 @@ impl DiscoveredLists {
     ) {
     }
 
-    pub fn process_soft_weak_final_refs<E: ProcessEdgesWork<VM = OpenJDK>>(
+    pub fn process_soft_weak_final_refs<
+        E: ProcessEdgesWork<VM = OpenJDK>,
+        const COMPRESSED: bool,
+    >(
         &self,
         worker: &mut GCWorker<OpenJDK>,
     ) {
         self.allow_discover.store(false, Ordering::SeqCst);
         if !*SINGLETON.get_options().no_reference_types {
-            self.process_lists::<E>(worker, ReferenceType::Soft, &self.soft, true);
-            self.process_lists::<E>(worker, ReferenceType::Weak, &self.weak, true);
+            self.process_lists::<E, COMPRESSED>(worker, ReferenceType::Soft, &self.soft, true);
+            self.process_lists::<E, COMPRESSED>(worker, ReferenceType::Weak, &self.weak, true);
         }
         if !*SINGLETON.get_options().no_finalizer {
-            self.process_lists::<E>(worker, ReferenceType::Final, &self.r#final, false);
+            self.process_lists::<E, COMPRESSED>(worker, ReferenceType::Final, &self.r#final, false);
         }
     }
 
-    pub fn resurrect_final_refs<E: ProcessEdgesWork<VM = OpenJDK>>(
+    pub fn resurrect_final_refs<E: ProcessEdgesWork<VM = OpenJDK>, const COMPRESSED: bool>(
         &self,
         worker: &mut GCWorker<OpenJDK>,
     ) {
@@ -228,7 +231,7 @@ impl DiscoveredLists {
             if head.is_null() {
                 continue;
             }
-            let w = ResurrectFinalizables {
+            let w = ResurrectFinalizables::<_, COMPRESSED> {
                 list_index: i,
                 head,
                 _p: PhantomData::<E>,
@@ -238,12 +241,12 @@ impl DiscoveredLists {
         worker.scheduler().work_buckets[WorkBucketStage::Unconstrained].bulk_add(packets);
     }
 
-    pub fn process_phantom_refs<E: ProcessEdgesWork<VM = OpenJDK>>(
+    pub fn process_phantom_refs<E: ProcessEdgesWork<VM = OpenJDK>, const COMPRESSED: bool>(
         &self,
         worker: &mut GCWorker<OpenJDK>,
     ) {
         assert!(!*SINGLETON.get_options().no_reference_types);
-        self.process_lists::<E>(worker, ReferenceType::Phantom, &self.phantom, true);
+        self.process_lists::<E, COMPRESSED>(worker, ReferenceType::Phantom, &self.phantom, true);
     }
 }
 
@@ -252,24 +255,22 @@ lazy_static! {
     pub static ref DISCOVERED_LISTS: DiscoveredLists = DiscoveredLists::new();
 }
 
-pub struct ProcessDiscoveredList<E: ProcessEdgesWork<VM = OpenJDK>> {
+pub struct ProcessDiscoveredList<E: ProcessEdgesWork<VM = OpenJDK>, const COMPRESSED: bool> {
     list_index: usize,
     head: ObjectReference,
     rt: ReferenceType,
     _p: PhantomData<E>,
 }
 
-impl<E: ProcessEdgesWork<VM = OpenJDK>> GCWork<OpenJDK> for ProcessDiscoveredList<E> {
+impl<E: ProcessEdgesWork<VM = OpenJDK>, const COMPRESSED: bool> GCWork<OpenJDK>
+    for ProcessDiscoveredList<E, COMPRESSED>
+{
     fn do_work(&mut self, worker: &mut GCWorker<OpenJDK>, mmtk: &'static MMTK<OpenJDK>) {
         let mut trace = E::new(vec![], false, mmtk);
         trace.set_worker(worker);
         let retain = self.rt == ReferenceType::Soft && !mmtk.get_plan().is_emergency_collection();
-        let new_list = iterate_list(self.head, |reference| {
-            let referent = if crate::use_compressed_oops() {
-                get_referent::<true>(reference)
-            } else {
-                get_referent::<false>(reference)
-            };
+        let new_list = iterate_list::<_, COMPRESSED>(self.head, |reference| {
+            let referent = get_referent::<COMPRESSED>(reference);
             if referent.is_null() {
                 // Remove from the discovered list
                 return DiscoveredListIterationResult::Remove;
@@ -278,21 +279,13 @@ impl<E: ProcessEdgesWork<VM = OpenJDK>> GCWork<OpenJDK> for ProcessDiscoveredLis
                 let forwarded = trace.trace_object(referent);
                 debug_assert!(forwarded.get_forwarded_object().is_none());
                 debug_assert!(reference.get_forwarded_object().is_none());
-                if crate::use_compressed_oops() {
-                    set_referent::<true>(reference, forwarded);
-                } else {
-                    set_referent::<false>(reference, forwarded);
-                }
+                set_referent::<COMPRESSED>(reference, forwarded);
                 // Remove from the discovered list
                 return DiscoveredListIterationResult::Remove;
             } else {
                 if self.rt != ReferenceType::Final {
                     // Clear this referent
-                    if crate::use_compressed_oops() {
-                        set_referent::<true>(reference, ObjectReference::NULL);
-                    } else {
-                        set_referent::<false>(reference, ObjectReference::NULL);
-                    }
+                    set_referent::<COMPRESSED>(reference, ObjectReference::NULL);
                     // set_referent(reference, ObjectReference::NULL);
                 }
                 // Keep the reference
@@ -309,11 +302,7 @@ impl<E: ProcessEdgesWork<VM = OpenJDK>> GCWork<OpenJDK> for ProcessDiscoveredLis
                     .store(head, Ordering::SeqCst);
             } else {
                 let old_head = unsafe { ((*crate::UPCALLS).swap_reference_pending_list)(head) };
-                if crate::use_compressed_oops() {
-                    set_next_reference::<true>(tail, old_head);
-                } else {
-                    set_next_reference::<false>(tail, old_head);
-                }
+                set_next_reference::<COMPRESSED>(tail, old_head);
             }
         } else {
             if self.rt == ReferenceType::Final {
@@ -326,28 +315,22 @@ impl<E: ProcessEdgesWork<VM = OpenJDK>> GCWork<OpenJDK> for ProcessDiscoveredLis
     }
 }
 
-pub struct ResurrectFinalizables<E: ProcessEdgesWork<VM = OpenJDK>> {
+pub struct ResurrectFinalizables<E: ProcessEdgesWork<VM = OpenJDK>, const COMPRESSED: bool> {
     list_index: usize,
     head: ObjectReference,
     _p: PhantomData<E>,
 }
 
-impl<E: ProcessEdgesWork<VM = OpenJDK>> GCWork<OpenJDK> for ResurrectFinalizables<E> {
+impl<E: ProcessEdgesWork<VM = OpenJDK>, const COMPRESSED: bool> GCWork<OpenJDK>
+    for ResurrectFinalizables<E, COMPRESSED>
+{
     fn do_work(&mut self, worker: &mut GCWorker<OpenJDK>, mmtk: &'static MMTK<OpenJDK>) {
         let mut trace = E::new(vec![], false, mmtk);
         trace.set_worker(worker);
-        let new_list = iterate_list(self.head, |reference| {
-            let referent = if crate::use_compressed_oops() {
-                get_referent::<true>(reference)
-            } else {
-                get_referent::<false>(reference)
-            };
+        let new_list = iterate_list::<_, COMPRESSED>(self.head, |reference| {
+            let referent = get_referent::<COMPRESSED>(reference);
             let forwarded = trace.trace_object(referent);
-            if crate::use_compressed_oops() {
-                set_referent::<true>(reference, forwarded);
-            } else {
-                set_referent::<false>(reference, forwarded);
-            }
+            set_referent::<COMPRESSED>(reference, forwarded);
             debug_assert!(forwarded.get_forwarded_object().is_none());
             return DiscoveredListIterationResult::Enqueue;
         });
@@ -359,11 +342,7 @@ impl<E: ProcessEdgesWork<VM = OpenJDK>> GCWork<OpenJDK> for ResurrectFinalizable
                 .head
                 .store(ObjectReference::NULL, Ordering::SeqCst);
             let old_head = unsafe { ((*crate::UPCALLS).swap_reference_pending_list)(head) };
-            if crate::use_compressed_oops() {
-                set_next_reference::<true>(tail, old_head);
-            } else {
-                set_next_reference::<false>(tail, old_head);
-            }
+            set_next_reference::<COMPRESSED>(tail, old_head);
         }
         trace.flush();
     }
@@ -374,9 +353,12 @@ enum DiscoveredListIterationResult {
     Enqueue,
 }
 
-fn iterate_list(
+fn iterate_list<
+    F: FnMut(ObjectReference) -> DiscoveredListIterationResult,
+    const COMPRESSED: bool,
+>(
     head: ObjectReference,
-    mut visitor: impl FnMut(ObjectReference) -> DiscoveredListIterationResult,
+    mut visitor: F,
 ) -> Option<(ObjectReference, ObjectReference)> {
     let mut new_head: Option<ObjectReference> = None;
     let mut new_tail: Option<ObjectReference> = None;
@@ -391,11 +373,7 @@ fn iterate_list(
         debug_assert!(reference.get_forwarded_object().is_none());
         debug_assert!(reference.is_reachable());
         // Update next_ref forwarding pointer
-        let next_ref = if crate::use_compressed_oops() {
-            get_next_reference::<true>(reference)
-        } else {
-            get_next_reference::<false>(reference)
-        };
+        let next_ref = get_next_reference::<COMPRESSED>(reference);
         let next_ref = next_ref.get_forwarded_object().unwrap_or(next_ref);
         debug_assert!(next_ref.get_forwarded_object().is_none());
         // Reaches the end of the list?
@@ -403,21 +381,13 @@ fn iterate_list(
         // Process reference
         let result = visitor(reference);
         // Remove `reference` from current list
-        if crate::use_compressed_oops() {
-            set_next_reference::<true>(reference, ObjectReference::NULL);
-        } else {
-            set_next_reference::<false>(reference, ObjectReference::NULL);
-        }
+        set_next_reference::<COMPRESSED>(reference, ObjectReference::NULL);
         match result {
             DiscoveredListIterationResult::Remove => {}
             DiscoveredListIterationResult::Enqueue => {
                 // Add to new list
                 if let Some(new_head) = new_head {
-                    if crate::use_compressed_oops() {
-                        set_next_reference::<true>(reference, new_head)
-                    } else {
-                        set_next_reference::<false>(reference, new_head)
-                    };
+                    set_next_reference::<COMPRESSED>(reference, new_head);
                 } else {
                     new_tail = Some(reference);
                 }

@@ -317,9 +317,9 @@ impl OopDesc {
         unsafe { mem::transmute(self) }
     }
     #[inline(always)]
-    pub(crate) fn klass_ptr(&self) -> Address {
+    pub(crate) fn klass_ptr<const COMPRESSED: bool>(&self) -> Address {
         // self.klass
-        if crate::use_compressed_oops() {
+        if COMPRESSED {
             lazy_static! {
                 static ref COMPRESSED_KLASS_BASE: Address =
                     unsafe { ((*UPCALLS).compressed_klass_base)() };
@@ -334,9 +334,9 @@ impl OopDesc {
         }
     }
     #[inline(always)]
-    pub fn klass(&self) -> &'static Klass {
+    pub fn klass<const COMPRESSED: bool>(&self) -> &'static Klass {
         // self.klass
-        if crate::use_compressed_oops() {
+        if COMPRESSED {
             lazy_static! {
                 static ref COMPRESSED_KLASS_BASE: Address =
                     unsafe { ((*UPCALLS).compressed_klass_base)() };
@@ -407,8 +407,8 @@ impl OopDesc {
 
     /// Calculate object instance size
     #[inline(always)]
-    pub unsafe fn size(&self) -> usize {
-        let klass = self.klass();
+    pub unsafe fn size<const COMPRESSED: bool>(&self) -> usize {
+        let klass = self.klass::<COMPRESSED>();
         let lh = klass.layout_helper;
         // The (scalar) instance size is pre-recorded in the TIB?
         if lh > Klass::LH_NEUTRAL_VALUE {
@@ -420,7 +420,7 @@ impl OopDesc {
         } else if lh <= Klass::LH_NEUTRAL_VALUE {
             if lh < Klass::LH_NEUTRAL_VALUE {
                 // Calculate array size
-                let array_length = self.as_array_oop().length();
+                let array_length = self.as_array_oop().length::<COMPRESSED>();
                 let mut size_in_bytes: usize =
                     (array_length as usize) << Klass::layout_helper_log2_element_size(lh);
                 size_in_bytes += Klass::layout_helper_header_size(lh) as usize;
@@ -440,8 +440,8 @@ pub struct ArrayOopDesc(OopDesc);
 pub type ArrayOop = &'static ArrayOopDesc;
 
 impl ArrayOopDesc {
-    fn length_offset() -> usize {
-        if crate::use_compressed_oops() {
+    fn length_offset<const COMPRESSED: bool>() -> usize {
+        if COMPRESSED {
             mem::size_of::<usize>() + mem::size_of::<u32>()
         } else {
             mem::size_of::<Self>()
@@ -453,9 +453,11 @@ impl ArrayOopDesc {
     }
 
     #[inline(always)]
-    fn header_size(ty: BasicType) -> usize {
-        let typesize_in_bytes =
-            conversions::raw_align_up(Self::length_offset() + BYTES_IN_INT, BYTES_IN_LONG);
+    fn header_size<const COMPRESSED: bool>(ty: BasicType) -> usize {
+        let typesize_in_bytes = conversions::raw_align_up(
+            Self::length_offset::<COMPRESSED>() + BYTES_IN_INT,
+            BYTES_IN_LONG,
+        );
         if Self::element_type_should_be_aligned(ty) {
             conversions::raw_align_up(typesize_in_bytes / BYTES_IN_WORD, BYTES_IN_LONG)
         } else {
@@ -463,12 +465,15 @@ impl ArrayOopDesc {
         }
     }
     #[inline(always)]
-    fn length(&self) -> i32 {
-        unsafe { *((self as *const _ as *const u8).add(Self::length_offset()) as *const i32) }
+    fn length<const COMPRESSED: bool>(&self) -> i32 {
+        unsafe {
+            *((self as *const _ as *const u8).add(Self::length_offset::<COMPRESSED>())
+                as *const i32)
+        }
     }
     #[inline(always)]
-    fn base(&self, ty: BasicType) -> Address {
-        let base_offset_in_bytes = Self::header_size(ty) * BYTES_IN_WORD;
+    fn base<const COMPRESSED: bool>(&self, ty: BasicType) -> Address {
+        let base_offset_in_bytes = Self::header_size::<COMPRESSED>(ty) * BYTES_IN_WORD;
         Address::from_ptr(unsafe { (self as *const _ as *const u8).add(base_offset_in_bytes) })
     }
     // This provides an easy way to access the array data in Rust. However, the array data
@@ -476,15 +481,18 @@ impl ArrayOopDesc {
     // 1. <T> matches the actual Java type
     // 2. <T> matches the argument, BasicType `ty`
     #[inline(always)]
-    pub unsafe fn data<T>(&self, ty: BasicType) -> &[T] {
-        slice::from_raw_parts(self.base(ty).to_ptr(), self.length() as _)
+    pub unsafe fn data<T, const COMPRESSED: bool>(&self, ty: BasicType) -> &[T] {
+        slice::from_raw_parts(
+            self.base::<COMPRESSED>(ty).to_ptr(),
+            self.length::<COMPRESSED>() as _,
+        )
     }
     #[inline(always)]
-    pub unsafe fn slice(&self, ty: BasicType) -> crate::OpenJDKEdgeRange {
-        let base = self.base(ty);
+    pub unsafe fn slice<const COMPRESSED: bool>(&self, ty: BasicType) -> crate::OpenJDKEdgeRange {
+        let base = self.base::<COMPRESSED>(ty);
         let start = crate::OpenJDKEdge(base);
         let end = crate::OpenJDKEdge(
-            base + ((self.length() as usize) << if crate::use_compressed_oops() { 2 } else { 3 }),
+            base + ((self.length::<COMPRESSED>() as usize) << if COMPRESSED { 2 } else { 3 }),
         );
         crate::OpenJDKEdgeRange { start, end }
     }
@@ -528,17 +536,17 @@ struct ChunkedHandleList {
 }
 
 impl ChunkedHandleList {
-    unsafe fn oops_do_chunk(
+    unsafe fn oops_do_chunk<V: EdgeVisitor<OpenJDKEdge>, const COMPRESSED: bool>(
         &self,
         chunk: &'static Chunk,
         size: u32,
-        closure: &mut impl EdgeVisitor<OpenJDKEdge>,
+        closure: &mut V,
     ) {
         for i in 0..size {
             if !chunk.data[i as usize].is_null() {
                 let mut word =
                     Address::from_ref::<*mut OopDesc>(&chunk.data[i as usize]).as_usize();
-                if crate::use_compressed_oops() {
+                if COMPRESSED {
                     word = word | (1usize << 63);
                 }
                 closure.visit_edge(OpenJDKEdge(Address::from_usize(word)))
@@ -546,17 +554,17 @@ impl ChunkedHandleList {
         }
     }
 
-    fn oops_do(&self, closure: &mut impl EdgeVisitor<OpenJDKEdge>) {
+    fn oops_do<V: EdgeVisitor<OpenJDKEdge>, const COMPRESSED: bool>(&self, closure: &mut V) {
         let head = self.head.load(Ordering::Acquire);
         if !head.is_null() {
             let head = unsafe { &*head };
             let size = head.size.load(Ordering::Acquire);
-            unsafe { self.oops_do_chunk(head, size, closure) };
+            unsafe { self.oops_do_chunk::<_, COMPRESSED>(head, size, closure) };
             let mut c = head.next;
             while !c.is_null() {
                 let chunk = unsafe { &*c };
                 let size = chunk.size.load(Ordering::Relaxed);
-                unsafe { self.oops_do_chunk(chunk, size, closure) };
+                unsafe { self.oops_do_chunk::<_, COMPRESSED>(chunk, size, closure) };
                 c = chunk.next;
             }
         }
@@ -593,10 +601,10 @@ impl ClassLoaderData {
     }
 
     #[inline]
-    pub fn oops_do<V: EdgeVisitor<OpenJDKEdge>>(&self, closure: &mut V) {
+    pub fn oops_do<V: EdgeVisitor<OpenJDKEdge>, const COMPRESSED: bool>(&self, closure: &mut V) {
         if closure.should_claim_clds() && !self.claim() {
             return;
         }
-        self.handles.oops_do(closure);
+        self.handles.oops_do::<_, COMPRESSED>(closure);
     }
 }

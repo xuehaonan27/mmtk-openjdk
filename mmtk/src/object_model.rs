@@ -20,13 +20,17 @@ impl ObjectModel<OpenJDK> for VMObjectModel {
     const LOCAL_MARK_BIT_SPEC: VMLocalMarkBitSpec = vm_metadata::MARKING_METADATA_SPEC;
     const LOCAL_LOS_MARK_NURSERY_SPEC: VMLocalLOSMarkNurserySpec = vm_metadata::LOS_METADATA_SPEC;
 
-    #[inline]
+    #[inline(always)]
     fn copy(
         from: ObjectReference,
         copy: CopySemantics,
         copy_context: &mut GCWorkerCopyContext<OpenJDK>,
     ) -> ObjectReference {
-        let bytes = unsafe { Oop::from(from).size() };
+        let bytes = if crate::use_compressed_oops() {
+            unsafe { Oop::from(from).size::<true>() }
+        } else {
+            unsafe { Oop::from(from).size::<false>() }
+        };
         let dst = copy_context.alloc_copy(from, bytes, ::std::mem::size_of::<usize>(), 0, copy);
         // Copy
         let src = from.to_address();
@@ -59,8 +63,13 @@ impl ObjectModel<OpenJDK> for VMObjectModel {
         unsafe { to.to_object_reference() }
     }
 
+    #[inline(always)]
     fn get_current_size(object: ObjectReference) -> usize {
-        unsafe { Oop::from(object).size() }
+        if crate::use_compressed_oops() {
+            unsafe { Oop::from(object).size::<true>() }
+        } else {
+            unsafe { Oop::from(object).size::<false>() }
+        }
     }
 
     fn get_size_when_copied(object: ObjectReference) -> usize {
@@ -112,6 +121,10 @@ impl ObjectModel<OpenJDK> for VMObjectModel {
     #[inline(always)]
     fn get_class_pointer(object: ObjectReference) -> Address {
         let oop: Oop = unsafe { std::mem::transmute(object) };
-        oop.klass_ptr()
+        if crate::use_compressed_oops() {
+            oop.klass_ptr::<true>()
+        } else {
+            oop.klass_ptr::<false>()
+        }
     }
 }

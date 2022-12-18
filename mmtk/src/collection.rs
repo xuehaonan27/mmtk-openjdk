@@ -103,15 +103,27 @@ impl Collection<OpenJDK> for VMCollection {
     }
 
     fn process_weak_refs<E: ProcessEdgesWork<VM = OpenJDK>>(worker: &mut GCWorker<OpenJDK>) {
-        DISCOVERED_LISTS.process_soft_weak_final_refs::<E>(worker)
+        if crate::use_compressed_oops() {
+            DISCOVERED_LISTS.process_soft_weak_final_refs::<E, true>(worker)
+        } else {
+            DISCOVERED_LISTS.process_soft_weak_final_refs::<E, false>(worker)
+        }
     }
 
     fn process_final_refs<E: ProcessEdgesWork<VM = OpenJDK>>(worker: &mut GCWorker<OpenJDK>) {
-        DISCOVERED_LISTS.resurrect_final_refs::<E>(worker)
+        if crate::use_compressed_oops() {
+            DISCOVERED_LISTS.resurrect_final_refs::<E, true>(worker)
+        } else {
+            DISCOVERED_LISTS.resurrect_final_refs::<E, false>(worker)
+        }
     }
 
     fn process_phantom_refs<E: ProcessEdgesWork<VM = OpenJDK>>(worker: &mut GCWorker<OpenJDK>) {
-        DISCOVERED_LISTS.process_phantom_refs::<E>(worker)
+        if crate::use_compressed_oops() {
+            DISCOVERED_LISTS.process_phantom_refs::<E, true>(worker)
+        } else {
+            DISCOVERED_LISTS.process_phantom_refs::<E, false>(worker)
+        }
     }
 
     fn update_weak_processor(lxr: bool) {

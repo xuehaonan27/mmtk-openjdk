@@ -56,18 +56,18 @@ impl Scanning<OpenJDK> for VMScanning {
     }
 
     #[inline(always)]
-    fn obj_array_data(o: ObjectReference) -> crate::OpenJDKEdgeRange {
-        crate::object_scanning::obj_array_data(unsafe { std::mem::transmute(o) })
+    fn obj_array_data<const COMPRESSED: bool>(o: ObjectReference) -> crate::OpenJDKEdgeRange {
+        crate::object_scanning::obj_array_data::<COMPRESSED>(unsafe { std::mem::transmute(o) })
     }
 
     #[inline(always)]
-    fn is_obj_array(o: ObjectReference) -> bool {
-        crate::object_scanning::is_obj_array(unsafe { std::mem::transmute(o) })
+    fn is_obj_array<const COMPRESSED: bool>(o: ObjectReference) -> bool {
+        crate::object_scanning::is_obj_array::<COMPRESSED>(unsafe { std::mem::transmute(o) })
     }
 
     #[inline(always)]
-    fn is_val_array(o: ObjectReference) -> bool {
-        crate::object_scanning::is_val_array(unsafe { std::mem::transmute(o) })
+    fn is_val_array<const COMPRESSED: bool>(o: ObjectReference) -> bool {
+        crate::object_scanning::is_val_array::<COMPRESSED>(unsafe { std::mem::transmute(o) })
     }
 
     fn notify_initial_thread_scan_complete(_partial_scan: bool, _tls: VMWorkerThread) {

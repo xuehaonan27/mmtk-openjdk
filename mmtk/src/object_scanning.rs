@@ -41,7 +41,7 @@ impl OopIterate for InstanceKlass {
         closure: &mut V,
     ) {
         if closure.should_follow_clds() {
-            do_klass(oop.klass(), closure);
+            do_klass::<_, COMPRESSED>(oop.klass::<COMPRESSED>(), closure);
         }
         let oop_maps = self.nonstatic_oop_maps();
         for map in oop_maps {
@@ -68,9 +68,9 @@ impl OopIterate for InstanceMirrorKlass {
                 if klass.is_instance_klass()
                     && (unsafe { klass.cast::<InstanceKlass>().is_anonymous() })
                 {
-                    do_cld(&klass.class_loader_data, closure)
+                    do_cld::<_, COMPRESSED>(&klass.class_loader_data, closure)
                 } else {
-                    do_klass(klass, closure)
+                    do_klass::<_, COMPRESSED>(klass, closure)
                 }
             }
         }
@@ -78,7 +78,7 @@ impl OopIterate for InstanceMirrorKlass {
         // static fields
         let start = Self::start_of_static_fields(oop);
         let len = Self::static_oop_field_count(oop);
-        if crate::use_compressed_oops() {
+        if COMPRESSED {
             let start: *const NarrowOop = start.to_ptr::<NarrowOop>();
             let slice = unsafe { slice::from_raw_parts(start, len as _) };
             for narrow_oop in slice {
@@ -109,7 +109,7 @@ impl OopIterate for InstanceClassLoaderKlass {
                     .load::<*mut ClassLoaderData>()
             };
             if !cld.is_null() {
-                do_cld(unsafe { &*cld }, closure);
+                do_cld::<_, COMPRESSED>(unsafe { &*cld }, closure);
             }
         }
     }
@@ -123,15 +123,15 @@ impl OopIterate for ObjArrayKlass {
         closure: &mut V,
     ) {
         if closure.should_follow_clds() {
-            do_klass(oop.klass(), closure);
+            do_klass::<_, COMPRESSED>(oop.klass::<COMPRESSED>(), closure);
         }
         let array = unsafe { oop.as_array_oop() };
         if COMPRESSED {
-            for narrow_oop in unsafe { array.data::<NarrowOop>(BasicType::T_OBJECT) } {
+            for narrow_oop in unsafe { array.data::<NarrowOop, COMPRESSED>(BasicType::T_OBJECT) } {
                 closure.visit_edge(OpenJDKEdge(narrow_oop.slot()));
             }
         } else {
-            for oop in unsafe { array.data::<Oop>(BasicType::T_OBJECT) } {
+            for oop in unsafe { array.data::<Oop, COMPRESSED>(BasicType::T_OBJECT) } {
                 closure.visit_edge(OpenJDKEdge(Address::from_ref(oop as &Oop)));
             }
         }
@@ -249,7 +249,7 @@ fn oop_iterate_slow<V: EdgeVisitor<OpenJDKEdge>>(oop: Oop, closure: &mut V, tls:
 
 #[inline(always)]
 fn oop_iterate<V: EdgeVisitor<OpenJDKEdge>, const COMPRESSED: bool>(oop: Oop, closure: &mut V) {
-    let klass_id = oop.klass().id;
+    let klass_id = oop.klass::<COMPRESSED>().id;
     debug_assert!(
         klass_id as i32 >= 0 && (klass_id as i32) < 6,
         "Invalid klass-id: {:x} for oop: {:x}",
@@ -258,27 +258,28 @@ fn oop_iterate<V: EdgeVisitor<OpenJDKEdge>, const COMPRESSED: bool>(oop: Oop, cl
     );
     match klass_id {
         KlassID::Instance => {
-            let instance_klass = unsafe { oop.klass().cast::<InstanceKlass>() };
+            let instance_klass = unsafe { oop.klass::<COMPRESSED>().cast::<InstanceKlass>() };
             instance_klass.oop_iterate::<V, COMPRESSED>(oop, closure);
         }
         KlassID::InstanceClassLoader => {
-            let instance_klass = unsafe { oop.klass().cast::<InstanceClassLoaderKlass>() };
+            let instance_klass =
+                unsafe { oop.klass::<COMPRESSED>().cast::<InstanceClassLoaderKlass>() };
             instance_klass.oop_iterate::<V, COMPRESSED>(oop, closure);
         }
         KlassID::InstanceMirror => {
-            let instance_klass = unsafe { oop.klass().cast::<InstanceMirrorKlass>() };
+            let instance_klass = unsafe { oop.klass::<COMPRESSED>().cast::<InstanceMirrorKlass>() };
             instance_klass.oop_iterate::<V, COMPRESSED>(oop, closure);
         }
         KlassID::ObjArray => {
-            let array_klass = unsafe { oop.klass().cast::<ObjArrayKlass>() };
+            let array_klass = unsafe { oop.klass::<COMPRESSED>().cast::<ObjArrayKlass>() };
             array_klass.oop_iterate::<V, COMPRESSED>(oop, closure);
         }
         // KlassID::TypeArray => {
-        //     let array_klass = unsafe { oop.klass().cast::<TypeArrayKlass>() };
+        //     let array_klass = unsafe { oop.klass::<COMPRESSED>().cast::<TypeArrayKlass>() };
         //     array_klass.oop_iterate::<C, COMPRESSED>(oop, closure);
         // }
         KlassID::InstanceRef => {
-            let instance_klass = unsafe { oop.klass().cast::<InstanceRefKlass>() };
+            let instance_klass = unsafe { oop.klass::<COMPRESSED>().cast::<InstanceRefKlass>() };
             instance_klass.oop_iterate::<V, COMPRESSED>(oop, closure);
         }
         // _ => oop_iterate_slow(oop, closure, OpaquePointer::UNINITIALIZED),
@@ -286,35 +287,38 @@ fn oop_iterate<V: EdgeVisitor<OpenJDKEdge>, const COMPRESSED: bool>(oop: Oop, cl
     }
 }
 
-fn do_cld<V: EdgeVisitor<OpenJDKEdge>>(cld: &ClassLoaderData, closure: &mut V) {
+fn do_cld<V: EdgeVisitor<OpenJDKEdge>, const COMPRESSED: bool>(
+    cld: &ClassLoaderData,
+    closure: &mut V,
+) {
     if !closure.should_follow_clds() {
         return;
     }
-    cld.oops_do(closure)
+    cld.oops_do::<_, COMPRESSED>(closure)
 }
 
-fn do_klass<V: EdgeVisitor<OpenJDKEdge>>(klass: &Klass, closure: &mut V) {
+fn do_klass<V: EdgeVisitor<OpenJDKEdge>, const COMPRESSED: bool>(klass: &Klass, closure: &mut V) {
     if !closure.should_follow_clds() {
         return;
     }
-    do_cld(&klass.class_loader_data, closure)
+    do_cld::<_, COMPRESSED>(&klass.class_loader_data, closure)
 }
 
 #[inline(always)]
-pub fn is_obj_array(oop: Oop) -> bool {
-    oop.klass().id == KlassID::ObjArray
+pub fn is_obj_array<const COMPRESSED: bool>(oop: Oop) -> bool {
+    oop.klass::<COMPRESSED>().id == KlassID::ObjArray
 }
 
 #[inline(always)]
-pub fn is_val_array(oop: Oop) -> bool {
-    oop.klass().id == KlassID::TypeArray
+pub fn is_val_array<const COMPRESSED: bool>(oop: Oop) -> bool {
+    oop.klass::<COMPRESSED>().id == KlassID::TypeArray
 }
 
 #[inline(always)]
-pub fn obj_array_data(oop: Oop) -> crate::OpenJDKEdgeRange {
+pub fn obj_array_data<const COMPRESSED: bool>(oop: Oop) -> crate::OpenJDKEdgeRange {
     unsafe {
         let array = oop.as_array_oop();
-        array.slice(BasicType::T_OBJECT)
+        array.slice::<COMPRESSED>(BasicType::T_OBJECT)
     }
 }
 
