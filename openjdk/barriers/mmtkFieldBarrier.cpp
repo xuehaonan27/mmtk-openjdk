@@ -6,8 +6,8 @@ constexpr int kUnloggedValue = 1;
 void MMTkFieldBarrierSetRuntime::object_reference_write_pre(oop src, oop* slot, oop target) const {
 #if MMTK_ENABLE_BARRIER_FASTPATH
     intptr_t addr = ((intptr_t) (void*) slot);
-    const volatile uint8_t * meta_addr = (const volatile uint8_t *) (SIDE_METADATA_BASE_ADDRESS + (addr >> 6));
-    intptr_t shift = (addr >> 3) & 0b111;
+    const volatile uint8_t * meta_addr = (const volatile uint8_t *) (SIDE_METADATA_BASE_ADDRESS + (addr >> (UseCompressedOops ? 5 : 6)));
+    intptr_t shift = (addr >> (UseCompressedOops ? 2 : 3)) & 0b111;
     uint8_t byte_val = *meta_addr;
     if (((byte_val >> shift) & 1) == kUnloggedValue) {
       // MMTkObjectBarrierSetRuntime::object_reference_write_pre_slow()((void*) src);
@@ -59,12 +59,12 @@ void MMTkFieldBarrierSetAssembler::object_reference_write_pre(MacroAssembler* ma
 
   // tmp5 = load-byte (SIDE_METADATA_BASE_ADDRESS + (obj >> 6));
   __ lea(tmp3, dst);
-  __ shrptr(tmp3, 6);
+  __ shrptr(tmp3, UseCompressedOops ? 5 : 6);
   __ movptr(tmp5, SIDE_METADATA_BASE_ADDRESS);
   __ movb(tmp5, Address(tmp5, tmp3));
   // tmp3 = (obj >> 3) & 7
   __ lea(tmp3, dst);
-  __ shrptr(tmp3, 3);
+  __ shrptr(tmp3, UseCompressedOops ? 2 : 3);
   __ andptr(tmp3, 7);
   // tmp5 = tmp5 >> tmp3
   __ movptr(tmp4, rcx);
@@ -223,7 +223,7 @@ void MMTkFieldBarrierSetC1::object_reference_write_pre(LIRAccess& access, LIR_Op
     // uint8_t* meta_addr = (uint8_t*) (SIDE_METADATA_BASE_ADDRESS + (addr >> 6));
     LIR_Opr offset = gen->new_pointer_register();
     __ move(addr, offset);
-    __ unsigned_shift_right(offset, 6, offset);
+    __ unsigned_shift_right(offset, UseCompressedOops ? 5 : 6, offset);
     LIR_Opr base = gen->new_pointer_register();
     __ move(LIR_OprFact::longConst(SIDE_METADATA_BASE_ADDRESS), base);
     LIR_Address* meta_addr = new LIR_Address(base, offset, T_BYTE);
@@ -233,7 +233,7 @@ void MMTkFieldBarrierSetC1::object_reference_write_pre(LIRAccess& access, LIR_Op
     // intptr_t shift = (addr >> 3) & 0b111;
     LIR_Opr shift = gen->new_register(T_INT);
     __ move(addr, shift);
-    __ unsigned_shift_right(shift, 3, shift);
+    __ unsigned_shift_right(shift, UseCompressedOops ? 2 : 3, shift);
     __ logical_and(shift, LIR_OprFact::intConst(0b111), shift);
     // if (((byte_val >> shift) & 1) == 1) slow;
     LIR_Opr result = byte_val;
@@ -261,9 +261,9 @@ static void insert_write_barrier_common(MMTkIdealKit& ideal, Node* src, Node* sl
 
   Node* zero  = __ ConI(0);
   Node* addr = __ CastPX(__ ctrl(), slot);
-  Node* meta_addr = __ AddP(no_base, __ ConP(SIDE_METADATA_BASE_ADDRESS), __ URShiftX(addr, __ ConI(6)));
+  Node* meta_addr = __ AddP(no_base, __ ConP(SIDE_METADATA_BASE_ADDRESS), __ URShiftX(addr, __ ConI(UseCompressedOops ? 5 : 6)));
   Node* byte = __ load(__ ctrl(), meta_addr, TypeInt::INT, T_BYTE, Compile::AliasIdxRaw);
-  Node* shift = __ URShiftX(addr, __ ConI(3));
+  Node* shift = __ URShiftX(addr, __ ConI(UseCompressedOops ? 2 : 3));
   shift = __ AndI(__ ConvL2I(shift), __ ConI(7));
   Node* result = __ AndI(__ URShiftI(byte, shift), __ ConI(1));
 
@@ -424,26 +424,8 @@ Node* MMTkFieldBarrierSetC2::load_at_resolved(C2Access& access, const Type* val_
 void MMTkFieldBarrierSetC2::clone(GraphKit* kit, Node* src, Node* dst, Node* size, bool is_array) const {
   if (!is_array && dst != kit->just_allocated_object(kit->control())) {
     MMTkIdealKit ideal(kit);
-#if MMTK_ENABLE_BARRIER_FASTPATH
-    Node* no_base = __ top();
-    float unlikely  = PROB_UNLIKELY(0.999);
-
-    Node* zero  = __ ConI(0);
-    Node* addr = __ CastPX(__ ctrl(), dst);
-    Node* meta_addr = __ AddP(no_base, __ ConP(SIDE_METADATA_BASE_ADDRESS), __ URShiftX(addr, __ ConI(6)));
-    Node* byte = __ load(__ ctrl(), meta_addr, TypeInt::INT, T_BYTE, Compile::AliasIdxRaw);
-    Node* shift = __ URShiftX(addr, __ ConI(3));
-    shift = __ AndI(__ ConvL2I(shift), __ ConI(7));
-    Node* result = __ AndI(__ URShiftI(byte, shift), __ ConI(1));
-
-    __ if_then(result, BoolTest::ne, zero, unlikely); {
-      const TypeFunc* tf = __ func_type(TypeOopPtr::BOTTOM);
-      Node* x = __ make_leaf_call(tf, FN_ADDR(MMTkBarrierSetRuntime::object_reference_clone_pre_call), "mmtk_barrier_call", dst);
-    } __ end_if();
-#else
     const TypeFunc* tf = __ func_type(TypeOopPtr::BOTTOM);
     Node* x = __ make_leaf_call(tf, FN_ADDR(MMTkBarrierSetRuntime::object_reference_clone_pre_call), "mmtk_barrier_call", dst);
-#endif
     kit->sync_kit(ideal);
     kit->insert_mem_bar(Op_MemBarVolatile);
     kit->final_sync(ideal);
