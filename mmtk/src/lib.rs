@@ -165,10 +165,30 @@ pub static IMMIX_ALLOCATOR_SIZE: uintptr_t =
 pub static mut CONCURRENT_MARKING_ACTIVE: u8 = 0;
 
 static mut USE_COMPRESSED_OOPS: bool = false;
+static mut LOG_BYTES_IN_FIELD: usize = LOG_BYTES_IN_ADDRESS as _;
+static mut BYTES_IN_FIELD: usize = BYTES_IN_ADDRESS as _;
+
+fn init_compressed_oop_constants() {
+    unsafe {
+        USE_COMPRESSED_OOPS = true;
+        LOG_BYTES_IN_FIELD = LOG_BYTES_IN_INT as _;
+        BYTES_IN_FIELD = BYTES_IN_INT as _;
+    }
+}
 
 #[inline(always)]
 fn use_compressed_oops() -> bool {
     unsafe { USE_COMPRESSED_OOPS }
+}
+
+#[inline(always)]
+fn log_bytes_in_field() -> usize {
+    unsafe { LOG_BYTES_IN_FIELD }
+}
+
+#[inline(always)]
+fn bytes_in_field() -> usize {
+    unsafe { BYTES_IN_FIELD }
 }
 
 static mut BASE: Address = Address::ZERO;
@@ -268,7 +288,7 @@ impl Edge for OpenJDKEdge {
 
     #[inline(always)]
     fn from_address(a: Address) -> Self {
-        unreachable!();
+        Self(a)
     }
 }
 
@@ -300,20 +320,54 @@ impl Iterator for AddressRangeIterator {
     }
 }
 
+pub struct ChunkIterator {
+    cursor: Address,
+    limit: Address,
+    step: usize,
+}
+
+impl Iterator for ChunkIterator {
+    type Item = OpenJDKEdgeRange;
+
+    #[inline]
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.cursor >= self.limit {
+            None
+        } else {
+            let start = self.cursor;
+            let mut end = start + self.step;
+            if end > self.limit {
+                end = self.limit;
+            }
+            self.cursor = end;
+            Some(OpenJDKEdgeRange {
+                start: OpenJDKEdge(start),
+                end: OpenJDKEdge(end),
+            })
+        }
+    }
+}
+
 impl MemorySlice for OpenJDKEdgeRange {
     type Edge = OpenJDKEdge;
     type EdgeIterator = AddressRangeIterator;
+    type ChunkIterator = ChunkIterator;
 
     #[inline]
     fn iter_edges(&self) -> Self::EdgeIterator {
         AddressRangeIterator {
             cursor: self.start.0,
             limit: self.end.0,
-            width: if crate::use_compressed_oops() {
-                BYTES_IN_INT
-            } else {
-                BYTES_IN_ADDRESS
-            },
+            width: crate::bytes_in_field(),
+        }
+    }
+
+    #[inline]
+    fn chunks(&self, chunk_size: usize) -> Self::ChunkIterator {
+        ChunkIterator {
+            cursor: self.start.0,
+            limit: self.end.0,
+            step: chunk_size << crate::log_bytes_in_field(),
         }
     }
 
@@ -325,6 +379,11 @@ impl MemorySlice for OpenJDKEdgeRange {
     #[inline]
     fn bytes(&self) -> usize {
         self.end.0 - self.start.0
+    }
+
+    #[inline]
+    fn len(&self) -> usize {
+        (self.end.0 - self.start.0) >> crate::log_bytes_in_field()
     }
 
     #[inline]

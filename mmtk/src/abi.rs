@@ -9,7 +9,6 @@ use mmtk::util::{Address, OpaquePointer};
 use mmtk::vm::EdgeVisitor;
 use std::ffi::CStr;
 use std::fmt;
-use std::ops::Range;
 use std::sync::atomic::AtomicPtr;
 use std::sync::atomic::AtomicU32;
 use std::{mem, slice};
@@ -479,6 +478,15 @@ impl ArrayOopDesc {
     #[inline(always)]
     pub unsafe fn data<T>(&self, ty: BasicType) -> &[T] {
         slice::from_raw_parts(self.base(ty).to_ptr(), self.length() as _)
+    }
+    #[inline(always)]
+    pub unsafe fn slice(&self, ty: BasicType) -> crate::OpenJDKEdgeRange {
+        let base = self.base(ty);
+        let start = crate::OpenJDKEdge(base);
+        let end = crate::OpenJDKEdge(
+            base + ((self.length() as usize) << if crate::use_compressed_oops() { 2 } else { 3 }),
+        );
+        crate::OpenJDKEdgeRange { start, end }
     }
 }
 

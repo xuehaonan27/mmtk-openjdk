@@ -56,7 +56,7 @@ impl Scanning<OpenJDK> for VMScanning {
     }
 
     #[inline(always)]
-    fn obj_array_data(o: ObjectReference) -> &'static [ObjectReference] {
+    fn obj_array_data(o: ObjectReference) -> crate::OpenJDKEdgeRange {
         crate::object_scanning::obj_array_data(unsafe { std::mem::transmute(o) })
     }
 

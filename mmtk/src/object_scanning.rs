@@ -311,10 +311,10 @@ pub fn is_val_array(oop: Oop) -> bool {
 }
 
 #[inline(always)]
-pub fn obj_array_data(oop: Oop) -> &'static [ObjectReference] {
+pub fn obj_array_data(oop: Oop) -> crate::OpenJDKEdgeRange {
     unsafe {
         let array = oop.as_array_oop();
-        array.data::<ObjectReference>(BasicType::T_OBJECT)
+        array.slice(BasicType::T_OBJECT)
     }
 }
 
