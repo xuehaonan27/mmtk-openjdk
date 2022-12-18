@@ -3,10 +3,14 @@
 
 constexpr int kUnloggedValue = 1;
 
+static inline intptr_t side_metadata_base_address() {
+  return UseCompressedOops ? SIDE_METADATA_BASE_ADDRESS_COMPRESSED : SIDE_METADATA_BASE_ADDRESS;
+}
+
 void MMTkFieldBarrierSetRuntime::object_reference_write_pre(oop src, oop* slot, oop target) const {
 #if MMTK_ENABLE_BARRIER_FASTPATH
     intptr_t addr = ((intptr_t) (void*) slot);
-    const volatile uint8_t * meta_addr = (const volatile uint8_t *) (SIDE_METADATA_BASE_ADDRESS + (addr >> (UseCompressedOops ? 5 : 6)));
+    const volatile uint8_t * meta_addr = (const volatile uint8_t *) (side_metadata_base_address() + (addr >> (UseCompressedOops ? 5 : 6)));
     intptr_t shift = (addr >> (UseCompressedOops ? 2 : 3)) & 0b111;
     uint8_t byte_val = *meta_addr;
     if (((byte_val >> shift) & 1) == kUnloggedValue) {
@@ -60,7 +64,7 @@ void MMTkFieldBarrierSetAssembler::object_reference_write_pre(MacroAssembler* ma
   // tmp5 = load-byte (SIDE_METADATA_BASE_ADDRESS + (obj >> 6));
   __ lea(tmp3, dst);
   __ shrptr(tmp3, UseCompressedOops ? 5 : 6);
-  __ movptr(tmp5, SIDE_METADATA_BASE_ADDRESS);
+  __ movptr(tmp5, side_metadata_base_address());
   __ movb(tmp5, Address(tmp5, tmp3));
   // tmp3 = (obj >> 3) & 7
   __ lea(tmp3, dst);
@@ -225,7 +229,7 @@ void MMTkFieldBarrierSetC1::object_reference_write_pre(LIRAccess& access, LIR_Op
     __ move(addr, offset);
     __ unsigned_shift_right(offset, UseCompressedOops ? 5 : 6, offset);
     LIR_Opr base = gen->new_pointer_register();
-    __ move(LIR_OprFact::longConst(SIDE_METADATA_BASE_ADDRESS), base);
+    __ move(LIR_OprFact::longConst(side_metadata_base_address()), base);
     LIR_Address* meta_addr = new LIR_Address(base, offset, T_BYTE);
     // uint8_t byte_val = *meta_addr;
     LIR_Opr byte_val = gen->new_register(T_INT);
@@ -261,7 +265,7 @@ static void insert_write_barrier_common(MMTkIdealKit& ideal, Node* src, Node* sl
 
   Node* zero  = __ ConI(0);
   Node* addr = __ CastPX(__ ctrl(), slot);
-  Node* meta_addr = __ AddP(no_base, __ ConP(SIDE_METADATA_BASE_ADDRESS), __ URShiftX(addr, __ ConI(UseCompressedOops ? 5 : 6)));
+  Node* meta_addr = __ AddP(no_base, __ ConP(side_metadata_base_address()), __ URShiftX(addr, __ ConI(UseCompressedOops ? 5 : 6)));
   Node* byte = __ load(__ ctrl(), meta_addr, TypeInt::INT, T_BYTE, Compile::AliasIdxRaw);
   Node* shift = __ URShiftX(addr, __ ConI(UseCompressedOops ? 2 : 3));
   shift = __ AndI(__ ConvL2I(shift), __ ConI(7));

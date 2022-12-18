@@ -143,12 +143,16 @@ pub fn current_worker() -> &'static mut GCWorker<OpenJDK> {
 pub static mut UPCALLS: *const OpenJDK_Upcalls = null_mut();
 
 #[no_mangle]
-pub static GLOBAL_SIDE_METADATA_BASE_ADDRESS: uintptr_t =
-    crate::mmtk::util::metadata::side_metadata::GLOBAL_SIDE_METADATA_BASE_ADDRESS.as_usize();
-
-#[no_mangle]
 pub static GLOBAL_SIDE_METADATA_VM_BASE_ADDRESS: uintptr_t =
     crate::mmtk::util::metadata::side_metadata::GLOBAL_SIDE_METADATA_VM_BASE_ADDRESS.as_usize();
+
+#[no_mangle]
+pub static GLOBAL_SIDE_METADATA_VM_BASE_ADDRESS_COMPRESSED: uintptr_t =
+    crate::vm_metadata::LOGGING_SIDE_METADATA_SPEC
+        .as_spec()
+        .extract_side_spec()
+        .upper_bound_address_for_contiguous()
+        .as_usize();
 
 #[no_mangle]
 pub static GLOBAL_ALLOC_BIT_ADDRESS: uintptr_t =

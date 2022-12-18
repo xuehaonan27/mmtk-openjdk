@@ -10,6 +10,8 @@ pub struct VMObjectModel {}
 
 impl ObjectModel<OpenJDK> for VMObjectModel {
     const GLOBAL_LOG_BIT_SPEC: VMGlobalLogBitSpec = vm_metadata::LOGGING_SIDE_METADATA_SPEC;
+    const GLOBAL_LOG_BIT_SPEC_COMPRESSED: VMGlobalLogBitSpecCompressed =
+        vm_metadata::LOGGING_SIDE_METADATA_SPEC_COMPRESSED;
 
     const LOCAL_FORWARDING_POINTER_SPEC: VMLocalForwardingPointerSpec =
         vm_metadata::FORWARDING_POINTER_METADATA_SPEC;
