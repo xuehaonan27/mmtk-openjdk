@@ -202,7 +202,7 @@ fn compress(o: ObjectReference) -> u32 {
     if o.is_null() {
         0u32
     } else {
-        unsafe { ((o.to_address() - BASE) >> SHIFT) as u32 }
+        unsafe { ((o.to_address::<OpenJDK>() - BASE) >> SHIFT) as u32 }
     }
 }
 
@@ -210,7 +210,7 @@ fn decompress(v: u32) -> ObjectReference {
     if v == 0 {
         ObjectReference::NULL
     } else {
-        unsafe { (BASE + ((v as usize) << SHIFT)).to_object_reference() }
+        unsafe { (BASE + ((v as usize) << SHIFT)).to_object_reference::<OpenJDK>() }
     }
 }
 

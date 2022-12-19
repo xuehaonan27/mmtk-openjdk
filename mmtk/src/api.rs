@@ -221,7 +221,7 @@ pub extern "C" fn mmtk_use_compressed_ptrs() {
 
 #[no_mangle]
 pub extern "C" fn is_in_mmtk_spaces(object: ObjectReference) -> bool {
-    memory_manager::is_in_mmtk_spaces(object)
+    memory_manager::is_in_mmtk_spaces::<OpenJDK>(object)
 }
 
 #[no_mangle]
@@ -433,7 +433,7 @@ pub extern "C" fn add_finalizer(_object: ObjectReference) {
 pub extern "C" fn get_finalized_object() -> ObjectReference {
     match memory_manager::get_finalized_object(&SINGLETON) {
         Some(obj) => obj,
-        None => unsafe { Address::ZERO.to_object_reference() },
+        None => ObjectReference::NULL,
     }
 }
 
@@ -444,7 +444,7 @@ pub extern "C" fn mmtk_is_live(object: ObjectReference) -> usize {
     if object.is_null() {
         return 0;
     }
-    debug_assert!(object.to_address().is_mapped());
+    debug_assert!(object.to_address::<OpenJDK>().is_mapped());
     debug_assert!(object.class_is_valid::<OpenJDK>());
     object.is_live() as _
 }

@@ -33,9 +33,9 @@ impl ObjectModel<OpenJDK> for VMObjectModel {
         };
         let dst = copy_context.alloc_copy(from, bytes, ::std::mem::size_of::<usize>(), 0, copy);
         // Copy
-        let src = from.to_address();
+        let src = from.to_raw_address();
         unsafe { std::ptr::copy_nonoverlapping::<u8>(src.to_ptr(), dst.to_mut_ptr(), bytes) }
-        let to_obj = unsafe { dst.to_object_reference() };
+        let to_obj = ObjectReference::from_raw_address(dst);
         copy_context.post_copy(to_obj, bytes, copy);
         to_obj
     }
@@ -45,14 +45,14 @@ impl ObjectModel<OpenJDK> for VMObjectModel {
         let bytes = unsafe { ((*UPCALLS).get_object_size)(from) };
         if need_copy {
             // copy obj to target
-            let dst = to.to_address();
+            let dst = to.to_raw_address();
             // Copy
-            let src = from.to_address();
+            let src = from.to_raw_address();
             for i in 0..bytes {
                 unsafe { (dst + i).store((src + i).load::<u8>()) };
             }
         }
-        let start = Self::object_start_ref(to);
+        let start = Self::ref_to_object_start(to);
         if region != Address::ZERO {
             fill_alignment_gap::<OpenJDK>(region, start);
         }
@@ -60,7 +60,7 @@ impl ObjectModel<OpenJDK> for VMObjectModel {
     }
 
     fn get_reference_when_copied_to(_from: ObjectReference, to: Address) -> ObjectReference {
-        unsafe { to.to_object_reference() }
+        ObjectReference::from_raw_address(to)
     }
 
     #[inline(always)]
@@ -89,12 +89,24 @@ impl ObjectModel<OpenJDK> for VMObjectModel {
         unimplemented!()
     }
 
-    fn object_start_ref(object: ObjectReference) -> Address {
-        object.to_address()
+    #[inline(always)]
+    fn ref_to_object_start(object: ObjectReference) -> Address {
+        object.to_raw_address()
     }
 
+    #[inline(always)]
     fn ref_to_address(object: ObjectReference) -> Address {
-        object.to_address()
+        object.to_raw_address()
+    }
+
+    #[inline(always)]
+    fn ref_to_header(object: ObjectReference) -> Address {
+        object.to_raw_address()
+    }
+
+    #[inline(always)]
+    fn address_to_ref(address: Address) -> ObjectReference {
+        ObjectReference::from_raw_address(address)
     }
 
     fn dump_object(object: ObjectReference) {
