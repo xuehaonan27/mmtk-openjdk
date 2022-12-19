@@ -11,6 +11,10 @@ MMTkMutatorContext MMTkMutatorContext::bind(::Thread* current) {
     printf("ERROR: Unmatched immix allocator size: rs=%zu cpp=%zu\n", IMMIX_ALLOCATOR_SIZE, sizeof(ImmixAllocator));
     guarantee(false, "ERROR");
   }
+  if (FREE_LIST_ALLOCATOR_SIZE != sizeof(FreeListAllocator)) {
+    printf("ERROR: Unmatched free list allocator size: rs=%zu cpp=%zu\n", FREE_LIST_ALLOCATOR_SIZE, sizeof(FreeListAllocator));
+    guarantee(false, "ERROR");
+  }
   return *((MMTkMutatorContext*) ::bind_mutator((void*) current));
 }
 
@@ -20,4 +24,8 @@ bool MMTkMutatorContext::is_ready_to_bind() {
 
 void MMTkMutatorContext::flush() {
   ::flush_mutator((MMTk_Mutator) this);
+}
+
+void MMTkMutatorContext::destroy() {
+  ::destroy_mutator((MMTk_Mutator) this);
 }

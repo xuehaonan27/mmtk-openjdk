@@ -1,5 +1,5 @@
-use super::UPCALLS;
 use crate::abi::Oop;
+use crate::UPCALLS;
 use crate::{vm_metadata, OpenJDK};
 use mmtk::util::alloc::fill_alignment_gap;
 use mmtk::util::copy::*;
@@ -19,6 +19,9 @@ impl ObjectModel<OpenJDK> for VMObjectModel {
         vm_metadata::FORWARDING_BITS_METADATA_SPEC;
     const LOCAL_MARK_BIT_SPEC: VMLocalMarkBitSpec = vm_metadata::MARKING_METADATA_SPEC;
     const LOCAL_LOS_MARK_NURSERY_SPEC: VMLocalLOSMarkNurserySpec = vm_metadata::LOS_METADATA_SPEC;
+
+    const UNIFIED_OBJECT_REFERENCE_ADDRESS: bool = true;
+    const OBJECT_REF_OFFSET_LOWER_BOUND: isize = 0;
 
     #[inline(always)]
     fn copy(

@@ -23,6 +23,7 @@ const int MAX_BUMP_ALLOCATORS = 6;
 const int MAX_LARGE_OBJECT_ALLOCATORS = 2;
 const int MAX_MALLOC_ALLOCATORS = 1;
 const int MAX_IMMIX_ALLOCATORS = 1;
+const int MAX_FREE_LIST_ALLOCATORS = 2;
 const int MAX_MARK_COMPACT_ALLOCATORS = 1;
 
 // The following types should have the same layout as the types with the same name in MMTk core (Rust)
@@ -59,6 +60,27 @@ struct ImmixAllocator {
   uint8_t retry;
 };
 
+struct FLBlock {
+  void* Address;
+};
+
+struct FLBlockList {
+  FLBlock first;
+  FLBlock last;
+  size_t size;
+  char lock;
+};
+
+struct FreeListAllocator {
+  void* tls;
+  void* space;
+  RustDynPtr plan;
+  FLBlockList* available_blocks;
+  FLBlockList* available_blocks_stress;
+  FLBlockList* unswept_blocks;
+  FLBlockList* consumed_blocks;
+};
+
 struct MallocAllocator {
   void* tls;
   void* space;
@@ -74,6 +96,7 @@ struct Allocators {
   LargeObjectAllocator large_object[MAX_LARGE_OBJECT_ALLOCATORS];
   MallocAllocator malloc[MAX_MALLOC_ALLOCATORS];
   ImmixAllocator immix[MAX_IMMIX_ALLOCATORS];
+  FreeListAllocator free_list[MAX_FREE_LIST_ALLOCATORS];
   MarkCompactAllocator markcompact[MAX_MARK_COMPACT_ALLOCATORS];
 };
 
@@ -94,6 +117,7 @@ struct MMTkMutatorContext {
   HeapWord* alloc(size_t bytes, Allocator allocator = AllocatorDefault);
 
   void flush();
+  void destroy();
 
   static MMTkMutatorContext bind(::Thread* current);
   static bool is_ready_to_bind();
