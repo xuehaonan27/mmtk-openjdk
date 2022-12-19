@@ -23,7 +23,7 @@ void MMTkObjectBarrierSetAssembler::object_reference_write_post(MacroAssembler* 
   if (can_remove_barrier(decorators, val, /* skip_const_null */ true)) return;
   Register obj = dst.base();
 #if MMTK_ENABLE_BARRIER_FASTPATH
-Label done;
+  Label done;
 
   Register tmp3 = rscratch1;
   Register tmp4 = rscratch2;
@@ -98,14 +98,6 @@ void MMTkObjectBarrierSetC1::object_reference_write_post(LIRAccess& access, LIR_
   }
   assert(src->is_register(), "must be a register at this point");
   if (!slot->is_register()) {
-    // LIR_Opr reg = gen->new_pointer_register();
-    // if (slot->is_constant()) {
-    //   __ move(slot, reg);
-    // } else {
-    //   __ leal(slot, reg);
-    // }
-    // slot = reg;
-
     LIR_Address* address = slot->as_address_ptr();
     LIR_Opr ptr = gen->new_pointer_register();
     if (!address->index()->is_valid() && address->disp() == 0) {
