@@ -51,13 +51,25 @@ void MMTkBarrierSetAssembler::eden_allocate(MacroAssembler* masm, Register threa
     // I tried to set FastAllocateSizeLimit in MMTkHeap::initialize(). But there are still large objects allocated into the
     // default space.
     assert(MMTkMutatorContext::max_non_los_default_alloc_bytes != 0, "max_non_los_default_alloc_bytes hasn't been initialized");
-
+    size_t max_non_los_bytes = MMTkMutatorContext::max_non_los_default_alloc_bytes;
     size_t extra_header = 0;
     // fastpath, we only use default allocator
     Allocator allocator = AllocatorDefault;
     // We need to figure out which allocator we are using by querying MMTk.
     AllocatorSelector selector = MMTkHeap::heap()->default_allocator_selector;
     if (selector.tag == TAG_MARK_COMPACT) extra_header = MMTK_MARK_COMPACT_HEADER_RESERVED_IN_BYTES;
+
+    if (var_size_in_bytes == noreg) {
+      // constant alloc size. If it is larger than max_non_los_bytes, we directly go to slowpath.
+      if ((size_t)con_size_in_bytes > max_non_los_bytes - extra_header) {
+        __ jmp(slow_case);
+        return;
+      }
+    } else {
+      // var alloc size. We compare with max_non_los_bytes and conditionally jump to slowpath.
+      __ cmpptr(var_size_in_bytes, max_non_los_bytes - extra_header);
+      __ jcc(Assembler::aboveEqual, slow_case);
+    }
 
     if (selector.tag == TAG_MALLOC || selector.tag == TAG_LARGE_OBJECT || selector.tag == TAG_FREE_LIST) {
       __ jmp(slow_case);
