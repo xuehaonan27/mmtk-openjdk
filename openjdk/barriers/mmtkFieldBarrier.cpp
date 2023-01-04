@@ -274,10 +274,18 @@ static void insert_write_barrier_common(MMTkIdealKit& ideal, Node* src, Node* sl
   __ if_then(result, BoolTest::ne, zero, unlikely); {
     const TypeFunc* tf = __ func_type(TypeOopPtr::BOTTOM, TypeOopPtr::BOTTOM, TypeOopPtr::BOTTOM);
     Node* x = __ make_leaf_call(tf, FN_ADDR(MMTkBarrierSetRuntime::object_reference_write_slow_call), "mmtk_barrier_call", src, slot, val);
+    // Looks like this is necessary
+    // See https://github.com/mmtk/openjdk/blob/c82e5c44adced4383162826c2c3933a83cfb139b/src/hotspot/share/gc/shenandoah/c2/shenandoahBarrierSetC2.cpp#L288-L291
+    Node* call = __ ctrl()->in(0);
+    call->add_req(slot);
   } __ end_if();
 #else
   const TypeFunc* tf = __ func_type(TypeOopPtr::BOTTOM, TypeOopPtr::BOTTOM, TypeOopPtr::BOTTOM);
   Node* x = __ make_leaf_call(tf, FN_ADDR(MMTkBarrierSetRuntime::object_reference_write_pre_call), "mmtk_barrier_call", src, slot, val);
+  // Looks like this is necessary
+  // See https://github.com/mmtk/openjdk/blob/c82e5c44adced4383162826c2c3933a83cfb139b/src/hotspot/share/gc/shenandoah/c2/shenandoahBarrierSetC2.cpp#L288-L291
+  Node* call = __ ctrl()->in(0);
+  call->add_req(slot);
 #endif
 }
 
@@ -288,10 +296,7 @@ void MMTkFieldBarrierSetC2::object_reference_write_pre(GraphKit* kit, Node* src,
 
   insert_write_barrier_common(ideal, src, slot, val);
 
-  kit->sync_kit(ideal);
-  kit->insert_mem_bar(Op_MemBarVolatile);
-
-  kit->final_sync(ideal); // Final sync IdealKit and GraphKit.
+  kit->final_sync(ideal);
 }
 
 static void reference_load_barrier(GraphKit* kit, Node* slot, Node* val, bool emit_barrier) {
