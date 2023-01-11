@@ -11,8 +11,6 @@ use mmtk::MutatorContext;
 
 pub struct VMScanning {}
 
-const WORK_PACKET_CAPACITY: usize = 4096;
-
 extern "C" fn report_edges_and_renew_buffer<F: RootsWorkFactory<OpenJDKEdge>>(
     ptr: *mut Address,
     length: usize,
@@ -28,7 +26,7 @@ extern "C" fn report_edges_and_renew_buffer<F: RootsWorkFactory<OpenJDKEdge>>(
     let (ptr, _, capacity) = {
         // TODO: Use Vec::into_raw_parts() when the method is available.
         use std::mem::ManuallyDrop;
-        let new_vec = Vec::with_capacity(WORK_PACKET_CAPACITY);
+        let new_vec = Vec::with_capacity(F::BUFFER_SIZE);
         let mut me = ManuallyDrop::new(new_vec);
         (me.as_mut_ptr(), me.len(), me.capacity())
     };

@@ -8,8 +8,6 @@
 #include "utilities/globalDefinitions.hpp"
 #include "classfile/classLoaderData.inline.hpp"
 
-#define ROOTS_BUFFER_SIZE 4096
-
 class MMTkRootsClosure2 : public OopClosure {
   EdgesClosure _edges_closure;
   void** _buffer;
