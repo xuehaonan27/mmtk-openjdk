@@ -172,6 +172,12 @@ pub static IMMIX_ALLOCATOR_SIZE: uintptr_t =
 #[no_mangle]
 pub static mut CONCURRENT_MARKING_ACTIVE: u8 = 0;
 
+#[no_mangle]
+pub static mut HEAP_START: Address = Address::ZERO;
+
+#[no_mangle]
+pub static mut HEAP_END: Address = Address::ZERO;
+
 static mut USE_COMPRESSED_OOPS: bool = false;
 static mut LOG_BYTES_IN_FIELD: usize = LOG_BYTES_IN_ADDRESS as _;
 static mut BYTES_IN_FIELD: usize = BYTES_IN_ADDRESS as _;
@@ -454,6 +460,10 @@ lazy_static! {
         MMTK_INITIALIZED.store(true, std::sync::atomic::Ordering::SeqCst);
         if use_compressed_oops() {
             initialize_compressed_oops();
+        }
+        unsafe {
+            HEAP_START = VM_LAYOUT_CONSTANTS.heap_start;
+            HEAP_END = VM_LAYOUT_CONSTANTS.heap_end;
         }
         *ret
     };

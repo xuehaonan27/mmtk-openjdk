@@ -30,6 +30,8 @@ inline bool disable_fast_alloc() {
 }
 extern const size_t MMTK_MARK_COMPACT_HEADER_RESERVED_IN_BYTES;
 extern const uintptr_t FREE_LIST_ALLOCATOR_SIZE;
+extern uintptr_t HEAP_START;
+extern uintptr_t HEAP_END;
 
 extern const char* get_mmtk_version();
 
