@@ -270,6 +270,7 @@ impl<E: ProcessEdgesWork<VM = OpenJDK>, const COMPRESSED: bool> GCWork<OpenJDK>
         trace.set_worker(worker);
         let retain = self.rt == ReferenceType::Soft && !mmtk.get_plan().is_emergency_collection();
         let new_list = iterate_list::<_, COMPRESSED>(self.head, |reference| {
+            let reference = trace.trace_object(reference);
             let referent = get_referent::<COMPRESSED>(reference);
             if referent.is_null() {
                 // Remove from the discovered list
@@ -289,7 +290,7 @@ impl<E: ProcessEdgesWork<VM = OpenJDK>, const COMPRESSED: bool> GCWork<OpenJDK>
                     // set_referent(reference, ObjectReference::NULL);
                 }
                 // Keep the reference
-                return DiscoveredListIterationResult::Enqueue;
+                return DiscoveredListIterationResult::Enqueue(reference);
             }
         });
         // Flush the list to the Universe::pending_list
@@ -328,11 +329,12 @@ impl<E: ProcessEdgesWork<VM = OpenJDK>, const COMPRESSED: bool> GCWork<OpenJDK>
         let mut trace = E::new(vec![], false, mmtk);
         trace.set_worker(worker);
         let new_list = iterate_list::<_, COMPRESSED>(self.head, |reference| {
+            let reference = trace.trace_object(reference);
             let referent = get_referent::<COMPRESSED>(reference);
             let forwarded = trace.trace_object(referent);
             set_referent::<COMPRESSED>(reference, forwarded);
             debug_assert!(forwarded.get_forwarded_object().is_none());
-            return DiscoveredListIterationResult::Enqueue;
+            return DiscoveredListIterationResult::Enqueue(reference);
         });
 
         if let Some((head, tail)) = new_list {
@@ -350,7 +352,7 @@ impl<E: ProcessEdgesWork<VM = OpenJDK>, const COMPRESSED: bool> GCWork<OpenJDK>
 
 enum DiscoveredListIterationResult {
     Remove,
-    Enqueue,
+    Enqueue(ObjectReference),
 }
 
 fn iterate_list<
@@ -384,7 +386,7 @@ fn iterate_list<
         set_next_reference::<COMPRESSED>(reference, ObjectReference::NULL);
         match result {
             DiscoveredListIterationResult::Remove => {}
-            DiscoveredListIterationResult::Enqueue => {
+            DiscoveredListIterationResult::Enqueue(reference) => {
                 // Add to new list
                 if let Some(new_head) = new_head {
                     set_next_reference::<COMPRESSED>(reference, new_head);
