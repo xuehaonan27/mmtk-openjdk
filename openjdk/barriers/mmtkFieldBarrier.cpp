@@ -10,7 +10,7 @@ static inline intptr_t side_metadata_base_address() {
 }
 
 
-void MMTkFieldBarrierSetRuntime::load_reference(DecoratorSet decorators, oop value) const override {
+void MMTkFieldBarrierSetRuntime::load_reference(DecoratorSet decorators, oop value) const {
 #if SOFT_REFERENCE_LOAD_BARRIER
   if (CONCURRENT_MARKING_ACTIVE == 1 && value != NULL) load_reference_call((void*) value);
 #endif
