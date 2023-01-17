@@ -23,9 +23,7 @@ public:
   virtual void object_reference_array_copy_pre(oop* src, oop* dst, size_t count) const override {
     object_reference_array_copy_pre_call((void*) src, (void*) dst, count);
   }
-  virtual void load_reference(DecoratorSet decorators, oop value) const override {
-    if (CONCURRENT_MARKING_ACTIVE == 1 && value != NULL) load_reference_call((void*) value);
-  };
+  virtual void load_reference(DecoratorSet decorators, oop value) const override;
   virtual void clone_pre(DecoratorSet decorators, oop value) const override {
     // object_reference_clone_pre_call((void*) value);
   };

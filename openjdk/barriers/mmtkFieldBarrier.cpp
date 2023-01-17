@@ -1,11 +1,20 @@
 #include "mmtkFieldBarrier.hpp"
 #include "runtime/interfaceSupport.inline.hpp"
 
+#define SOFT_REFERENCE_LOAD_BARRIER false
+
 constexpr int kUnloggedValue = 1;
 
 static inline intptr_t side_metadata_base_address() {
   return UseCompressedOops ? SIDE_METADATA_BASE_ADDRESS_COMPRESSED : SIDE_METADATA_BASE_ADDRESS;
 }
+
+
+void MMTkFieldBarrierSetRuntime::load_reference(DecoratorSet decorators, oop value) const {
+#if SOFT_REFERENCE_LOAD_BARRIER
+  if (CONCURRENT_MARKING_ACTIVE == 1 && value != NULL) load_reference_call((void*) value);
+#endif
+};
 
 void MMTkFieldBarrierSetRuntime::object_reference_write_pre(oop src, oop* slot, oop target) const {
 #if MMTK_ENABLE_BARRIER_FASTPATH
@@ -30,6 +39,7 @@ void MMTkFieldBarrierSetAssembler::load_at(MacroAssembler* masm, DecoratorSet de
   bool on_phantom = (decorators & ON_PHANTOM_OOP_REF) != 0;
   bool on_reference = on_weak || on_phantom;
   BarrierSetAssembler::load_at(masm, decorators, type, dst, src, tmp1, tmp_thread);
+#if SOFT_REFERENCE_LOAD_BARRIER
   if (on_oop && on_reference) {
     Label done;
     // No slow-call if SATB is not active
@@ -50,6 +60,7 @@ void MMTkFieldBarrierSetAssembler::load_at(MacroAssembler* masm, DecoratorSet de
     __ popa();
     __ bind(done);
   }
+#endif
 }
 
 void MMTkFieldBarrierSetAssembler::object_reference_write_pre(MacroAssembler* masm, DecoratorSet decorators, Address dst, Register val, Register tmp1, Register tmp2) const {
@@ -149,6 +160,7 @@ void MMTkFieldBarrierSetC1::load_at_resolved(LIRAccess& access, LIR_Opr result) 
 
   BarrierSetC1::load_at_resolved(access, result);
 
+#if SOFT_REFERENCE_LOAD_BARRIER
   if (access.is_oop() && (is_weak || is_phantom || is_anonymous)) {
     // Register the value in the referent field with the pre-barrier
     LabelObj *Lcont_anonymous;
@@ -173,6 +185,7 @@ void MMTkFieldBarrierSetC1::load_at_resolved(LIRAccess& access, LIR_Opr result) 
       __ branch_destination(Lcont_anonymous->label());
     }
   }
+#endif
 }
 
 void MMTkFieldBarrierSetC1::object_reference_write_pre(LIRAccess& access, LIR_Opr src, LIR_Opr slot, LIR_Opr new_val) const {
@@ -421,11 +434,13 @@ Node* MMTkFieldBarrierSetC2::load_at_resolved(C2Access& access, const Type* val_
     return load;
   }
 
+#if SOFT_REFERENCE_LOAD_BARRIER
   if (on_weak) {
     reference_load_barrier(kit, adr, load, true);
   } else if (unknown) {
     reference_load_barrier_for_unknown_load(kit, obj, offset, adr, load, !need_cpu_mem_bar);
   }
+#endif
 
   return load;
 }
