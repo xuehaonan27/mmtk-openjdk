@@ -1,7 +1,7 @@
 #include "mmtkFieldBarrier.hpp"
 #include "runtime/interfaceSupport.inline.hpp"
 
-#define SOFT_REFERENCE_LOAD_BARRIER false
+#define SOFT_REFERENCE_LOAD_BARRIER true
 
 constexpr int kUnloggedValue = 1;
 
