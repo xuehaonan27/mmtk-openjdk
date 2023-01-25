@@ -7,7 +7,7 @@ extern crate spin;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::ptr::null_mut;
-use std::sync::atomic::AtomicUsize;
+use std::sync::atomic::{AtomicU32, AtomicUsize};
 use std::sync::Mutex;
 
 use libc::{c_char, c_void, uintptr_t};
@@ -292,6 +292,38 @@ impl Edge for OpenJDKEdge {
             }
         } else {
             unsafe { self.0.store(object) }
+        }
+    }
+
+    fn compare_exchange<const COMPRESSED: bool>(
+        &self,
+        old_object: ObjectReference,
+        new_object: ObjectReference,
+        success: Ordering,
+        failure: Ordering,
+    ) -> Result<ObjectReference, ObjectReference> {
+        if COMPRESSED {
+            let old_value = compress(old_object);
+            let new_value = compress(new_object);
+            let slot = self.untagged_address();
+            unsafe {
+                match slot.compare_exchange::<AtomicU32>(old_value, new_value, success, failure) {
+                    Ok(v) => Ok(decompress(v)),
+                    Err(v) => Err(decompress(v)),
+                }
+            }
+        } else {
+            unsafe {
+                match self.0.compare_exchange::<AtomicUsize>(
+                    old_object.to_address::<OpenJDK>().as_usize(),
+                    new_object.to_address::<OpenJDK>().as_usize(),
+                    success,
+                    failure,
+                ) {
+                    Ok(v) => Ok(ObjectReference::from_raw_address(Address::from_usize(v))),
+                    Err(v) => Err(ObjectReference::from_raw_address(Address::from_usize(v))),
+                }
+            }
         }
     }
 
