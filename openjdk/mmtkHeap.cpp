@@ -112,11 +112,13 @@ jint MMTkHeap::initialize() {
 
   _start = (HeapWord*) starting_heap_address();
   _end = (HeapWord*) last_heap_address();
-  printf("start: %p, end: %p\n", _start, _end);
+  if (mmtk_verbose() > 0) printf("MMTk Heap: start=%p, end=%p\n", _start, _end);
+  if (mmtk_verbose() > 0)
+    printf("MMTk Compressed Pointers: %s\n", UseCompressedOops ? "enabled" : "disabled");
   if (UseCompressedOops) {
     Universe::set_narrow_oop_base((address) mmtk_narrow_oop_base());
     Universe::set_narrow_oop_shift(mmtk_narrow_oop_shift());
-    printf("narrow_oop_mode: %s\n", Universe::narrow_oop_mode_to_string(Universe::narrow_oop_mode()));
+    if (mmtk_verbose() > 0) printf("narrow_oop_mode: %s\n", Universe::narrow_oop_mode_to_string(Universe::narrow_oop_mode()));
   }
 
   initialize_reserved_region(_start, _end);
@@ -132,10 +134,12 @@ jint MMTkHeap::initialize() {
     fprintf(stderr, "Failed to create thread");
     guarantee(false, "panic");
   }
-  if (ClassUnloading) {
-    printf("ClassUnloading Enabled\n");
-  } else {
-    printf("ClassUnloading Disabled\n");
+  if (mmtk_verbose() > 0) {
+    if (ClassUnloading) {
+      printf("ClassUnloading Enabled\n");
+    } else {
+      printf("ClassUnloading Disabled\n");
+    }
   }
 
   unsigned int ncpus = (unsigned int) os::initial_active_processor_count();

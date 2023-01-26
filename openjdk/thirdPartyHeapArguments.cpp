@@ -45,7 +45,6 @@ void ThirdPartyHeapArguments::initialize() {
   FLAG_SET_DEFAULT(UseTLAB, false);
   if (UseCompressedOops) mmtk_use_compressed_ptrs();
   // auto compressed_oops = mmtk_use_compressed_ptrs();
-  printf("MMTk Compressed Pointers: %s\n", UseCompressedOops ? "enabled" : "disabled");
   // FLAG_SET_DEFAULT(UseCompressedOops, compressed_oops);
   FLAG_SET_DEFAULT(UseCompressedClassPointers, UseCompressedOops);
 }
