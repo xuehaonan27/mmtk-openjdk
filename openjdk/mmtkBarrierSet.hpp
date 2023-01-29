@@ -239,7 +239,7 @@ public:
       T* src = arrayOopDesc::obj_offset_to_raw(src_obj, src_offset_in_bytes, src_raw);
       T* dst = arrayOopDesc::obj_offset_to_raw(dst_obj, dst_offset_in_bytes, dst_raw);
       runtime()->object_reference_array_copy_pre((oop*) src, (oop*) dst, length);
-      bool result = Raw::oop_arraycopy(src_obj, src_offset_in_bytes, src_raw,
+      bool result = Raw::oop_arraycopy_in_heap(src_obj, src_offset_in_bytes, src_raw,
                                        dst_obj, dst_offset_in_bytes, dst_raw,
                                        length);
       runtime()->object_reference_array_copy_post((oop*) src, (oop*) dst, length);
@@ -249,7 +249,7 @@ public:
     static void clone_in_heap(oop src, oop dst, size_t size) {
       // TODO: We don't need clone barriers at the moment.
       runtime()->clone_pre(decorators, dst);
-      Raw::clone(src, dst, size);
+      Raw::clone_in_heap(src, dst, size);
     }
   };
 
