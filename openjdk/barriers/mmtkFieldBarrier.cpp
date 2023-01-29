@@ -203,6 +203,10 @@ void MMTkFieldBarrierSetC1::object_reference_write_pre(LIRAccess& access, LIR_Op
     src = reg;
   }
   assert(src->is_register(), "must be a register at this point");
+  LabelObj *Ldone = new LabelObj();
+  __ cmp(lir_cond_equal, src, LIR_OprFact::oopConst(NULL));
+  __ branch(lir_cond_equal, T_OBJECT, Ldone->label());
+
   if (!slot->is_register() && !needs_patching) {
     LIR_Address* address = slot->as_address_ptr();
     LIR_Opr ptr = gen->new_pointer_register();
@@ -264,6 +268,7 @@ void MMTkFieldBarrierSetC1::object_reference_write_pre(LIRAccess& access, LIR_Op
 #endif
 
   __ branch_destination(slow->continuation());
+  __ branch_destination(Ldone->label());
 }
 
 #undef __
