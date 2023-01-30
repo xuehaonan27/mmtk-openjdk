@@ -423,9 +423,10 @@ void MMTkHeap::scan_code_cache_roots(OopClosure& cl) {
 void MMTkHeap::scan_string_table_roots(OopClosure& cl) {
   StringTable::oops_do(&cl);
 }
-void MMTkHeap::scan_class_loader_data_graph_roots(OopClosure& cl, bool scan_weak) {
+void MMTkHeap::scan_class_loader_data_graph_roots(OopClosure& cl, OopClosure& weak_cl, bool scan_weak) {
   CLDToOopClosure cld_cl(&cl, false);
-  ClassLoaderDataGraph::roots_cld_do(&cld_cl, ClassUnloading && !scan_weak ? NULL : &cld_cl);
+  CLDToOopClosure weak_cld_cl(&weak_cl, false);
+  ClassLoaderDataGraph::roots_cld_do(&cld_cl, ClassUnloading && !scan_weak ? NULL : &weak_cld_cl);
 }
 void MMTkHeap::scan_weak_processor_roots(OopClosure& cl) {
   ShouldNotReachHere();

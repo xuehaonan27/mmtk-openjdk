@@ -210,7 +210,7 @@ public:
   void scan_system_dictionary_roots(OopClosure& cl);
   void scan_code_cache_roots(OopClosure& cl);
   void scan_string_table_roots(OopClosure& cl);
-  void scan_class_loader_data_graph_roots(OopClosure& cl, bool scan_weak);
+  void scan_class_loader_data_graph_roots(OopClosure& cl, OopClosure& weak_cl, bool scan_weak);
   void scan_weak_processor_roots(OopClosure& cl);
   void scan_vm_thread_roots(OopClosure& cl);
 

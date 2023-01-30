@@ -3,6 +3,9 @@ use crate::{OpenJDK, OpenJDKEdge, UPCALLS};
 use mmtk::scheduler::*;
 use mmtk::vm::RootsWorkFactory;
 use mmtk::MMTK;
+use crate::Address;
+use crate::NewBuffer;
+use crate::EdgesClosure;
 
 macro_rules! scan_roots_work {
     ($struct_name: ident, $func_name: ident) => {
@@ -46,11 +49,42 @@ impl<F: RootsWorkFactory<OpenJDKEdge>> ScanClassLoaderDataGraphRoots<F> {
     }
 }
 
+
+
+extern "C" fn report_edges_and_renew_buffer_cld<F: RootsWorkFactory<OpenJDKEdge>, const WEAK: bool>(
+    ptr: *mut Address,
+    length: usize,
+    capacity: usize,
+    factory_ptr: *mut libc::c_void,
+) -> NewBuffer {
+    if !ptr.is_null() {
+        let ptr = ptr as *mut OpenJDKEdge;
+        let buf = unsafe { Vec::<OpenJDKEdge>::from_raw_parts(ptr, length, capacity) };
+        let factory: &mut F = unsafe { &mut *(factory_ptr as *mut F) };
+        factory.create_process_edge_roots_work_for_cld_roots(buf, WEAK);
+    }
+    let (ptr, _, capacity) = {
+        // TODO: Use Vec::into_raw_parts() when the method is available.
+        use std::mem::ManuallyDrop;
+        let new_vec = Vec::with_capacity(F::BUFFER_SIZE);
+        let mut me = ManuallyDrop::new(new_vec);
+        (me.as_mut_ptr(), me.len(), me.capacity())
+    };
+    NewBuffer { ptr, capacity }
+}
+
+fn to_edges_closure_cld<F: RootsWorkFactory<OpenJDKEdge>, const WEAK: bool>(factory: &mut F) -> EdgesClosure {
+    EdgesClosure {
+        func: report_edges_and_renew_buffer_cld::<F, WEAK>,
+        data: factory as *mut F as *mut libc::c_void,
+    }
+}
 impl<F: RootsWorkFactory<OpenJDKEdge>> GCWork<OpenJDK> for ScanClassLoaderDataGraphRoots<F> {
     fn do_work(&mut self, _worker: &mut GCWorker<OpenJDK>, mmtk: &'static MMTK<OpenJDK>) {
         unsafe {
             ((*UPCALLS).scan_class_loader_data_graph_roots)(
-                to_edges_closure(&mut self.factory),
+                to_edges_closure_cld::<F, false>(&mut self.factory),
+                to_edges_closure_cld::<F, true>(&mut self.factory),
                 mmtk.get_plan()
                     .current_gc_should_scan_weak_classloader_roots(),
             );
