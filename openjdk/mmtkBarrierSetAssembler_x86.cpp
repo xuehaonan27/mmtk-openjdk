@@ -147,7 +147,7 @@ void MMTkBarrierSetAssembler::eden_allocate(MacroAssembler* masm, Register threa
 
 #define __ sasm->
 
-void MMTkBarrierSetAssembler::generate_c1_write_barrier_runtime_stub(StubAssembler* sasm) const {
+void MMTkBarrierSetAssembler::generate_c1_write_barrier_runtime_stub(StubAssembler* sasm, bool do_code_patch) const {
   __ prologue("mmtk_write_barrier", false);
 
   Address store_addr(rbp, 4*BytesPerWord);
@@ -167,11 +167,17 @@ void MMTkBarrierSetAssembler::generate_c1_write_barrier_runtime_stub(StubAssembl
 
   __ save_live_registers_no_oop_map(true);
 
+  if (do_code_patch) {
+    // We don't know the field offset when a code patching is required.
+    // As a temporary fix, we apply field barrier to all fields in this object.
+    __ call_VM_leaf(FN_ADDR(MMTkBarrierSetRuntime::object_reference_clone_pre_call), c_rarg0);
+  } else {
 #if MMTK_ENABLE_BARRIER_FASTPATH
-  __ call_VM_leaf_base(FN_ADDR(MMTkBarrierSetRuntime::object_reference_write_slow_call), 3);
+  __ call_VM_leaf(FN_ADDR(MMTkBarrierSetRuntime::object_reference_write_slow_call), c_rarg0, c_rarg1, c_rarg2);
 #else
   __ call_VM_leaf_base(FN_ADDR(MMTkBarrierSetRuntime::object_reference_write_post_call), 3);
 #endif
+  }
 
   __ restore_live_registers(true);
 
@@ -237,6 +243,7 @@ void MMTkBarrierSetAssembler::generate_c1_write_barrier_stub_call(LIR_Assembler*
 
   // For pre-barriers, stub->slot may not be a resolved address.
   // Manually patch the address and goes to the slow-path unconditionally.
+  address runtime_address;
   if (stub->patch_code != lir_patch_none) {
     // Patch
     assert(stub->scratch->is_single_cpu(), "must be");
@@ -249,14 +256,16 @@ void MMTkBarrierSetAssembler::generate_c1_write_barrier_stub_call(LIR_Assembler*
     __ lea(stub->scratch->as_register(), from_addr);
     // Store parameter
     ce->store_parameter(stub->scratch->as_pointer_register(), 1);
+    runtime_address = (bs->_write_barrier_c1_runtime_code_blob_with_patch_fix->code_begin());
   } else {
     // Store parameter
     ce->store_parameter(stub->slot->as_pointer_register(), 1);
+    runtime_address = (bs->_write_barrier_c1_runtime_code_blob->code_begin());
   }
 
   ce->store_parameter(stub->src->as_pointer_register(), 0);
   ce->store_parameter(stub->new_val->as_pointer_register(), 2);
-  __ call(RuntimeAddress(bs->_write_barrier_c1_runtime_code_blob->code_begin()));
+  __ call(RuntimeAddress(runtime_address));
   __ jmp(*stub->continuation());
 }
 

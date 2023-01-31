@@ -11,6 +11,7 @@ class MMTkBarrierSetC1 : public BarrierSetC1 {
 
 protected:
   CodeBlob* _write_barrier_c1_runtime_code_blob;
+  CodeBlob* _write_barrier_c1_runtime_code_blob_with_patch_fix;
   CodeBlob* _ref_load_barrier_c1_runtime_code_blob;
 
   /// Full pre-barrier

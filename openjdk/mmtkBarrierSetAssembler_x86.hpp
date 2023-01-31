@@ -28,7 +28,7 @@ protected:
   }
 
   /// Generate C1 write barrier slow-call assembly code
-  virtual void generate_c1_write_barrier_runtime_stub(StubAssembler* sasm) const;
+  virtual void generate_c1_write_barrier_runtime_stub(StubAssembler* sasm, bool do_code_patch) const;
   virtual void generate_c1_ref_load_barrier_runtime_stub(StubAssembler* sasm) const;
 
 public:
