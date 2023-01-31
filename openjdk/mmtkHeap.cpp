@@ -158,7 +158,7 @@ const char* MMTkHeap::version() {
 }
 
 void MMTkHeap::schedule_finalizer() {
-  MMTkFinalizerThread::instance->schedule();
+  // MMTkFinalizerThread::instance->schedule();
 }
 
 void MMTkHeap::post_initialize() {
@@ -168,7 +168,7 @@ void MMTkHeap::post_initialize() {
 void MMTkHeap::enable_collection() {
   // Initialize finalizer thread before enable_collection().
   // Otherwise it is possible that we schedule finalizer (during a GC) before the finalizer thread is ready.
-  MMTkFinalizerThread::initialize();
+  // MMTkFinalizerThread::initialize();
 
   ::initialize_collection(0);
 }
