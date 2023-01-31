@@ -173,7 +173,7 @@ void MMTkBarrierSetAssembler::generate_c1_write_barrier_runtime_stub(StubAssembl
     __ call_VM_leaf(FN_ADDR(MMTkBarrierSetRuntime::object_reference_clone_pre_call), c_rarg0);
   } else {
 #if MMTK_ENABLE_BARRIER_FASTPATH
-  __ call_VM_leaf(FN_ADDR(MMTkBarrierSetRuntime::object_reference_write_slow_call), c_rarg0, c_rarg1, c_rarg2);
+  __ call_VM_leaf_base(FN_ADDR(MMTkBarrierSetRuntime::object_reference_write_slow_call), 3);
 #else
   __ call_VM_leaf_base(FN_ADDR(MMTkBarrierSetRuntime::object_reference_write_post_call), 3);
 #endif
