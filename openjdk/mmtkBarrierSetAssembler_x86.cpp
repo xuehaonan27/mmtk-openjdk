@@ -256,11 +256,11 @@ void MMTkBarrierSetAssembler::generate_c1_write_barrier_stub_call(LIR_Assembler*
     __ lea(stub->scratch->as_register(), from_addr);
     // Store parameter
     ce->store_parameter(stub->scratch->as_pointer_register(), 1);
-    runtime_address = (bs->_write_barrier_c1_runtime_code_blob_with_patch_fix->code_begin());
+    runtime_address = bs->_write_barrier_c1_runtime_code_blob_with_patch_fix->code_begin();
   } else {
     // Store parameter
     ce->store_parameter(stub->slot->as_pointer_register(), 1);
-    runtime_address = (bs->_write_barrier_c1_runtime_code_blob->code_begin());
+    runtime_address = bs->_write_barrier_c1_runtime_code_blob->code_begin();
   }
 
   ce->store_parameter(stub->src->as_pointer_register(), 0);
