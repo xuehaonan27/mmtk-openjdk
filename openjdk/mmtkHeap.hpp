@@ -130,10 +130,12 @@ public:
   // mark to be thus strictly sequenced after the stores.
   bool card_mark_must_follow_store() const;
 
-  void collect(GCCause::Cause cause);
+  virtual void collect(GCCause::Cause cause) override;
 
   // Perform a full collection
-  void do_full_collection(bool clear_all_soft_refs);
+  virtual void do_full_collection(bool clear_all_soft_refs) override;
+
+  virtual void collect_as_vm_thread(GCCause::Cause cause) override;
 
 
   // Return the CollectorPolicy for the heap

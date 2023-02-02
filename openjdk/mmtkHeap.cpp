@@ -273,8 +273,13 @@ void MMTkHeap::collect(GCCause::Cause cause) {//later when gc is implemented in 
 // Perform a full collection
 void MMTkHeap::do_full_collection(bool clear_all_soft_refs) {//later when gc is implemented in rust
   // guarantee(false, "do full collection not supported");
+  handle_user_collection_request((MMTk_Mutator) &Thread::current()->third_party_heap_mutator);
+}
 
-  // handle_user_collection_request((MMTk_Mutator) &Thread::current()->third_party_heap_mutator);
+void MMTkHeap::collect_as_vm_thread(GCCause::Cause cause) {
+  MMTkHeap::heap()->companion_thread()->vm_thread_requires_gc_pause();
+  handle_user_collection_request(NULL);
+  MMTkHeap::heap()->companion_thread()->block_vm_thread();
 }
 
 

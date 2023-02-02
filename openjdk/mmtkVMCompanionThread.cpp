@@ -60,12 +60,22 @@ void MMTkVMCompanionThread::run() {
 
     // Let the VM thread stop the world.
     log_trace(gc)("MMTkVMCompanionThread: Letting VMThread execute VM op...");
-    VM_MMTkSTWOperation op(this);
-    // VMThread::execute() is blocking. The companion thread will be blocked
-    // here waiting for the VM thread to execute op, and the VM thread will
-    // be blocked in reach_suspended_and_wait_for_resume() until a GC thread
-    // calls request(_threads_resumed).
-    VMThread::execute(&op);
+    if (_vm_thread_requires_gc_pause) {
+      MutexLockerEx locker(_lock, Mutex::_no_safepoint_check_flag);
+      _vm_thread_requires_gc_pause = false;
+      _vm_thread_suspend_for_gc = true;
+      _lock->notify_all();
+      while (_vm_thread_suspend_for_gc) {
+        _lock->wait(Mutex::_no_safepoint_check_flag);
+      }
+    } else {
+      VM_MMTkSTWOperation op(this);
+      // VMThread::execute() is blocking. The companion thread will be blocked
+      // here waiting for the VM thread to execute op, and the VM thread will
+      // be blocked in reach_suspended_and_wait_for_resume() until a GC thread
+      // calls request(_threads_resumed).
+      VMThread::execute(&op);
+    }
 
     // Tell the waiter thread that the world has resumed.
     log_trace(gc)("MMTkVMCompanionThread: Notifying threads resumption...");
@@ -103,6 +113,29 @@ void MMTkVMCompanionThread::request(stw_state desired_state, bool wait_until_rea
     while (_reached_state != desired_state) {
       _lock->wait(true);
     }
+  }
+}
+
+void MMTkVMCompanionThread::vm_thread_requires_gc_pause() {
+  MutexLockerEx locker(_lock, Mutex::_no_safepoint_check_flag);
+  _vm_thread_requires_gc_pause = true;
+}
+
+void MMTkVMCompanionThread::block_vm_thread() {
+  {
+    MutexLockerEx locker(_lock, Mutex::_no_safepoint_check_flag);
+    while (!_vm_thread_suspend_for_gc) {
+      _lock->wait(Mutex::_no_safepoint_check_flag);
+    }
+  }
+
+  VM_MMTkSTWOperation op(this);
+  VMThread::execute(&op);
+
+  {
+    MutexLockerEx locker(_lock, Mutex::_no_safepoint_check_flag);
+    _vm_thread_suspend_for_gc = false;
+    _lock->notify_all();
   }
 }
 

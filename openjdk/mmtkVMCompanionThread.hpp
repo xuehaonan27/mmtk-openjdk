@@ -50,6 +50,8 @@ private:
   Monitor* _lock;
   stw_state _desired_state;
   stw_state _reached_state;
+  bool _vm_thread_requires_gc_pause = false;
+  bool _vm_thread_suspend_for_gc = false;
 
 public:
   // Constructor
@@ -61,6 +63,9 @@ public:
   // Interface for MMTk Core
   void request(stw_state desired_state, bool wait_until_reached);
   void wait_for_reached(stw_state reached_state);
+
+  void vm_thread_requires_gc_pause();
+  void block_vm_thread();
 
   // Interface for the VM_MMTkSTWOperation
   void reach_suspended_and_wait_for_resume();
