@@ -1,11 +1,11 @@
 use crate::scanning::to_edges_closure;
+use crate::Address;
+use crate::EdgesClosure;
+use crate::NewBuffer;
 use crate::{OpenJDK, OpenJDKEdge, UPCALLS};
 use mmtk::scheduler::*;
 use mmtk::vm::RootsWorkFactory;
 use mmtk::MMTK;
-use crate::Address;
-use crate::NewBuffer;
-use crate::EdgesClosure;
 
 macro_rules! scan_roots_work {
     ($struct_name: ident, $func_name: ident) => {
@@ -49,9 +49,10 @@ impl<F: RootsWorkFactory<OpenJDKEdge>> ScanClassLoaderDataGraphRoots<F> {
     }
 }
 
-
-
-extern "C" fn report_edges_and_renew_buffer_cld<F: RootsWorkFactory<OpenJDKEdge>, const WEAK: bool>(
+extern "C" fn report_edges_and_renew_buffer_cld<
+    F: RootsWorkFactory<OpenJDKEdge>,
+    const WEAK: bool,
+>(
     ptr: *mut Address,
     length: usize,
     capacity: usize,
@@ -73,7 +74,9 @@ extern "C" fn report_edges_and_renew_buffer_cld<F: RootsWorkFactory<OpenJDKEdge>
     NewBuffer { ptr, capacity }
 }
 
-fn to_edges_closure_cld<F: RootsWorkFactory<OpenJDKEdge>, const WEAK: bool>(factory: &mut F) -> EdgesClosure {
+fn to_edges_closure_cld<F: RootsWorkFactory<OpenJDKEdge>, const WEAK: bool>(
+    factory: &mut F,
+) -> EdgesClosure {
     EdgesClosure {
         func: report_edges_and_renew_buffer_cld::<F, WEAK>,
         data: factory as *mut F as *mut libc::c_void,
