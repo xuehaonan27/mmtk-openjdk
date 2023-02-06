@@ -129,16 +129,9 @@ lazy_static! {
         unsafe { ((*UPCALLS).java_lang_classloader_loader_data_offset)() };
 }
 
-thread_local! {
-    pub static CURRENT_WORKER: RefCell<Option<*mut GCWorker<OpenJDK>>> = RefCell::new(None);
-}
-
 #[inline(always)]
 pub fn current_worker() -> &'static mut GCWorker<OpenJDK> {
-    CURRENT_WORKER.with(|x| {
-        let ptr = x.borrow().unwrap();
-        unsafe { &mut *ptr }
-    })
+    GCWorker::<OpenJDK>::current()
 }
 
 pub static mut UPCALLS: *const OpenJDK_Upcalls = null_mut();

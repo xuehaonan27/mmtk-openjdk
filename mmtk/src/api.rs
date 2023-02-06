@@ -183,7 +183,6 @@ pub extern "C" fn start_control_collector(
 // We trust the worker pointer is valid.
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
 pub extern "C" fn start_worker(tls: VMWorkerThread, worker: *mut GCWorker<OpenJDK>) {
-    crate::CURRENT_WORKER.with(|x| x.replace(Some(unsafe { &mut *worker })));
     let mut worker = unsafe { Box::from_raw(worker) };
     memory_manager::start_worker::<OpenJDK>(&SINGLETON, tls, &mut worker)
 }
