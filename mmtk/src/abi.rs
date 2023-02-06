@@ -87,7 +87,7 @@ impl Klass {
     pub const LH_HEADER_SIZE_MASK: i32 = (1 << BITS_IN_BYTE) - 1;
     #[inline(always)]
     pub unsafe fn cast<'a, T>(&self) -> &'a T {
-        &*(self as *const _ as usize as *const T)
+        &*(self as *const Self as *const T)
     }
     /// Force slow-path for instance size calculation?
     #[inline(always)]
@@ -184,7 +184,7 @@ impl InstanceKlass {
     const MISC_IS_ANONYMOUS: u16 = 1 << 5;
     #[inline(always)]
     fn start_of_vtable(&self) -> *const usize {
-        unsafe { (self as *const _ as *const u8).add(Self::VTABLE_START_OFFSET) as _ }
+        unsafe { (self as *const Self as *const u8).add(Self::VTABLE_START_OFFSET) as _ }
     }
     #[inline(always)]
     fn start_of_itable(&self) -> *const usize {
@@ -467,14 +467,14 @@ impl ArrayOopDesc {
     #[inline(always)]
     fn length<const COMPRESSED: bool>(&self) -> i32 {
         unsafe {
-            *((self as *const _ as *const u8).add(Self::length_offset::<COMPRESSED>())
+            *((self as *const Self as *const u8).add(Self::length_offset::<COMPRESSED>())
                 as *const i32)
         }
     }
     #[inline(always)]
     fn base<const COMPRESSED: bool>(&self, ty: BasicType) -> Address {
         let base_offset_in_bytes = Self::header_size::<COMPRESSED>(ty) * BYTES_IN_WORD;
-        Address::from_ptr(unsafe { (self as *const _ as *const u8).add(base_offset_in_bytes) })
+        Address::from_ptr(unsafe { (self as *const Self as *const u8).add(base_offset_in_bytes) })
     }
     // This provides an easy way to access the array data in Rust. However, the array data
     // is Java types, so we have to map Java types to Rust types. The caller needs to guarantee:

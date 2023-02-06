@@ -4,7 +4,6 @@ extern crate atomic;
 extern crate once_cell;
 extern crate spin;
 
-use std::cell::RefCell;
 use std::collections::HashMap;
 use std::ptr::null_mut;
 use std::sync::atomic::{AtomicU32, AtomicUsize};
