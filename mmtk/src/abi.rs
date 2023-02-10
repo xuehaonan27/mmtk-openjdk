@@ -85,27 +85,22 @@ impl Klass {
     pub const LH_LOG2_ELEMENT_SIZE_MASK: i32 = BITS_IN_LONG as i32 - 1;
     pub const LH_HEADER_SIZE_SHIFT: i32 = BITS_IN_BYTE as i32 * 2;
     pub const LH_HEADER_SIZE_MASK: i32 = (1 << BITS_IN_BYTE) - 1;
-    #[inline(always)]
     pub unsafe fn cast<'a, T>(&self) -> &'a T {
         &*(self as *const Self as *const T)
     }
     /// Force slow-path for instance size calculation?
-    #[inline(always)]
     const fn layout_helper_needs_slow_path(lh: i32) -> bool {
         (lh & Self::LH_INSTANCE_SLOW_PATH_BIT) != 0
     }
     /// Get log2 array element size
-    #[inline(always)]
     const fn layout_helper_log2_element_size(lh: i32) -> i32 {
         (lh >> Self::LH_LOG2_ELEMENT_SIZE_SHIFT) & Self::LH_LOG2_ELEMENT_SIZE_MASK
     }
     /// Get array header size
-    #[inline(always)]
     const fn layout_helper_header_size(lh: i32) -> i32 {
         (lh >> Self::LH_HEADER_SIZE_SHIFT) & Self::LH_HEADER_SIZE_MASK
     }
 
-    #[inline(always)]
     pub const fn is_instance_klass(&self) -> bool {
         self.layout_helper > Self::LH_NEUTRAL_VALUE
     }
@@ -182,29 +177,24 @@ impl InstanceKlass {
     const HEADER_SIZE: usize = mem::size_of::<Self>() / BYTES_IN_WORD;
     const VTABLE_START_OFFSET: usize = Self::HEADER_SIZE * BYTES_IN_WORD;
     const MISC_IS_ANONYMOUS: u16 = 1 << 5;
-    #[inline(always)]
     fn start_of_vtable(&self) -> *const usize {
         unsafe { (self as *const Self as *const u8).add(Self::VTABLE_START_OFFSET) as _ }
     }
-    #[inline(always)]
     fn start_of_itable(&self) -> *const usize {
         unsafe { self.start_of_vtable().add(self.klass.vtable_len as _) }
     }
-    #[inline(always)]
     fn nonstatic_oop_map_count(&self) -> usize {
         let oop_map_block_size = mem::size_of::<OopMapBlock>();
         let oop_map_block_size_up =
             mmtk::util::conversions::raw_align_up(oop_map_block_size, BYTES_IN_WORD);
         self.nonstatic_oop_map_size as usize / (oop_map_block_size_up >> LOG_BYTES_IN_WORD)
     }
-    #[inline(always)]
     pub fn nonstatic_oop_maps(&self) -> &'static [OopMapBlock] {
         let start_of_itable = self.start_of_itable();
         let start = unsafe { start_of_itable.add(self.itable_len as _) as *const OopMapBlock };
         let count = self.nonstatic_oop_map_count();
         unsafe { slice::from_raw_parts(start, count) }
     }
-    #[inline(always)]
     pub fn is_anonymous(&self) -> bool {
         self.misc_flags & Self::MISC_IS_ANONYMOUS != 0
     }
@@ -216,7 +206,6 @@ pub struct InstanceMirrorKlass {
 }
 
 impl InstanceMirrorKlass {
-    #[inline(always)]
     fn offset_of_static_fields() -> usize {
         lazy_static! {
             pub static ref OFFSET_OF_STATIC_FIELDS: usize =
@@ -224,7 +213,6 @@ impl InstanceMirrorKlass {
         }
         *OFFSET_OF_STATIC_FIELDS
     }
-    #[inline(always)]
     fn static_oop_field_count_offset() -> i32 {
         lazy_static! {
             pub static ref STATIC_OOP_FIELD_COUNT_OFFSET: i32 =
@@ -232,11 +220,9 @@ impl InstanceMirrorKlass {
         }
         *STATIC_OOP_FIELD_COUNT_OFFSET
     }
-    #[inline(always)]
     pub fn start_of_static_fields(oop: Oop) -> Address {
         Address::from_ref(oop) + Self::offset_of_static_fields()
     }
-    #[inline(always)]
     pub fn static_oop_field_count(oop: Oop) -> usize {
         let offset = Self::static_oop_field_count_offset();
         unsafe { oop.get_field_address(offset).load::<i32>() as _ }
@@ -275,25 +261,21 @@ pub struct InstanceRefKlass {
 }
 
 impl InstanceRefKlass {
-    #[inline(always)]
     fn referent_offset() -> i32 {
         lazy_static! {
             pub static ref REFERENT_OFFSET: i32 = unsafe { ((*UPCALLS).referent_offset)() };
         }
         *REFERENT_OFFSET
     }
-    #[inline(always)]
     fn discovered_offset() -> i32 {
         lazy_static! {
             pub static ref DISCOVERED_OFFSET: i32 = unsafe { ((*UPCALLS).discovered_offset)() };
         }
         *DISCOVERED_OFFSET
     }
-    #[inline(always)]
     pub fn referent_address(oop: Oop) -> OpenJDKEdge {
         OpenJDKEdge(oop.get_field_address(Self::referent_offset()))
     }
-    #[inline(always)]
     pub fn discovered_address(oop: Oop) -> OpenJDKEdge {
         OpenJDKEdge(oop.get_field_address(Self::discovered_offset()))
     }
@@ -312,11 +294,9 @@ pub struct OopDesc {
 }
 
 impl OopDesc {
-    #[inline(always)]
     pub fn start(&self) -> Address {
         unsafe { mem::transmute(self) }
     }
-    #[inline(always)]
     pub(crate) fn klass_ptr<const COMPRESSED: bool>(&self) -> Address {
         // self.klass
         if COMPRESSED {
@@ -333,7 +313,6 @@ impl OopDesc {
             unsafe { Address::from_ref(self.klass.klass) }
         }
     }
-    #[inline(always)]
     pub fn klass<const COMPRESSED: bool>(&self) -> &'static Klass {
         // self.klass
         if COMPRESSED {
@@ -375,38 +354,32 @@ impl NarrowOop {
 
 /// Convert ObjectReference to Oop
 impl From<ObjectReference> for &OopDesc {
-    #[inline(always)]
     fn from(o: ObjectReference) -> Self {
         unsafe { mem::transmute(o) }
     }
 }
 
 impl Into<ObjectReference> for &OopDesc {
-    #[inline(always)]
     fn into(self) -> ObjectReference {
         unsafe { mem::transmute::<&OopDesc, _>(self) }
     }
 }
 
 impl OopDesc {
-    #[inline(always)]
     pub unsafe fn as_array_oop(&self) -> ArrayOop {
         &*(self as *const OopDesc as *const ArrayOopDesc)
     }
 
-    #[inline(always)]
     pub fn get_field_address(&self, offset: i32) -> Address {
         Address::from_ref(self) + offset as isize
     }
 
     /// Slow-path for calculating object instance size
-    #[inline(always)]
     unsafe fn size_slow(&self) -> usize {
         ((*UPCALLS).get_object_size)(self.into())
     }
 
     /// Calculate object instance size
-    #[inline(always)]
     pub unsafe fn size<const COMPRESSED: bool>(&self) -> usize {
         let klass = self.klass::<COMPRESSED>();
         let lh = klass.layout_helper;
@@ -452,7 +425,6 @@ impl ArrayOopDesc {
         ty == BasicType::T_DOUBLE || ty == BasicType::T_LONG
     }
 
-    #[inline(always)]
     fn header_size<const COMPRESSED: bool>(ty: BasicType) -> usize {
         let typesize_in_bytes = conversions::raw_align_up(
             Self::length_offset::<COMPRESSED>() + BYTES_IN_INT,
@@ -464,14 +436,12 @@ impl ArrayOopDesc {
             typesize_in_bytes / BYTES_IN_WORD
         }
     }
-    #[inline(always)]
     fn length<const COMPRESSED: bool>(&self) -> i32 {
         unsafe {
             *((self as *const Self as *const u8).add(Self::length_offset::<COMPRESSED>())
                 as *const i32)
         }
     }
-    #[inline(always)]
     fn base<const COMPRESSED: bool>(&self, ty: BasicType) -> Address {
         let base_offset_in_bytes = Self::header_size::<COMPRESSED>(ty) * BYTES_IN_WORD;
         Address::from_ptr(unsafe { (self as *const Self as *const u8).add(base_offset_in_bytes) })
@@ -480,14 +450,12 @@ impl ArrayOopDesc {
     // is Java types, so we have to map Java types to Rust types. The caller needs to guarantee:
     // 1. <T> matches the actual Java type
     // 2. <T> matches the argument, BasicType `ty`
-    #[inline(always)]
     pub unsafe fn data<T, const COMPRESSED: bool>(&self, ty: BasicType) -> &[T] {
         slice::from_raw_parts(
             self.base::<COMPRESSED>(ty).to_ptr(),
             self.length::<COMPRESSED>() as _,
         )
     }
-    #[inline(always)]
     pub unsafe fn slice<const COMPRESSED: bool>(&self, ty: BasicType) -> crate::OpenJDKEdgeRange {
         let base = self.base::<COMPRESSED>(ty);
         let start = crate::OpenJDKEdge(base);
@@ -590,7 +558,6 @@ pub struct ClassLoaderData {
 }
 
 impl ClassLoaderData {
-    #[inline]
     fn claim(&self) -> bool {
         if self.claimed.load(Ordering::Relaxed) == 1 {
             return false;
@@ -600,7 +567,6 @@ impl ClassLoaderData {
             .is_ok()
     }
 
-    #[inline]
     pub fn oops_do<V: EdgeVisitor<OpenJDKEdge>, const COMPRESSED: bool>(&self, closure: &mut V) {
         if closure.should_claim_clds() && !self.claim() {
             return;

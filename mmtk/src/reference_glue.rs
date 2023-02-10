@@ -12,7 +12,6 @@ use mmtk::vm::edge_shape::Edge;
 use mmtk::vm::ReferenceGlue;
 use mmtk::MMTK;
 
-#[inline(always)]
 pub fn set_referent<const COMPRESSED: bool>(reff: ObjectReference, referent: ObjectReference) {
     let oop = Oop::from(reff);
     let slot = InstanceRefKlass::referent_address(oop);
@@ -20,24 +19,20 @@ pub fn set_referent<const COMPRESSED: bool>(reff: ObjectReference, referent: Obj
     slot.store::<COMPRESSED>(referent)
 }
 
-#[inline(always)]
 fn get_referent<const COMPRESSED: bool>(object: ObjectReference) -> ObjectReference {
     let oop = Oop::from(object);
     InstanceRefKlass::referent_address(oop).load::<COMPRESSED>()
 }
 
-#[inline(always)]
 fn get_next_reference_slot(object: ObjectReference) -> crate::OpenJDKEdge {
     let oop = Oop::from(object);
     InstanceRefKlass::discovered_address(oop)
 }
 
-#[inline(always)]
 fn get_next_reference<const COMPRESSED: bool>(object: ObjectReference) -> ObjectReference {
     get_next_reference_slot(object).load::<COMPRESSED>()
 }
 
-#[inline(always)]
 fn set_next_reference<const COMPRESSED: bool>(object: ObjectReference, next: ObjectReference) {
     let slot = get_next_reference_slot(object);
     mmtk::plan::lxr::record_edge_for_validation(slot, next);
@@ -71,7 +66,6 @@ impl DiscoveredList {
         }
     }
 
-    #[inline]
     pub fn add<const COMPRESSED: bool>(
         &self,
         reference: ObjectReference,
@@ -141,17 +135,14 @@ impl DiscoveredLists {
         }
     }
 
-    #[inline]
     pub fn enable_discover(&self) {
         self.allow_discover.store(true, Ordering::SeqCst)
     }
 
-    #[inline(always)]
     pub fn allow_discover(&self) -> bool {
         self.allow_discover.load(Ordering::SeqCst)
     }
 
-    #[inline(always)]
     pub fn get_by_rt_and_index(&self, rt: ReferenceType, index: usize) -> &DiscoveredList {
         match rt {
             ReferenceType::Soft => &self.soft[index],
@@ -162,7 +153,6 @@ impl DiscoveredLists {
         }
     }
 
-    #[inline(always)]
     pub fn get(&self, rt: ReferenceType) -> &DiscoveredList {
         let id = mmtk::scheduler::worker::current_worker_ordinal().unwrap();
         self.get_by_rt_and_index(rt, id)

@@ -44,7 +44,6 @@ impl Scanning<OpenJDK> for VMScanning {
     const SCAN_MUTATORS_IN_SAFEPOINT: bool = false;
     const SINGLE_THREAD_MUTATOR_SCANNING: bool = false;
 
-    #[inline]
     fn scan_object<EV: EdgeVisitor<OpenJDKEdge>, const COMPRESSED: bool>(
         tls: VMWorkerThread,
         object: ObjectReference,
@@ -53,17 +52,14 @@ impl Scanning<OpenJDK> for VMScanning {
         crate::object_scanning::scan_object::<EV, COMPRESSED>(object, edge_visitor, tls);
     }
 
-    #[inline(always)]
     fn obj_array_data<const COMPRESSED: bool>(o: ObjectReference) -> crate::OpenJDKEdgeRange {
         crate::object_scanning::obj_array_data::<COMPRESSED>(unsafe { std::mem::transmute(o) })
     }
 
-    #[inline(always)]
     fn is_obj_array<const COMPRESSED: bool>(o: ObjectReference) -> bool {
         crate::object_scanning::is_obj_array::<COMPRESSED>(unsafe { std::mem::transmute(o) })
     }
 
-    #[inline(always)]
     fn is_val_array<const COMPRESSED: bool>(o: ObjectReference) -> bool {
         crate::object_scanning::is_val_array::<COMPRESSED>(unsafe { std::mem::transmute(o) })
     }

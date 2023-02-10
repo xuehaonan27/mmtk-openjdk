@@ -23,7 +23,6 @@ impl ObjectModel<OpenJDK> for VMObjectModel {
     const UNIFIED_OBJECT_REFERENCE_ADDRESS: bool = true;
     const OBJECT_REF_OFFSET_LOWER_BOUND: isize = 0;
 
-    #[inline(always)]
     fn copy(
         from: ObjectReference,
         copy: CopySemantics,
@@ -66,7 +65,6 @@ impl ObjectModel<OpenJDK> for VMObjectModel {
         ObjectReference::from_raw_address(to)
     }
 
-    #[inline(always)]
     fn get_current_size(object: ObjectReference) -> usize {
         if crate::use_compressed_oops() {
             unsafe { Oop::from(object).size::<true>() }
@@ -92,22 +90,18 @@ impl ObjectModel<OpenJDK> for VMObjectModel {
         unimplemented!()
     }
 
-    #[inline(always)]
     fn ref_to_object_start(object: ObjectReference) -> Address {
         object.to_raw_address()
     }
 
-    #[inline(always)]
     fn ref_to_address(object: ObjectReference) -> Address {
         object.to_raw_address()
     }
 
-    #[inline(always)]
     fn ref_to_header(object: ObjectReference) -> Address {
         object.to_raw_address()
     }
 
-    #[inline(always)]
     fn address_to_ref(address: Address) -> ObjectReference {
         ObjectReference::from_raw_address(address)
     }
@@ -128,12 +122,10 @@ impl ObjectModel<OpenJDK> for VMObjectModel {
         s.to_string()
     }
 
-    #[inline(always)]
     fn compressed_pointers_enabled() -> bool {
         crate::use_compressed_oops()
     }
 
-    #[inline(always)]
     fn get_class_pointer(object: ObjectReference) -> Address {
         let oop: Oop = unsafe { std::mem::transmute(object) };
         if crate::use_compressed_oops() {

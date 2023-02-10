@@ -18,7 +18,6 @@ trait OopIterate: Sized {
 }
 
 impl OopIterate for OopMapBlock {
-    #[inline(always)]
     fn oop_iterate<V: EdgeVisitor<OpenJDKEdge>, const COMPRESSED: bool>(
         &self,
         oop: Oop,
@@ -34,7 +33,6 @@ impl OopIterate for OopMapBlock {
 }
 
 impl OopIterate for InstanceKlass {
-    #[inline(always)]
     fn oop_iterate<V: EdgeVisitor<OpenJDKEdge>, const COMPRESSED: bool>(
         &self,
         oop: Oop,
@@ -51,7 +49,6 @@ impl OopIterate for InstanceKlass {
 }
 
 impl OopIterate for InstanceMirrorKlass {
-    #[inline]
     fn oop_iterate<V: EdgeVisitor<OpenJDKEdge>, const COMPRESSED: bool>(
         &self,
         oop: Oop,
@@ -95,7 +92,6 @@ impl OopIterate for InstanceMirrorKlass {
 }
 
 impl OopIterate for InstanceClassLoaderKlass {
-    #[inline]
     fn oop_iterate<C: EdgeVisitor<OpenJDKEdge>, const COMPRESSED: bool>(
         &self,
         oop: Oop,
@@ -116,7 +112,6 @@ impl OopIterate for InstanceClassLoaderKlass {
 }
 
 impl OopIterate for ObjArrayKlass {
-    #[inline(always)]
     fn oop_iterate<V: EdgeVisitor<OpenJDKEdge>, const COMPRESSED: bool>(
         &self,
         oop: Oop,
@@ -139,7 +134,6 @@ impl OopIterate for ObjArrayKlass {
 }
 
 impl OopIterate for TypeArrayKlass {
-    #[inline(always)]
     fn oop_iterate<V: EdgeVisitor<OpenJDKEdge>, const COMPRESSED: bool>(
         &self,
         _oop: Oop,
@@ -151,7 +145,6 @@ impl OopIterate for TypeArrayKlass {
 }
 
 impl OopIterate for InstanceRefKlass {
-    #[inline(always)]
     fn oop_iterate<V: EdgeVisitor<OpenJDKEdge>, const COMPRESSED: bool>(
         &self,
         oop: Oop,
@@ -181,7 +174,6 @@ impl OopIterate for InstanceRefKlass {
 }
 
 impl InstanceRefKlass {
-    #[inline]
     fn should_discover_refs(mut rt: ReferenceType, disable_discovery: bool) -> bool {
         if rt == ReferenceType::Other {
             rt = ReferenceType::Weak;
@@ -197,14 +189,12 @@ impl InstanceRefKlass {
         }
         true
     }
-    #[inline]
     fn process_ref_as_strong(oop: Oop, closure: &mut impl EdgeVisitor<OpenJDKEdge>) {
         let referent_addr = Self::referent_address(oop);
         closure.visit_edge(referent_addr);
         let discovered_addr = Self::discovered_address(oop);
         closure.visit_edge(discovered_addr);
     }
-    #[inline]
     fn discover_reference<const COMPRESSED: bool>(oop: Oop, rt: ReferenceType) -> bool {
         // Do not discover new refs during reference processing.
         if !DISCOVERED_LISTS.allow_discover() {
@@ -247,7 +237,6 @@ fn oop_iterate_slow<V: EdgeVisitor<OpenJDKEdge>>(oop: Oop, closure: &mut V, tls:
     }
 }
 
-#[inline(always)]
 fn oop_iterate<V: EdgeVisitor<OpenJDKEdge>, const COMPRESSED: bool>(oop: Oop, closure: &mut V) {
     let klass_id = oop.klass::<COMPRESSED>().id;
     debug_assert!(
@@ -304,17 +293,14 @@ fn do_klass<V: EdgeVisitor<OpenJDKEdge>, const COMPRESSED: bool>(klass: &Klass, 
     do_cld::<_, COMPRESSED>(&klass.class_loader_data, closure)
 }
 
-#[inline(always)]
 pub fn is_obj_array<const COMPRESSED: bool>(oop: Oop) -> bool {
     oop.klass::<COMPRESSED>().id == KlassID::ObjArray
 }
 
-#[inline(always)]
 pub fn is_val_array<const COMPRESSED: bool>(oop: Oop) -> bool {
     oop.klass::<COMPRESSED>().id == KlassID::TypeArray
 }
 
-#[inline(always)]
 pub fn obj_array_data<const COMPRESSED: bool>(oop: Oop) -> crate::OpenJDKEdgeRange {
     unsafe {
         let array = oop.as_array_oop();
@@ -332,7 +318,6 @@ pub unsafe extern "C" fn scan_object_fn<V: EdgeVisitor<OpenJDKEdge>>(edge: Addre
     closure.visit_edge(OpenJDKEdge(edge));
 }
 
-#[inline]
 pub fn scan_object<C: EdgeVisitor<OpenJDKEdge>, const COMPRESSED: bool>(
     object: ObjectReference,
     closure: &mut C,

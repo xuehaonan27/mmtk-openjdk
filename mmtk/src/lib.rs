@@ -128,7 +128,6 @@ lazy_static! {
         unsafe { ((*UPCALLS).java_lang_classloader_loader_data_offset)() };
 }
 
-#[inline(always)]
 pub fn current_worker() -> &'static mut GCWorker<OpenJDK> {
     GCWorker::<OpenJDK>::current()
 }
@@ -183,17 +182,14 @@ fn init_compressed_oop_constants() {
     }
 }
 
-#[inline(always)]
 fn use_compressed_oops() -> bool {
     unsafe { USE_COMPRESSED_OOPS }
 }
 
-#[inline(always)]
 fn log_bytes_in_field() -> usize {
     unsafe { LOG_BYTES_IN_FIELD }
 }
 
-#[inline(always)]
 fn bytes_in_field() -> usize {
     unsafe { BYTES_IN_FIELD }
 }
@@ -259,7 +255,6 @@ impl OpenJDKEdge {
 
 impl Edge for OpenJDKEdge {
     /// Load object reference from the edge.
-    #[inline(always)]
     fn load<const COMPRESSED: bool>(&self) -> ObjectReference {
         if COMPRESSED {
             let slot = self.untagged_address();
@@ -274,7 +269,6 @@ impl Edge for OpenJDKEdge {
     }
 
     /// Store the object reference `object` into the edge.
-    #[inline(always)]
     fn store<const COMPRESSED: bool>(&self, object: ObjectReference) {
         if COMPRESSED {
             let slot = self.untagged_address();
@@ -320,12 +314,10 @@ impl Edge for OpenJDKEdge {
         }
     }
 
-    #[inline(always)]
     fn to_address(&self) -> Address {
         self.untagged_address()
     }
 
-    #[inline(always)]
     fn from_address(a: Address) -> Self {
         Self(a)
     }
@@ -347,7 +339,6 @@ pub struct AddressRangeIterator {
 impl Iterator for AddressRangeIterator {
     type Item = OpenJDKEdge;
 
-    #[inline]
     fn next(&mut self) -> Option<Self::Item> {
         if self.cursor >= self.limit {
             None
@@ -368,7 +359,6 @@ pub struct ChunkIterator {
 impl Iterator for ChunkIterator {
     type Item = OpenJDKEdgeRange;
 
-    #[inline]
     fn next(&mut self) -> Option<Self::Item> {
         if self.cursor >= self.limit {
             None
@@ -392,7 +382,6 @@ impl MemorySlice for OpenJDKEdgeRange {
     type EdgeIterator = AddressRangeIterator;
     type ChunkIterator = ChunkIterator;
 
-    #[inline]
     fn iter_edges(&self) -> Self::EdgeIterator {
         AddressRangeIterator {
             cursor: self.start.0,
@@ -401,7 +390,6 @@ impl MemorySlice for OpenJDKEdgeRange {
         }
     }
 
-    #[inline]
     fn chunks(&self, chunk_size: usize) -> Self::ChunkIterator {
         ChunkIterator {
             cursor: self.start.0,
@@ -410,22 +398,18 @@ impl MemorySlice for OpenJDKEdgeRange {
         }
     }
 
-    #[inline]
     fn start(&self) -> Address {
         self.start.0
     }
 
-    #[inline]
     fn bytes(&self) -> usize {
         self.end.0 - self.start.0
     }
 
-    #[inline]
     fn len(&self) -> usize {
         (self.end.0 - self.start.0) >> crate::log_bytes_in_field()
     }
 
-    #[inline]
     fn copy(src: &Self, tgt: &Self) {
         debug_assert_eq!(src.bytes(), tgt.bytes());
         debug_assert_eq!(
