@@ -118,6 +118,16 @@ impl DiscoveredList {
             debug_assert!(!get_next_reference::<COMPRESSED>(reference).is_null());
         }
     }
+
+    fn abandon_partial_discovery<const COMPRESSED: bool>(&self) {
+        let mut reference = self.head.load(Ordering::SeqCst);
+        while !reference.is_null() {
+            let next_ref = get_next_reference::<COMPRESSED>(reference);
+            set_next_reference::<COMPRESSED>(reference, ObjectReference::NULL);
+            reference = next_ref;
+        }
+        self.head.store(ObjectReference::NULL, Ordering::SeqCst);
+    }
 }
 
 pub struct DiscoveredLists {
@@ -248,6 +258,12 @@ impl DiscoveredLists {
         assert!(!*SINGLETON.get_options().no_reference_types);
         self.process_lists::<E, COMPRESSED>(worker, ReferenceType::Phantom, &self.phantom, true);
     }
+
+    pub fn abandon_partial_discovery<const COMPRESSED: bool>(&self) {
+        for list in &self.r#final {
+            list.abandon_partial_discovery::<COMPRESSED>();
+        }
+    }
 }
 
 lazy_static! {
@@ -297,13 +313,13 @@ impl<E: ProcessEdgesWork<VM = OpenJDK>, const COMPRESSED: bool> GCWork<OpenJDK>
         if let Some((head, tail)) = new_list {
             debug_assert!(!head.is_null() && !tail.is_null());
             // debug_assert_eq!(ObjectReference::NULL, get_next_reference(tail));
-            if self.rt == ReferenceType::Final {
-                DISCOVERED_LISTS.r#final[self.list_index]
-                    .head
-                    .store(head, Ordering::SeqCst);
-            } else {
+            if self.rt != ReferenceType::Final {
                 let old_head = unsafe { ((*crate::UPCALLS).swap_reference_pending_list)(head) };
                 set_next_reference::<COMPRESSED>(tail, old_head);
+            } else {
+                DISCOVERED_LISTS.r#final[self.list_index]
+                    .head
+                    .store(head, Ordering::SeqCst)
             }
         } else {
             if self.rt == ReferenceType::Final {
@@ -342,7 +358,7 @@ impl<E: ProcessEdgesWork<VM = OpenJDK>, const COMPRESSED: bool> GCWork<OpenJDK>
             // debug_assert_eq!(ObjectReference::NULL, get_next_reference(tail));
             DISCOVERED_LISTS.r#final[self.list_index]
                 .head
-                .store(ObjectReference::NULL, Ordering::SeqCst);
+                .store(head, Ordering::SeqCst);
             let old_head = unsafe { ((*crate::UPCALLS).swap_reference_pending_list)(head) };
             set_next_reference::<COMPRESSED>(tail, old_head);
         }
