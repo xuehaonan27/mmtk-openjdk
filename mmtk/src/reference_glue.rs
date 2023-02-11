@@ -107,7 +107,7 @@ impl DiscoveredList {
                 )
                 .is_ok()
             {
-                self.head.store(reference, Ordering::Relaxed);
+                self.head.store(reference, Ordering::SeqCst);
             }
             debug_assert!(!get_next_reference::<COMPRESSED>(reference).is_null());
         }
@@ -141,6 +141,10 @@ impl DiscoveredLists {
 
     pub fn allow_discover(&self) -> bool {
         self.allow_discover.load(Ordering::SeqCst)
+    }
+
+    pub fn is_discovered<const COMPRESSED: bool>(&self, reference: ObjectReference) -> bool {
+        !get_next_reference::<COMPRESSED>(reference).is_null()
     }
 
     pub fn get_by_rt_and_index(&self, rt: ReferenceType, index: usize) -> &DiscoveredList {
@@ -259,7 +263,7 @@ impl<E: ProcessEdgesWork<VM = OpenJDK>, const COMPRESSED: bool> GCWork<OpenJDK>
         let mut trace = E::new(vec![], false, mmtk);
         trace.set_worker(worker);
         let retain = self.rt == ReferenceType::Soft && !mmtk.get_plan().is_emergency_collection();
-        let new_list = iterate_list::<_, COMPRESSED>(self.head, |reference| {
+        let new_list = iterate_list::<_, COMPRESSED>(self.head, true, |reference| {
             let reference = trace.trace_object(reference);
             let referent = get_referent::<COMPRESSED>(reference);
             if referent.is_null() {
@@ -318,7 +322,7 @@ impl<E: ProcessEdgesWork<VM = OpenJDK>, const COMPRESSED: bool> GCWork<OpenJDK>
     fn do_work(&mut self, worker: &mut GCWorker<OpenJDK>, mmtk: &'static MMTK<OpenJDK>) {
         let mut trace = E::new(vec![], false, mmtk);
         trace.set_worker(worker);
-        let new_list = iterate_list::<_, COMPRESSED>(self.head, |reference| {
+        let new_list = iterate_list::<_, COMPRESSED>(self.head, false, |reference| {
             let reference = trace.trace_object(reference);
             let referent = get_referent::<COMPRESSED>(reference);
             let forwarded = trace.trace_object(referent);
@@ -350,6 +354,7 @@ fn iterate_list<
     const COMPRESSED: bool,
 >(
     head: ObjectReference,
+    no_null: bool,
     mut visitor: F,
 ) -> Option<(ObjectReference, ObjectReference)> {
     let mut new_head: Option<ObjectReference> = None;
@@ -369,6 +374,14 @@ fn iterate_list<
         let next_ref = next_ref.get_forwarded_object().unwrap_or(next_ref);
         debug_assert!(next_ref.get_forwarded_object().is_none());
         // Reaches the end of the list?
+        if no_null {
+            debug_assert!(
+                !next_ref.is_null(),
+                "Invalid ref {:?} next={:?}",
+                reference,
+                next_ref
+            );
+        }
         let end_of_list = next_ref == reference || next_ref.is_null();
         // Process reference
         let result = visitor(reference);

@@ -215,6 +215,9 @@ impl InstanceRefKlass {
         {
             return false;
         }
+        if rt == ReferenceType::Final && DISCOVERED_LISTS.is_discovered::<COMPRESSED>(reference) {
+            return false;
+        }
         // Add to reference list
         DISCOVERED_LISTS
             .get(rt)
