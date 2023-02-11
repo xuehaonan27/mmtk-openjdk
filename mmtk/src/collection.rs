@@ -137,12 +137,4 @@ impl Collection<OpenJDK> for VMCollection {
     fn set_concurrent_marking_state(active: bool) {
         unsafe { crate::CONCURRENT_MARKING_ACTIVE = if active { 1 } else { 0 } }
     }
-
-    fn abandon_partial_discovery() {
-        if crate::use_compressed_oops() {
-            DISCOVERED_LISTS.abandon_partial_discovery::<true>()
-        } else {
-            DISCOVERED_LISTS.abandon_partial_discovery::<false>()
-        }
-    }
 }
