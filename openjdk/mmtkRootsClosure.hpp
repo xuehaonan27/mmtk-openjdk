@@ -56,6 +56,19 @@ public:
   virtual void do_oop(narrowOop* p) { do_oop_work(p, true);  }
 };
 
+class MMTkScanCLDClosure: public CLDClosure {
+ private:
+  OopClosure* _oop_closure;
+ protected:
+ public:
+  MMTkScanCLDClosure(OopClosure* c) : _oop_closure(c) { }
+  void do_cld(ClassLoaderData* cld) {
+    if (cld->has_modified_oops()) {
+      cld->oops_do(_oop_closure, false, /*clear_modified_oops*/true);
+    }
+  }
+};
+
 class MMTkScanObjectClosure : public BasicOopIterateClosure {
   void (*_trace)(void*);
   bool _follow_clds;

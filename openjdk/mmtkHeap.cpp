@@ -49,6 +49,7 @@
 #include "services/memTracker.hpp"
 #include "utilities/vmError.hpp"
 #include "mmtkParallelCleaning.hpp"
+#include "mmtkRootsClosure.hpp"
 /*
 needed support from rust
 heap capacity
@@ -433,6 +434,9 @@ void MMTkHeap::scan_class_loader_data_graph_roots(OopClosure& cl, OopClosure& we
   CLDToOopClosure cld_cl(&cl, false);
   CLDToOopClosure weak_cld_cl(&weak_cl, false);
   ClassLoaderDataGraph::roots_cld_do(&cld_cl, ClassUnloading && !scan_weak ? NULL : &weak_cld_cl);
+  // Scan modified CLDs
+  MMTkScanCLDClosure cld_closure(&cl);
+  ClassLoaderDataGraph::cld_do(&cld_closure);
 }
 void MMTkHeap::scan_weak_processor_roots(OopClosure& cl) {
   ShouldNotReachHere();
