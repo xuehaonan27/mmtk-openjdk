@@ -4,6 +4,7 @@ use crate::EdgesClosure;
 use crate::NewBuffer;
 use crate::{OpenJDK, OpenJDKEdge, UPCALLS};
 use mmtk::scheduler::*;
+use mmtk::util::ObjectReference;
 use mmtk::vm::RootsWorkFactory;
 use mmtk::MMTK;
 
@@ -127,5 +128,56 @@ impl<F: RootsWorkFactory<OpenJDKEdge>> GCWork<OpenJDK> for ScanCodeCacheRoots<F>
         // unsafe {
         //     ((*UPCALLS).scan_code_cache_roots)(create_process_edges_work::<E> as _);
         // }
+    }
+}
+
+extern "C" fn report_edges_and_renew_buffer_weakref<F: RootsWorkFactory<OpenJDKEdge>>(
+    ptr: *mut Address,
+    length: usize,
+    capacity: usize,
+    factory_ptr: *mut libc::c_void,
+) -> NewBuffer {
+    if !ptr.is_null() {
+        let buf = unsafe {
+            Vec::<ObjectReference>::from_raw_parts(ptr as *mut ObjectReference, length, capacity)
+        };
+        let factory: &mut F = unsafe { &mut *(factory_ptr as *mut F) };
+        // println!("weakref nodes {:?}", buf);
+        factory.create_process_node_roots_work(buf);
+    }
+    let (ptr, _, capacity) = {
+        // TODO: Use Vec::into_raw_parts() when the method is available.
+        use std::mem::ManuallyDrop;
+        let new_vec = Vec::with_capacity(F::BUFFER_SIZE);
+        let mut me = ManuallyDrop::new(new_vec);
+        (me.as_mut_ptr(), me.len(), me.capacity())
+    };
+    NewBuffer { ptr, capacity }
+}
+
+fn to_edges_closure_weakref<F: RootsWorkFactory<OpenJDKEdge>>(factory: &mut F) -> EdgesClosure {
+    EdgesClosure {
+        func: report_edges_and_renew_buffer_weakref::<F>,
+        data: factory as *mut F as *mut libc::c_void,
+    }
+}
+
+pub struct ScaWeakProcessorRoots<F: RootsWorkFactory<OpenJDKEdge>> {
+    factory: F,
+}
+
+impl<F: RootsWorkFactory<OpenJDKEdge>> ScaWeakProcessorRoots<F> {
+    pub fn new(factory: F) -> Self {
+        Self { factory }
+    }
+}
+
+impl<F: RootsWorkFactory<OpenJDKEdge>> GCWork<OpenJDK> for ScaWeakProcessorRoots<F> {
+    fn do_work(&mut self, _worker: &mut GCWorker<OpenJDK>, _mmtk: &'static MMTK<OpenJDK>) {
+        unsafe {
+            ((*UPCALLS).scan_weak_processor_roots)(to_edges_closure_weakref::<_>(
+                &mut self.factory,
+            ));
+        }
     }
 }

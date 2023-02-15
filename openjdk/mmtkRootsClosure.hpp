@@ -56,6 +56,51 @@ public:
   virtual void do_oop(narrowOop* p) { do_oop_work(p, true);  }
 };
 
+class MMTkCollectRootObjects : public OopClosure {
+  EdgesClosure _edges_closure;
+  void** _buffer;
+  size_t _cap;
+  size_t _cursor;
+
+  template <class T>
+  void do_oop_work(T* p, bool narrow) {
+    T heap_oop = RawAccess<>::oop_load(p);
+    if (!CompressedOops::is_null(heap_oop)) {
+      _buffer[_cursor++] = (void*) CompressedOops::decode(heap_oop);
+      if (_cursor >= _cap) {
+        flush();
+      }
+    }
+  }
+
+  void flush() {
+    if (_cursor > 0) {
+      NewBuffer buf = _edges_closure.invoke(_buffer, _cursor, _cap);
+      _buffer = buf.buf;
+      _cap = buf.cap;
+      _cursor = 0;
+    }
+  }
+
+public:
+
+  MMTkCollectRootObjects(EdgesClosure edges_closure): _edges_closure(edges_closure), _cursor(0) {
+    NewBuffer buf = edges_closure.invoke(NULL, 0, 0);
+    _buffer = buf.buf;
+    _cap = buf.cap;
+  }
+
+  ~MMTkCollectRootObjects() {
+    if (_cursor > 0) flush();
+    if (_buffer != NULL) {
+      release_buffer(_buffer, _cursor, _cap);
+    }
+  }
+
+  virtual void do_oop(oop* p)       { do_oop_work(p, false); }
+  virtual void do_oop(narrowOop* p) { do_oop_work(p, true);  }
+};
+
 class MMTkScanCLDClosure: public CLDClosure {
  private:
   OopClosure* _oop_closure;

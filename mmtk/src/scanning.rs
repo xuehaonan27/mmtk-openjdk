@@ -101,6 +101,7 @@ impl Scanning<OpenJDK> for VMScanning {
                 Box::new(ScanCodeCacheRoots::new(factory.clone())) as _,
                 Box::new(ScanStringTableRoots::new(factory.clone())) as _,
                 Box::new(ScanClassLoaderDataGraphRoots::new(factory.clone())) as _,
+                Box::new(ScaWeakProcessorRoots::new(factory.clone())) as _,
             ],
         );
         if !(Self::SCAN_MUTATORS_IN_SAFEPOINT && Self::SINGLE_THREAD_MUTATOR_SCANNING) {

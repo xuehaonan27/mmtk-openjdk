@@ -439,7 +439,8 @@ void MMTkHeap::scan_class_loader_data_graph_roots(OopClosure& cl, OopClosure& we
   ClassLoaderDataGraph::cld_do(&cld_closure);
 }
 void MMTkHeap::scan_weak_processor_roots(OopClosure& cl) {
-  ShouldNotReachHere();
+  ResourceMark rm;
+  WeakProcessor::oops_do(&cl);
 }
 void MMTkHeap::scan_vm_thread_roots(OopClosure& cl) {
   ResourceMark rm;

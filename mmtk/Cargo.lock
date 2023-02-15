@@ -305,12 +305,9 @@ checksum = "d2fabcfbdc87f4758337ca535fb41a6d701b65693ce38287d856d1674551ec9b"
 
 [[package]]
 name = "heck"
-version = "0.3.3"
+version = "0.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6d621efb26863f0e9924c6ac577e8275e5e6b77455db64ffa6c65c904e9e132c"
-dependencies = [
- "unicode-segmentation",
-]
+checksum = "95505c38b4572b2d910cecb0281560f54b440a19336cbbcb27bf6ce6adc6f5a8"
 
 [[package]]
 name = "hermit-abi"
@@ -453,7 +450,7 @@ dependencies = [
 [[package]]
 name = "mmtk"
 version = "0.16.0"
-source = "git+https://github.com/wenyuzhao/mmtk-core.git?rev=aaef4f8db0e278e10de394292558c5e6e408545b#aaef4f8db0e278e10de394292558c5e6e408545b"
+source = "git+https://github.com/wenyuzhao/mmtk-core.git?rev=e34dce39a4afaa057d8a28be4b708d66def60d04#e34dce39a4afaa057d8a28be4b708d66def60d04"
 dependencies = [
  "atomic",
  "atomic-traits",
@@ -480,7 +477,7 @@ dependencies = [
 [[package]]
 name = "mmtk-macros"
 version = "0.16.0"
-source = "git+https://github.com/wenyuzhao/mmtk-core.git?rev=aaef4f8db0e278e10de394292558c5e6e408545b#aaef4f8db0e278e10de394292558c5e6e408545b"
+source = "git+https://github.com/wenyuzhao/mmtk-core.git?rev=e34dce39a4afaa057d8a28be4b708d66def60d04#e34dce39a4afaa057d8a28be4b708d66def60d04"
 dependencies = [
  "proc-macro-error",
  "proc-macro2",
@@ -749,15 +746,15 @@ checksum = "8ea5119cdb4c55b55d432abb513a0429384878c15dde60cc77b1c99de1a95a6a"
 
 [[package]]
 name = "strum"
-version = "0.23.0"
+version = "0.24.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cae14b91c7d11c9a851d3fbc80a963198998c2a64eec840477fa92d8ce9b70bb"
+checksum = "063e6045c0e62079840579a7e47a355ae92f60eb74daaf156fb1e84ba164e63f"
 
 [[package]]
 name = "strum_macros"
-version = "0.23.1"
+version = "0.24.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5bb0dc7ee9c15cea6199cde9a127fa16a4c5819af85395457ad72d68edc85a38"
+checksum = "1e385be0d24f186b4ce2f9982191e7101bb737312ad61c1f2f984f34bcf85d59"
 dependencies = [
  "heck",
  "proc-macro2",
@@ -865,12 +862,6 @@ checksum = "5c5713f0fc4b5db668a2ac63cdb7bb4469d8c9fed047b1d0292cc7b0ce2ba921"
 dependencies = [
  "tinyvec",
 ]
-
-[[package]]
-name = "unicode-segmentation"
-version = "1.10.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0fdbf052a0783de01e944a6ce7a8cb939e295b1e7be835a1112c3b9a7f047a5a"
 
 [[package]]
 name = "unicode-width"

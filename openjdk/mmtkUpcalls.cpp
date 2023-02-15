@@ -180,11 +180,7 @@ static void mmtk_update_weak_processor(bool lxr) {
   MMTkForwardClosure forward;
   if (lxr) {
     MMTkLXRFastIsAliveClosure is_alive;
-    MMTkLXRFastUpdateClosure fast_update;
-    JNIHandles::weak_global_handles()->weak_oops_do(&fast_update);
-    JvmtiExport::weak_oops_do(&is_alive, &forward);
-    SystemDictionary::vm_weak_oop_storage()->weak_oops_do(&fast_update);
-    JFR_ONLY(Jfr::weak_oops_do(&is_alive, &forward);)
+    WeakProcessor::weak_oops_do(&is_alive, &forward);
   } else {
     MMTkIsAliveClosure is_alive;
     WeakProcessor::weak_oops_do(&is_alive, &forward);
@@ -457,7 +453,7 @@ static void mmtk_scan_class_loader_data_graph_roots(EdgesClosure closure, EdgesC
   MMTkRootsClosure2 weak_cl(weak_closure);
   MMTkHeap::heap()->scan_class_loader_data_graph_roots(cl, weak_cl, scan_weak);
 }
-static void mmtk_scan_weak_processor_roots(EdgesClosure closure) { MMTkRootsClosure2 cl(closure); MMTkHeap::heap()->scan_weak_processor_roots(cl); }
+static void mmtk_scan_weak_processor_roots(EdgesClosure closure) { MMTkCollectRootObjects cl(closure); MMTkHeap::heap()->scan_weak_processor_roots(cl); }
 static void mmtk_scan_vm_thread_roots(EdgesClosure closure) { MMTkRootsClosure2 cl(closure); MMTkHeap::heap()->scan_vm_thread_roots(cl); }
 
 static size_t mmtk_number_of_mutators() {
