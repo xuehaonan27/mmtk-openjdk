@@ -295,7 +295,8 @@ impl Edge for OpenJDKEdge {
                 let new_value = compress(new_object);
                 let slot = self.untagged_address();
                 unsafe {
-                    match slot.compare_exchange::<AtomicU32>(old_value, new_value, success, failure) {
+                    match slot.compare_exchange::<AtomicU32>(old_value, new_value, success, failure)
+                    {
                         Ok(v) => Ok(decompress(v)),
                         Err(v) => Err(decompress(v)),
                     }
