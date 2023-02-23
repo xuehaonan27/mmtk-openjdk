@@ -290,13 +290,28 @@ impl Edge for OpenJDKEdge {
         failure: Ordering,
     ) -> Result<ObjectReference, ObjectReference> {
         if COMPRESSED {
-            let old_value = compress(old_object);
-            let new_value = compress(new_object);
-            let slot = self.untagged_address();
-            unsafe {
-                match slot.compare_exchange::<AtomicU32>(old_value, new_value, success, failure) {
-                    Ok(v) => Ok(decompress(v)),
-                    Err(v) => Err(decompress(v)),
+            if self.is_compressed() {
+                let old_value = compress(old_object);
+                let new_value = compress(new_object);
+                let slot = self.untagged_address();
+                unsafe {
+                    match slot.compare_exchange::<AtomicU32>(old_value, new_value, success, failure) {
+                        Ok(v) => Ok(decompress(v)),
+                        Err(v) => Err(decompress(v)),
+                    }
+                }
+            } else {
+                let slot = self.untagged_address();
+                unsafe {
+                    match slot.compare_exchange::<AtomicUsize>(
+                        old_object.to_address::<OpenJDK>().as_usize(),
+                        new_object.to_address::<OpenJDK>().as_usize(),
+                        success,
+                        failure,
+                    ) {
+                        Ok(v) => Ok(ObjectReference::from_raw_address(Address::from_usize(v))),
+                        Err(v) => Err(ObjectReference::from_raw_address(Address::from_usize(v))),
+                    }
                 }
             }
         } else {
@@ -316,6 +331,10 @@ impl Edge for OpenJDKEdge {
 
     fn to_address(&self) -> Address {
         self.untagged_address()
+    }
+
+    fn raw_address(&self) -> Address {
+        self.0
     }
 
     fn from_address(a: Address) -> Self {
