@@ -327,7 +327,8 @@ static void reference_load_barrier(GraphKit* kit, Node* slot, Node* val, bool em
   __ if_then(cm_flag, BoolTest::ne, zero, unlikely); {
     // No slow-call if dst is NULL
     __ if_then(val, BoolTest::ne, kit->null()); {
-      insert_write_barrier_common(ideal, val, slot, val);
+      const TypeFunc* tf = __ func_type(TypeOopPtr::BOTTOM);
+      Node* x = __ make_leaf_call(tf, FN_ADDR(MMTkBarrierSetRuntime::load_reference_call), "mmtk_barrier_call", val);
     } __ end_if();
   } __ end_if();
   kit->sync_kit(ideal);
@@ -451,14 +452,14 @@ Node* MMTkFieldBarrierSetC2::load_at_resolved(C2Access& access, const Type* val_
 }
 
 void MMTkFieldBarrierSetC2::clone(GraphKit* kit, Node* src, Node* dst, Node* size, bool is_array) const {
-  if (!is_array && dst != kit->just_allocated_object(kit->control())) {
+  // if (!is_array && dst != kit->just_allocated_object(kit->control())) {
     MMTkIdealKit ideal(kit);
     const TypeFunc* tf = __ func_type(TypeOopPtr::BOTTOM);
     Node* x = __ make_leaf_call(tf, FN_ADDR(MMTkBarrierSetRuntime::object_reference_clone_pre_call), "mmtk_barrier_call", dst);
     kit->sync_kit(ideal);
     kit->insert_mem_bar(Op_MemBarVolatile);
     kit->final_sync(ideal);
-  }
+  // }
   BarrierSetC2::clone(kit, src, dst, size, is_array);
 }
 
