@@ -54,7 +54,10 @@ protected:
   virtual void object_reference_write_post(GraphKit* kit, Node* src, Node* slot, Node* val) const {}
 
   virtual Node* store_at_resolved(C2Access& access, C2AccessValue& val) const {
-    if (access.is_oop()) object_reference_write_pre(access.kit(), access.base(), access.addr().node(), val.node());
+    DecoratorSet decorators = access.decorators();
+    bool anonymous = (decorators & ON_UNKNOWN_OOP_REF) != 0;
+    bool in_heap = (decorators & IN_HEAP) != 0;
+    if (access.is_oop() && (in_heap || anonymous)) object_reference_write_pre(access.kit(), access.base(), access.addr().node(), val.node());
     Node* store = BarrierSetC2::store_at_resolved(access, val);
     if (access.is_oop()) object_reference_write_post(access.kit(), access.base(), access.addr().node(), val.node());
     return store;
