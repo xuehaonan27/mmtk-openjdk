@@ -111,8 +111,8 @@ void MMTkFieldBarrierSetAssembler::object_reference_write_pre(MacroAssembler* ma
 }
 
 void MMTkFieldBarrierSetAssembler::arraycopy_prologue(MacroAssembler* masm, DecoratorSet decorators, BasicType type, Register src, Register dst, Register count) {
-  const bool dest_uninitialized = (decorators & IS_DEST_UNINITIALIZED) != 0;
-  if ((type == T_OBJECT || type == T_ARRAY) && !dest_uninitialized) {
+  // const bool dest_uninitialized = (decorators & IS_DEST_UNINITIALIZED) != 0;
+  if ((type == T_OBJECT || type == T_ARRAY)/* && !dest_uninitialized */) {
     // Label slow, done;
     // // Bailout if count is zero
     // __ cmpptr(count, 0);
