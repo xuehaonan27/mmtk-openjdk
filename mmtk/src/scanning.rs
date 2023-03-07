@@ -52,6 +52,20 @@ impl Scanning<OpenJDK> for VMScanning {
         crate::object_scanning::scan_object::<EV, COMPRESSED>(object, edge_visitor, tls);
     }
 
+    fn scan_object_with_klass<EV: EdgeVisitor<OpenJDKEdge>, const COMPRESSED: bool>(
+        tls: VMWorkerThread,
+        object: ObjectReference,
+        edge_visitor: &mut EV,
+        klass: Address,
+    ) {
+        crate::object_scanning::scan_object_with_klass::<EV, COMPRESSED>(
+            object,
+            edge_visitor,
+            tls,
+            klass,
+        );
+    }
+
     fn obj_array_data<const COMPRESSED: bool>(o: ObjectReference) -> crate::OpenJDKEdgeRange {
         crate::object_scanning::obj_array_data::<COMPRESSED>(unsafe { std::mem::transmute(o) })
     }

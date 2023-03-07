@@ -1,14 +1,14 @@
-use crate::reference_glue::DISCOVERED_LISTS;
-use crate::SINGLETON;
-
 use super::abi::*;
 use super::{OpenJDKEdge, UPCALLS};
+use crate::reference_glue::DISCOVERED_LISTS;
+use crate::SINGLETON;
 use mmtk::util::opaque_pointer::*;
 use mmtk::util::{Address, ObjectReference};
 use mmtk::vm::edge_shape::Edge;
 use mmtk::vm::EdgeVisitor;
 use std::cell::UnsafeCell;
 use std::{mem, slice};
+
 trait OopIterate: Sized {
     fn oop_iterate<V: EdgeVisitor<OpenJDKEdge>, const COMPRESSED: bool>(
         &self,
@@ -240,9 +240,18 @@ fn oop_iterate_slow<V: EdgeVisitor<OpenJDKEdge>>(oop: Oop, closure: &mut V, tls:
     }
 }
 
-fn oop_iterate<V: EdgeVisitor<OpenJDKEdge>, const COMPRESSED: bool>(oop: Oop, closure: &mut V) {
-    let klass_id = oop.klass::<COMPRESSED>().id;
-    debug_assert!(
+fn oop_iterate<V: EdgeVisitor<OpenJDKEdge>, const COMPRESSED: bool>(
+    oop: Oop,
+    closure: &mut V,
+    klass: Option<Address>,
+) {
+    let klass = if let Some(klass) = klass {
+        unsafe { &*(klass.as_usize() as *const Klass) }
+    } else {
+        oop.klass::<COMPRESSED>()
+    };
+    let klass_id = klass.id;
+    assert!(
         klass_id as i32 >= 0 && (klass_id as i32) < 6,
         "Invalid klass-id: {:x} for oop: {:x}",
         klass_id as i32,
@@ -250,32 +259,31 @@ fn oop_iterate<V: EdgeVisitor<OpenJDKEdge>, const COMPRESSED: bool>(oop: Oop, cl
     );
     match klass_id {
         KlassID::Instance => {
-            let instance_klass = unsafe { oop.klass::<COMPRESSED>().cast::<InstanceKlass>() };
+            let instance_klass = unsafe { klass.cast::<InstanceKlass>() };
             instance_klass.oop_iterate::<V, COMPRESSED>(oop, closure);
         }
         KlassID::InstanceClassLoader => {
-            let instance_klass =
-                unsafe { oop.klass::<COMPRESSED>().cast::<InstanceClassLoaderKlass>() };
+            let instance_klass = unsafe { klass.cast::<InstanceClassLoaderKlass>() };
             instance_klass.oop_iterate::<V, COMPRESSED>(oop, closure);
         }
         KlassID::InstanceMirror => {
-            let instance_klass = unsafe { oop.klass::<COMPRESSED>().cast::<InstanceMirrorKlass>() };
+            let instance_klass = unsafe { klass.cast::<InstanceMirrorKlass>() };
             instance_klass.oop_iterate::<V, COMPRESSED>(oop, closure);
         }
         KlassID::ObjArray => {
-            let array_klass = unsafe { oop.klass::<COMPRESSED>().cast::<ObjArrayKlass>() };
+            let array_klass = unsafe { klass.cast::<ObjArrayKlass>() };
             array_klass.oop_iterate::<V, COMPRESSED>(oop, closure);
         }
-        // KlassID::TypeArray => {
-        //     let array_klass = unsafe { oop.klass::<COMPRESSED>().cast::<TypeArrayKlass>() };
-        //     array_klass.oop_iterate::<C, COMPRESSED>(oop, closure);
-        // }
+        KlassID::TypeArray => {
+            //     let array_klass = unsafe { oop.klass::<COMPRESSED>().cast::<TypeArrayKlass>() };
+            //     array_klass.oop_iterate::<C, COMPRESSED>(oop, closure);
+        }
         KlassID::InstanceRef => {
-            let instance_klass = unsafe { oop.klass::<COMPRESSED>().cast::<InstanceRefKlass>() };
+            let instance_klass = unsafe { klass.cast::<InstanceRefKlass>() };
             instance_klass.oop_iterate::<V, COMPRESSED>(oop, closure);
         }
-        // _ => oop_iterate_slow(oop, closure, OpaquePointer::UNINITIALIZED),
-        _ => {}
+        #[allow(unreachable_patterns)]
+        _ => unreachable!(), // _ => oop_iterate_slow(oop, closure, OpaquePointer::UNINITIALIZED),
     }
 }
 
@@ -326,5 +334,14 @@ pub fn scan_object<C: EdgeVisitor<OpenJDKEdge>, const COMPRESSED: bool>(
     closure: &mut C,
     _tls: VMWorkerThread,
 ) {
-    unsafe { oop_iterate::<C, COMPRESSED>(mem::transmute(object), closure) }
+    unsafe { oop_iterate::<C, COMPRESSED>(mem::transmute(object), closure, None) }
+}
+
+pub fn scan_object_with_klass<C: EdgeVisitor<OpenJDKEdge>, const COMPRESSED: bool>(
+    object: ObjectReference,
+    closure: &mut C,
+    _tls: VMWorkerThread,
+    klass: Address,
+) {
+    unsafe { oop_iterate::<C, COMPRESSED>(mem::transmute(object), closure, Some(klass)) }
 }
