@@ -135,30 +135,30 @@ bool MMTkBarrierSet::is_slow_path_call(address call) {
   return runtime()->is_slow_path_call(call);
 }
 
-void MMTkBarrierSetRuntime::object_reference_write_pre_call(void* src, void* slot, void* target) {
+JRT_LEAF(void, MMTkBarrierSetRuntime::object_reference_write_pre_call(void* src, void* slot, void* target))
   ::mmtk_object_reference_write_pre((MMTk_Mutator) &Thread::current()->third_party_heap_mutator, src, slot, target);
-}
+JRT_END
 
-void MMTkBarrierSetRuntime::object_reference_write_post_call(void* src, void* slot, void* target) {
+JRT_LEAF(void, MMTkBarrierSetRuntime::object_reference_write_post_call(void* src, void* slot, void* target))
   ::mmtk_object_reference_write_post((MMTk_Mutator) &Thread::current()->third_party_heap_mutator, src, slot, target);
-}
+JRT_END
 
-void MMTkBarrierSetRuntime::object_reference_write_slow_call(void* src, void* slot, void* target) {
+JRT_LEAF(void, MMTkBarrierSetRuntime::object_reference_write_slow_call(void* src, void* slot, void* target))
   ::mmtk_object_reference_write_slow((MMTk_Mutator) &Thread::current()->third_party_heap_mutator, src, slot, target);
-}
+JRT_END
 
-void MMTkBarrierSetRuntime::object_reference_array_copy_pre_call(void* src, void* dst, size_t count) {
+JRT_LEAF(void, MMTkBarrierSetRuntime::object_reference_array_copy_pre_call(void* src, void* dst, size_t count))
   ::mmtk_array_copy_pre((MMTk_Mutator) &Thread::current()->third_party_heap_mutator, src, dst, count);
-}
+JRT_END
 
-void MMTkBarrierSetRuntime::object_reference_array_copy_post_call(void* src, void* dst, size_t count) {
+JRT_LEAF(void, MMTkBarrierSetRuntime::object_reference_array_copy_post_call(void* src, void* dst, size_t count))
   ::mmtk_array_copy_post((MMTk_Mutator) &Thread::current()->third_party_heap_mutator, src, dst, count);
-}
+JRT_END
 
-void MMTkBarrierSetRuntime::load_reference_call(void* ref) {
+JRT_LEAF(void, MMTkBarrierSetRuntime::load_reference_call(void* ref))
   ::mmtk_load_reference((MMTk_Mutator) &Thread::current()->third_party_heap_mutator, ref);
-}
+JRT_END
 
-void MMTkBarrierSetRuntime::object_reference_clone_pre_call(void* ref) {
+JRT_LEAF(void, MMTkBarrierSetRuntime::object_reference_clone_pre_call(void* ref))
   ::mmtk_object_reference_clone_pre((MMTk_Mutator) &Thread::current()->third_party_heap_mutator, ref);
-}
+JRT_END
