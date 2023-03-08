@@ -78,7 +78,7 @@ public:
   virtual jint initialize() override;
   virtual void enable_collection() override;
 
-  virtual HeapWord* mem_allocate(size_t size, bool* gc_overhead_limit_was_exceeded);
+  virtual HeapWord* mem_allocate(size_t size, bool* gc_overhead_limit_was_exceeded) override;
   HeapWord* mem_allocate_nonmove(size_t size, bool* gc_overhead_limit_was_exceeded);
 
   MMTkVMCompanionThread* companion_thread() const {
@@ -159,14 +159,14 @@ public:
 
   virtual bool block_is_obj(const HeapWord* addr) const override;
 
-  virtual jlong millis_since_last_gc() ;
+  virtual jlong millis_since_last_gc() override;
 
-  virtual void prepare_for_verify() ;
+  virtual void prepare_for_verify() override;
 
 
 private:
 
-  virtual void initialize_serviceability() ;
+  virtual void initialize_serviceability() override;
 
 public:
 
