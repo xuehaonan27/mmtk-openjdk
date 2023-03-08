@@ -32,7 +32,7 @@ void MMTkFieldBarrierSetRuntime::object_reference_write_pre(oop src, oop* slot, 
 }
 
 void MMTkFieldBarrierSetRuntime::on_slowpath_allocation_exit(oop new_obj) const {
-  if (mmtk_get_rc(new_obj) != 0) {
+  if (mmtk_get_rc((void*) new_obj) != 0) {
     object_reference_clone_pre_call((void*) new_obj);
   }
 }
