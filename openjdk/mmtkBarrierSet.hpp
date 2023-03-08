@@ -97,7 +97,12 @@ public:
   virtual void object_reference_array_copy_post(oop* src, oop* dst, size_t count) const {};
   /// java.lang.Reference load barrier
   virtual void load_reference(DecoratorSet decorators, oop value) const {};
+  /// Object clone pre-barrier
   virtual void clone_pre(DecoratorSet decorators, oop value) const {};
+  /// Called at the end of every C2 slowpath allocation.
+  /// Deoptimization can happen after C2 slowpath allocation, and the newly allocated object can be promoted.
+  /// So this callback is requierd for any generational collectors.
+  virtual void on_slowpath_allocation_exit(oop new_obj) const {};
 };
 
 class MMTkBarrierC1;
@@ -132,7 +137,7 @@ class MMTkBarrierSet : public BarrierSet {
   MMTkBarrierSetRuntime* _runtime;
 
 protected:
-  virtual void write_ref_array_work(MemRegion mr) ;
+  virtual void write_ref_array_work(MemRegion mr);
 
 public:
   MMTkBarrierSet(MemRegion whole_heap);
@@ -141,9 +146,12 @@ public:
     return ((MMTkBarrierSet*) BarrierSet::barrier_set())->_runtime;
   }
 
-  virtual void on_thread_destroy(Thread* thread);
-  virtual void on_thread_attach(JavaThread* thread);
-  virtual void on_thread_detach(JavaThread* thread);
+  virtual void on_slowpath_allocation_exit(JavaThread* thread, oop new_obj) override {
+    runtime()->on_slowpath_allocation_exit(new_obj);
+  }
+  virtual void on_thread_destroy(Thread* thread) override;
+  virtual void on_thread_attach(JavaThread* thread) override;
+  virtual void on_thread_detach(JavaThread* thread) override;
 
   // Inform the BarrierSet that the the covered heap region that starts
   // with "base" has been changed to have the given size (possibly from 0,
@@ -155,7 +163,7 @@ public:
   virtual bool is_aligned(HeapWord* addr);
 
   // Print a description of the memory for the barrier set
-  virtual void print_on(outputStream* st) const;
+  virtual void print_on(outputStream* st) const override;
 
 
   // The AccessBarrier of a BarrierSet subclass is called by the Access API

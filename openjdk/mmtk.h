@@ -20,6 +20,7 @@ typedef enum {
 
 extern const uintptr_t GLOBAL_SIDE_METADATA_VM_BASE_ADDRESS;
 extern const uintptr_t GLOBAL_SIDE_METADATA_VM_BASE_ADDRESS_COMPRESSED;
+extern const uintptr_t RC_TABLE_BASE_ADDRESS;
 extern const uintptr_t GLOBAL_ALLOC_BIT_ADDRESS;
 extern const int DISABLE_ALLOCATION_FAST_PATH;
 extern const uintptr_t IMMIX_ALLOCATOR_SIZE;
@@ -241,6 +242,13 @@ extern void add_phantom_candidate(void* ref, void* referent);
 
 extern void mmtk_harness_begin_impl();
 extern void mmtk_harness_end_impl();
+
+inline uint8_t mmtk_get_rc(oop o) {
+    const uintptr_t index = uintptr_t((void*) o) >> 4;
+    const uint8_t byte = *((uint8_t*) (RC_TABLE_BASE_ADDRESS + (index >> 2)));
+    auto v = byte >> ((index & 0b11) << 1);
+    return v & 0b11;
+}
 
 #ifdef __cplusplus
 }

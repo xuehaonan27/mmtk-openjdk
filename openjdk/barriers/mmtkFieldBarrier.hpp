@@ -27,6 +27,7 @@ public:
   virtual void clone_pre(DecoratorSet decorators, oop value) const override {
     object_reference_clone_pre_call((void*) value);
   };
+  virtual void on_slowpath_allocation_exit(oop new_obj) const override;
 };
 
 class MMTkFieldBarrierSetAssembler: public MMTkBarrierSetAssembler {

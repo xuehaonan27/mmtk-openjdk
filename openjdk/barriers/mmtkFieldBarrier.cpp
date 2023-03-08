@@ -31,6 +31,12 @@ void MMTkFieldBarrierSetRuntime::object_reference_write_pre(oop src, oop* slot, 
 #endif
 }
 
+void MMTkFieldBarrierSetRuntime::on_slowpath_allocation_exit(oop new_obj) const {
+  if (mmtk_get_rc(new_obj) != 0) {
+    object_reference_clone_pre_call((void*) new_obj);
+  }
+}
+
 #define __ masm->
 
 void MMTkFieldBarrierSetAssembler::load_at(MacroAssembler* masm, DecoratorSet decorators, BasicType type, Register dst, Address src, Register tmp1, Register tmp_thread) {
@@ -111,8 +117,7 @@ void MMTkFieldBarrierSetAssembler::object_reference_write_pre(MacroAssembler* ma
 }
 
 void MMTkFieldBarrierSetAssembler::arraycopy_prologue(MacroAssembler* masm, DecoratorSet decorators, BasicType type, Register src, Register dst, Register count) {
-  // const bool dest_uninitialized = (decorators & IS_DEST_UNINITIALIZED) != 0;
-  if ((type == T_OBJECT || type == T_ARRAY)/* && !dest_uninitialized */) {
+  if (type == T_OBJECT || type == T_ARRAY) {
     // Label slow, done;
     // // Bailout if count is zero
     // __ cmpptr(count, 0);
@@ -452,14 +457,6 @@ Node* MMTkFieldBarrierSetC2::load_at_resolved(C2Access& access, const Type* val_
 }
 
 void MMTkFieldBarrierSetC2::clone(GraphKit* kit, Node* src, Node* dst, Node* size, bool is_array) const {
-  if (dst != kit->just_allocated_object(kit->control())) {
-    MMTkIdealKit ideal(kit);
-    const TypeFunc* tf = __ func_type(TypeOopPtr::NOTNULL);
-    Node* x = __ make_leaf_call(tf, FN_ADDR(MMTkBarrierSetRuntime::object_reference_clone_pre_call), "mmtk_barrier_call", dst);
-    kit->sync_kit(ideal);
-    kit->insert_mem_bar(Op_MemBarVolatile);
-    kit->final_sync(ideal);
-  }
   BarrierSetC2::clone(kit, src, dst, size, is_array);
 }
 

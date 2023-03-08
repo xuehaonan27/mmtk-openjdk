@@ -147,6 +147,10 @@ pub static GLOBAL_SIDE_METADATA_VM_BASE_ADDRESS_COMPRESSED: uintptr_t =
         .as_usize();
 
 #[no_mangle]
+pub static RC_TABLE_BASE_ADDRESS: uintptr_t =
+    mmtk::util::rc::RC_TABLE.get_absolute_offset().as_usize();
+
+#[no_mangle]
 pub static GLOBAL_ALLOC_BIT_ADDRESS: uintptr_t =
     mmtk::util::metadata::side_metadata::ALLOC_SIDE_METADATA_ADDR.as_usize();
 
