@@ -25,7 +25,7 @@ public:
   }
   virtual void load_reference(DecoratorSet decorators, oop value) const override;
   virtual void clone_pre(DecoratorSet decorators, oop value) const override {
-    // object_reference_clone_pre_call((void*) value);
+    object_reference_clone_pre_call((void*) value);
   };
 };
 
@@ -54,7 +54,7 @@ protected:
   virtual void object_reference_write_pre(GraphKit* kit, Node* src, Node* slot, Node* val) const override;
 public:
   virtual bool array_copy_requires_gc_barriers(BasicType type) const override {
-    return false;
+    return true;
   }
   virtual Node* load_at_resolved(C2Access& access, const Type* val_type) const override;
   virtual void clone(GraphKit* kit, Node* src, Node* dst, Node* size, bool is_array) const override;
