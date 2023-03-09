@@ -21,11 +21,11 @@ public:
   // Interfaces called by `MMTkBarrierSet::AccessBarrier`
   virtual void object_reference_write_pre(oop src, oop* slot, oop target) const override;
   virtual void object_reference_array_copy_pre(oop* src, oop* dst, size_t count) const override {
-    object_reference_array_copy_pre_call((void*) src, (void*) dst, count);
+    ::mmtk_array_copy_pre((MMTk_Mutator) &Thread::current()->third_party_heap_mutator, (void*) src, (void*) dst, count);
   }
   virtual void load_reference(DecoratorSet decorators, oop value) const override;
   virtual void clone_pre(DecoratorSet decorators, oop value) const override {
-    object_reference_clone_pre_call((void*) value);
+    ::mmtk_object_reference_clone_pre((MMTk_Mutator) &Thread::current()->third_party_heap_mutator, (void*) value);
   };
   virtual void on_slowpath_allocation_exit(oop new_obj) const override;
 };

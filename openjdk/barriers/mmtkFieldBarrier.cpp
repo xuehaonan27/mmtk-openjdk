@@ -12,7 +12,8 @@ static inline intptr_t side_metadata_base_address() {
 
 void MMTkFieldBarrierSetRuntime::load_reference(DecoratorSet decorators, oop value) const {
 #if SOFT_REFERENCE_LOAD_BARRIER
-  if (CONCURRENT_MARKING_ACTIVE == 1 && value != NULL) load_reference_call((void*) value);
+  if (CONCURRENT_MARKING_ACTIVE == 1 && value != NULL)
+    ::mmtk_load_reference((MMTk_Mutator) &Thread::current()->third_party_heap_mutator, (void*) value);
 #endif
 };
 
@@ -23,17 +24,16 @@ void MMTkFieldBarrierSetRuntime::object_reference_write_pre(oop src, oop* slot, 
     intptr_t shift = (addr >> (UseCompressedOops ? 2 : 3)) & 0b111;
     uint8_t byte_val = *meta_addr;
     if (((byte_val >> shift) & 1) == kUnloggedValue) {
-      // MMTkObjectBarrierSetRuntime::object_reference_write_pre_slow()((void*) src);
-      object_reference_write_slow_call((void*) src, (void*) slot, (void*) target);
+      ::mmtk_object_reference_write_slow((MMTk_Mutator) &Thread::current()->third_party_heap_mutator, (void*) src, (void*) slot, (void*) target);
     }
 #else
-  object_reference_write_pre_call((void*) src, (void*) slot, (void*) target);
+    ::object_reference_write_pre_call((MMTk_Mutator) &Thread::current()->third_party_heap_mutator, (void*) src, (void*) slot, (void*) target);
 #endif
 }
 
 void MMTkFieldBarrierSetRuntime::on_slowpath_allocation_exit(oop new_obj) const {
   if (mmtk_get_rc((void*) new_obj) != 0) {
-    object_reference_clone_pre_call((void*) new_obj);
+    ::mmtk_object_reference_clone_pre((MMTk_Mutator) &Thread::current()->third_party_heap_mutator, (void*) new_obj);
   }
 }
 
