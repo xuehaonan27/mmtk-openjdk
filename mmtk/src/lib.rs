@@ -119,6 +119,7 @@ pub struct OpenJDK_Upcalls {
     pub compressed_klass_base: extern "C" fn() -> Address,
     pub compressed_klass_shift: extern "C" fn() -> usize,
     pub nmethod_fix_relocation: extern "C" fn(Address),
+    pub clear_claimed_marks: extern "C" fn(),
 }
 
 lazy_static! {

@@ -134,6 +134,12 @@ impl Collection<OpenJDK> for VMCollection {
         }
     }
 
+    fn clear_cld_claimed_marks() {
+        unsafe {
+            ((*UPCALLS).clear_claimed_marks)();
+        }
+    }
+
     fn set_concurrent_marking_state(active: bool) {
         unsafe { crate::CONCURRENT_MARKING_ACTIVE = if active { 1 } else { 0 } }
     }

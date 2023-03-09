@@ -430,13 +430,21 @@ void MMTkHeap::scan_code_cache_roots(OopClosure& cl) {
 void MMTkHeap::scan_string_table_roots(OopClosure& cl) {
   StringTable::oops_do(&cl);
 }
-void MMTkHeap::scan_class_loader_data_graph_roots(OopClosure& cl, OopClosure& weak_cl, bool scan_weak) {
-  CLDToOopClosure cld_cl(&cl, false);
-  CLDToOopClosure weak_cld_cl(&weak_cl, false);
-  ClassLoaderDataGraph::roots_cld_do(&cld_cl, ClassUnloading && !scan_weak ? NULL : &weak_cld_cl);
-  // Scan modified CLDs
-  MMTkScanCLDClosure cld_closure(&cl);
-  ClassLoaderDataGraph::cld_do(&cld_closure);
+void MMTkHeap::scan_class_loader_data_graph_roots(OopClosure& cl, OopClosure& weak_cl, bool scan_all_strong_roots) {
+  if (!ClassUnloading) {
+      CLDToOopClosure cld_cl(&cl, false);
+      CLDToOopClosure weak_cld_cl(&weak_cl, false);
+      ClassLoaderDataGraph::roots_cld_do(&cld_cl, &weak_cld_cl);
+  } else if (scan_all_strong_roots) {
+    // At the start of full heap trace, we want to scan all the strong CLD roots + all the modified CLDs.
+    MMTkScanCLDClosure</*MODIFIED_ONLY*/ false, /*WEAK*/ false> cld_cl(&cl);
+    MMTkScanCLDClosure</*MODIFIED_ONLY*/ false, /*WEAK*/ true> weak_cld_cl(&cl);
+    ClassLoaderDataGraph::roots_cld_do(&cld_cl, &weak_cld_cl);
+  } else {
+    // Normal RC pause: We simply apply increments to modified CLD roots. No decrements will be applied on these roots.
+    MMTkScanCLDClosure</*MODIFIED_ONLY*/ true, /*WEAK*/ false> cld_cl(&cl);
+    ClassLoaderDataGraph::cld_do(&cld_cl);
+  }
 }
 void MMTkHeap::scan_weak_processor_roots(OopClosure& cl) {
   ResourceMark rm;

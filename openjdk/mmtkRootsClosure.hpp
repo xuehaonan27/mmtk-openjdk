@@ -101,6 +101,7 @@ public:
   virtual void do_oop(narrowOop* p) { do_oop_work(p, true);  }
 };
 
+template <bool MODIFIED_ONLY, bool WEAK>
 class MMTkScanCLDClosure: public CLDClosure {
  private:
   OopClosure* _oop_closure;
@@ -108,8 +109,11 @@ class MMTkScanCLDClosure: public CLDClosure {
  public:
   MMTkScanCLDClosure(OopClosure* c) : _oop_closure(c) { }
   void do_cld(ClassLoaderData* cld) {
-    if (cld->has_modified_oops()) {
-      cld->oops_do(_oop_closure, false, /*clear_modified_oops*/true);
+    if (MODIFIED_ONLY) {
+      if (cld->has_modified_oops()) cld->oops_do(_oop_closure, false, /*clear_modified_oops*/true);
+    } else {
+      if (cld->has_modified_oops() || !WEAK)
+        cld->oops_do(_oop_closure, false, /*clear_modified_oops*/true);
     }
   }
 };

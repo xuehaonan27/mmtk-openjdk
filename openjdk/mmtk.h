@@ -209,6 +209,7 @@ typedef struct {
     void* (*compressed_klass_base)();
     size_t (*compressed_klass_shift)();
     void (*nmethod_fix_relocation)(void* nmethod);
+    void (*clear_claimed_marks)();
 } OpenJDK_Upcalls;
 
 extern void openjdk_gc_init(OpenJDK_Upcalls *calls);

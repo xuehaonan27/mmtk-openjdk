@@ -175,6 +175,10 @@ static void mmtk_stop_all_mutators(void *tls, bool scan_mutators_in_safepoint, M
   nmethod::oops_do_marking_prologue();
 }
 
+static void mmtk_clear_claimed_marks() {
+  ClassLoaderDataGraph::clear_claimed_marks();
+}
+
 static void mmtk_update_weak_processor(bool lxr) {
   HandleMark hm;
   MMTkForwardClosure forward;
@@ -448,10 +452,10 @@ static void mmtk_scan_aot_loader_roots(EdgesClosure closure) { MMTkRootsClosure2
 static void mmtk_scan_system_dictionary_roots(EdgesClosure closure) { MMTkRootsClosure2 cl(closure); MMTkHeap::heap()->scan_system_dictionary_roots(cl); }
 static void mmtk_scan_code_cache_roots(EdgesClosure closure) { MMTkRootsClosure2 cl(closure); MMTkHeap::heap()->scan_code_cache_roots(cl); }
 static void mmtk_scan_string_table_roots(EdgesClosure closure) { MMTkRootsClosure2 cl(closure); MMTkHeap::heap()->scan_string_table_roots(cl); }
-static void mmtk_scan_class_loader_data_graph_roots(EdgesClosure closure, EdgesClosure weak_closure, bool scan_weak) {
+static void mmtk_scan_class_loader_data_graph_roots(EdgesClosure closure, EdgesClosure weak_closure, bool scank_all_strong_roots) {
   MMTkRootsClosure2 cl(closure);
   MMTkRootsClosure2 weak_cl(weak_closure);
-  MMTkHeap::heap()->scan_class_loader_data_graph_roots(cl, weak_cl, scan_weak);
+  MMTkHeap::heap()->scan_class_loader_data_graph_roots(cl, weak_cl, scank_all_strong_roots);
 }
 static void mmtk_scan_weak_processor_roots(EdgesClosure closure) { MMTkCollectRootObjects cl(closure); MMTkHeap::heap()->scan_weak_processor_roots(cl); }
 static void mmtk_scan_vm_thread_roots(EdgesClosure closure) { MMTkRootsClosure2 cl(closure); MMTkHeap::heap()->scan_vm_thread_roots(cl); }
@@ -562,4 +566,5 @@ OpenJDK_Upcalls mmtk_upcalls = {
   mmtk_compressed_klass_base,
   mmtk_compressed_klass_shift,
   nmethod_fix_relocation,
+  mmtk_clear_claimed_marks,
 };

@@ -90,7 +90,7 @@ impl<F: RootsWorkFactory<OpenJDKEdge>> GCWork<OpenJDK> for ScanClassLoaderDataGr
                 to_edges_closure_cld::<F, false>(&mut self.factory),
                 to_edges_closure_cld::<F, true>(&mut self.factory),
                 mmtk.get_plan()
-                    .current_gc_should_scan_weak_classloader_roots(),
+                    .current_gc_should_scan_all_classloader_strong_roots(),
             );
         }
     }
