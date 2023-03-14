@@ -113,13 +113,13 @@ jint MMTkHeap::initialize() {
 
   _start = (HeapWord*) starting_heap_address();
   _end = (HeapWord*) last_heap_address();
-  if (mmtk_verbose() > 0) printf("MMTk Heap: start=%p, end=%p\n", _start, _end);
+  if (mmtk_verbose() > 0) fprintf(stderr, "MMTk Heap: start=%p, end=%p\n", _start, _end);
   if (mmtk_verbose() > 0)
-    printf("MMTk Compressed Pointers: %s\n", UseCompressedOops ? "enabled" : "disabled");
+    fprintf(stderr, "MMTk Compressed Pointers: %s\n", UseCompressedOops ? "enabled" : "disabled");
   if (UseCompressedOops) {
     Universe::set_narrow_oop_base((address) mmtk_narrow_oop_base());
     Universe::set_narrow_oop_shift(mmtk_narrow_oop_shift());
-    if (mmtk_verbose() > 0) printf("narrow_oop_mode: %s\n", Universe::narrow_oop_mode_to_string(Universe::narrow_oop_mode()));
+    if (mmtk_verbose() > 0) fprintf(stderr, "narrow_oop_mode: %s\n", Universe::narrow_oop_mode_to_string(Universe::narrow_oop_mode()));
   }
 
   initialize_reserved_region(_start, _end);
@@ -137,9 +137,9 @@ jint MMTkHeap::initialize() {
   }
   if (mmtk_verbose() > 0) {
     if (ClassUnloading) {
-      printf("ClassUnloading Enabled\n");
+      fprintf(stderr, "ClassUnloading Enabled\n");
     } else {
-      printf("ClassUnloading Disabled\n");
+      fprintf(stderr, "ClassUnloading Disabled\n");
     }
   }
 
