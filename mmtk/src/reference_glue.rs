@@ -389,10 +389,13 @@ fn iterate_list<
         debug_assert!(next_ref.get_forwarded_object().is_none());
         // Reaches the end of the list?
         let end_of_list = next_ref == reference || next_ref.is_null();
-        // Process reference
-        let result = visitor(reference);
         // Remove `reference` from current list
         set_next_reference::<COMPRESSED>(reference, ObjectReference::NULL);
+        if let Some(forwarded_ref) = reference.get_forwarded_object() {
+            set_next_reference::<COMPRESSED>(forwarded_ref, ObjectReference::NULL);
+        }
+        // Process reference
+        let result = visitor(reference);
         match result {
             DiscoveredListIterationResult::Remove => {}
             DiscoveredListIterationResult::Enqueue(reference) => {
