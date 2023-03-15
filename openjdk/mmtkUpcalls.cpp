@@ -98,7 +98,7 @@ class MMTkLXRFastIsAliveClosure : public BoolObjectClosure {
 public:
   static inline bool rc_live(oop o) {
     const uintptr_t index = uintptr_t((void*) o) >> 4;
-    const uint8_t byte = *((uint8_t*) (uintptr_t(0xe0004000000) + (index >> 2)));
+    const uint8_t byte = *((uint8_t*) (RC_TABLE_BASE_ADDRESS + (index >> 2)));
     const uint8_t byte_mask = 0b11 << ((index & 0b11) << 1);
     return (byte & byte_mask) != 0;
   }
