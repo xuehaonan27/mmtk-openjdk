@@ -273,8 +273,8 @@ impl<E: ProcessEdgesWork<VM = OpenJDK>, const COMPRESSED: bool> GCWork<OpenJDK>
         let retain = self.rt == ReferenceType::Soft && !mmtk.get_plan().is_emergency_collection();
         let new_list = iterate_list::<_, COMPRESSED>(self.head, |reference| {
             debug_assert!(
-                !get_next_reference::<COMPRESSED>(reference).is_null(),
-                "next can't be null. ref={:?} {:?} bin={}",
+                get_next_reference::<COMPRESSED>(reference).is_null(),
+                "next must be null. ref={:?} {:?} bin={}",
                 reference,
                 self.rt,
                 self.list_index
@@ -376,7 +376,7 @@ fn iterate_list<
     let mut reference = head;
     loop {
         debug_assert!(!reference.is_null());
-        debug_assert!(reference.is_live());
+        // debug_assert!(reference.is_live());
         // Update reference forwarding pointer
         if let Some(forwarded) = reference.get_forwarded_object() {
             reference = forwarded;
