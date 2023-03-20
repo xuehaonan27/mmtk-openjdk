@@ -196,13 +196,8 @@ static void mmtk_resume_mutators(void *tls, bool lxr, bool current_gc_should_unl
   if (ClassUnloading && current_gc_should_unload_classes) {
     // Unload classes and purge SystemDictionary.
     auto purged_classes = SystemDictionary::do_unloading(NULL, false /* Defer cleaning */);
-    if (lxr) {
-      MMTkLXRFastIsAliveClosure is_alive;
-      MMTkHeap::heap()->complete_cleaning(&is_alive, purged_classes);
-    } else {
-      MMTkIsAliveClosure is_alive;
-      MMTkHeap::heap()->complete_cleaning(&is_alive, purged_classes);
-    }
+    MMTkIsAliveClosure is_alive;
+    MMTkHeap::heap()->complete_cleaning(&is_alive, purged_classes);
     ClassLoaderDataGraph::purge();
     // Resize and verify metaspace
     MetaspaceGC::compute_new_size();
