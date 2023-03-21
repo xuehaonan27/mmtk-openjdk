@@ -155,6 +155,7 @@ static void mmtk_stop_all_mutators(void *tls, bool scan_mutators_in_safepoint, M
   log_debug(gc)("Requesting the VM to suspend all mutators...");
   MMTkHeap::heap()->companion_thread()->request(MMTkVMCompanionThread::_threads_suspended, true);
   log_debug(gc)("Mutators stopped. Now enumerate threads for scanning...");
+  MMTkHeap::heap()->set_is_gc_active(true);
 
   mmtk_report_gc_start();
   if (ClassUnloading && current_gc_should_unload_classes) {
@@ -214,7 +215,8 @@ static void mmtk_resume_mutators(void *tls, bool lxr, bool current_gc_should_unl
   // The increment has to be done before mutators can be resumed
   // otherwise, mutators might see a stale value
   Atomic::inc(&mmtk_start_the_world_count);
-
+  
+  MMTkHeap::heap()->set_is_gc_active(false);
   log_debug(gc)("Requesting the VM to resume all mutators...");
   MMTkHeap::heap()->companion_thread()->request(MMTkVMCompanionThread::_threads_resumed, true);
   log_debug(gc)("Mutators resumed. Now notify any mutators waiting for GC to finish...");

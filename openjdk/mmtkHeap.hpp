@@ -69,6 +69,10 @@ public:
 
   void schedule_finalizer();
 
+  void set_is_gc_active(bool is_gc_active) {
+    _is_gc_active = is_gc_active;
+  }
+
   inline static MMTkHeap* heap() {
     return _heap;
   }
