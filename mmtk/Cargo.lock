@@ -449,8 +449,8 @@ dependencies = [
 
 [[package]]
 name = "mmtk"
-version = "0.16.0"
-source = "git+https://github.com/wenyuzhao/mmtk-core.git?rev=b3377359852489b2c021670c3c4ca04bf68740d6#b3377359852489b2c021670c3c4ca04bf68740d6"
+version = "0.17.0"
+source = "git+https://github.com/wenyuzhao/mmtk-core.git?rev=740ad64ed297e91586c4eb739f0a21a9a60506ec#740ad64ed297e91586c4eb739f0a21a9a60506ec"
 dependencies = [
  "atomic",
  "atomic-traits",
@@ -469,15 +469,17 @@ dependencies = [
  "num-traits",
  "num_cpus",
  "pfm",
+ "regex",
  "spin",
  "strum",
  "strum_macros",
+ "sys-info",
 ]
 
 [[package]]
 name = "mmtk-macros"
-version = "0.16.0"
-source = "git+https://github.com/wenyuzhao/mmtk-core.git?rev=b3377359852489b2c021670c3c4ca04bf68740d6#b3377359852489b2c021670c3c4ca04bf68740d6"
+version = "0.17.0"
+source = "git+https://github.com/wenyuzhao/mmtk-core.git?rev=740ad64ed297e91586c4eb739f0a21a9a60506ec#740ad64ed297e91586c4eb739f0a21a9a60506ec"
 dependencies = [
  "proc-macro-error",
  "proc-macro2",
@@ -487,7 +489,7 @@ dependencies = [
 
 [[package]]
 name = "mmtk_openjdk"
-version = "0.16.0"
+version = "0.17.0"
 dependencies = [
  "atomic",
  "built",
@@ -772,6 +774,16 @@ dependencies = [
  "proc-macro2",
  "quote",
  "unicode-ident",
+]
+
+[[package]]
+name = "sys-info"
+version = "0.9.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0b3a0d0aba8bf96a0e1ddfdc352fc53b3df7f39318c71854910c3c4b024ae52c"
+dependencies = [
+ "cc",
+ "libc",
 ]
 
 [[package]]
