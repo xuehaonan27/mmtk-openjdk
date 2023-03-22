@@ -65,8 +65,14 @@ object iterator??!!
 
 MMTkHeap* MMTkHeap::_heap = NULL;
 
-MMTkHeap::MMTkHeap(MMTkCollectorPolicy* policy) : CollectedHeap(), _last_gc_time(0), _collector_policy(policy),  _num_root_scan_tasks(0), _n_workers(0), _gc_lock(new Monitor(Mutex::safepoint, "MMTkHeap::_gc_lock", true, Monitor::_safepoint_check_sometimes))
-// , _par_state_string(StringTable::weak_storage())
+MMTkHeap::MMTkHeap(MMTkCollectorPolicy* policy) :
+  CollectedHeap(),
+  _last_gc_time(0),
+  _collector_policy(policy),
+  _num_root_scan_tasks(0),
+  _n_workers(0),
+  _gc_lock(new Monitor(Mutex::safepoint, "MMTkHeap::_gc_lock", true, Monitor::_safepoint_check_sometimes)),
+  _soft_ref_policy()
 {
   _heap = this;
 }
@@ -289,7 +295,7 @@ void MMTkHeap::collect_as_vm_thread(GCCause::Cause cause) {
 // Return the CollectorPolicy for the heap
 CollectorPolicy* MMTkHeap::collector_policy() const {return _collector_policy;}//OK
 
-SoftRefPolicy* MMTkHeap::soft_ref_policy() {return _soft_ref_policy;}//OK
+SoftRefPolicy* MMTkHeap::soft_ref_policy() {return &_soft_ref_policy;}//OK
 
 GrowableArray<GCMemoryManager*> MMTkHeap::memory_managers() {//may cause error
 
