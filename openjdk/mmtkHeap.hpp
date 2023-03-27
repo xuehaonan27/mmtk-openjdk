@@ -42,6 +42,8 @@
 #include "utilities/growableArray.hpp"
 #include "utilities/ostream.hpp"
 
+#define WORKER_STACK_SIZE (64 * 1024 * 1024)
+
 class GCMemoryManager;
 class MemoryPool;
 //class mmtkGCTaskManager;
