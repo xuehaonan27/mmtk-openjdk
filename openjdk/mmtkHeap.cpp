@@ -267,20 +267,17 @@ bool MMTkHeap::card_mark_must_follow_store() const { //OK
 }
 
 void MMTkHeap::collect(GCCause::Cause cause) {//later when gc is implemented in rust
-  if (DisableExplicitGC) return;
-  handle_user_collection_request((MMTk_Mutator) &Thread::current()->third_party_heap_mutator);
+  handle_user_collection_request((MMTk_Mutator) &Thread::current()->third_party_heap_mutator, cause != GCCause::_java_lang_system_gc);
 }
 
 // Perform a full collection
 void MMTkHeap::do_full_collection(bool clear_all_soft_refs) {//later when gc is implemented in rust
-  if (DisableExplicitGC) return;
-  handle_user_collection_request((MMTk_Mutator) &Thread::current()->third_party_heap_mutator);
+  handle_user_collection_request((MMTk_Mutator) &Thread::current()->third_party_heap_mutator, true);
 }
 
 void MMTkHeap::collect_as_vm_thread(GCCause::Cause cause) {
-  if (DisableExplicitGC) return;
   MMTkHeap::heap()->companion_thread()->vm_thread_requires_gc_pause();
-  handle_user_collection_request(NULL);
+  handle_user_collection_request(NULL, true);
   MMTkHeap::heap()->companion_thread()->block_vm_thread();
 }
 

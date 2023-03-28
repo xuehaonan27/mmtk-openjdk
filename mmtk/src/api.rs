@@ -208,8 +208,8 @@ pub extern "C" fn total_bytes() -> usize {
 }
 
 #[no_mangle]
-pub extern "C" fn handle_user_collection_request(tls: VMMutatorThread) {
-    memory_manager::handle_user_collection_request::<OpenJDK>(&SINGLETON, tls);
+pub extern "C" fn handle_user_collection_request(tls: VMMutatorThread, force: bool) {
+    memory_manager::handle_user_collection_request::<OpenJDK>(&SINGLETON, tls, force);
 }
 
 #[no_mangle]
