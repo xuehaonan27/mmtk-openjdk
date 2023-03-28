@@ -52,6 +52,9 @@ private:
   stw_state _reached_state;
   bool _vm_thread_requires_gc_pause = false;
   bool _vm_thread_suspend_for_gc = false;
+  bool _wait_for_gc_locker = false;
+
+  friend class VM_MMTkSTWOperation;
 
 public:
   // Constructor

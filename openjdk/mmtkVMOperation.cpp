@@ -29,6 +29,7 @@
 #include "interpreter/oopMapCache.hpp"
 #include "logging/log.hpp"
 #include "interpreter/oopMapCache.hpp"
+#include "gc/shared/gcLocker.hpp"
 
 VM_MMTkSTWOperation::VM_MMTkSTWOperation(MMTkVMCompanionThread *companion_thread):
     _companion_thread(companion_thread) {
@@ -50,6 +51,7 @@ void VM_MMTkSTWOperation::doit() {
         // mmtk will not trigger another GC, but simply blocking this thread.
         // After all threads are successfully blocked, the previously
         // triggered pending GC will proceed.
+        _companion_thread->_wait_for_gc_locker = true;
         return;
     }
     log_trace(vmthread)("Entered VM_MMTkSTWOperation::doit().");
