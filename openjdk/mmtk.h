@@ -42,6 +42,7 @@ extern const char* get_mmtk_version();
 extern MMTk_Mutator bind_mutator(void *tls);
 extern void destroy_mutator(MMTk_Mutator mutator);
 extern void flush_mutator(MMTk_Mutator mutator);
+extern void release_mutator(MMTk_Mutator mutator);
 
 extern void mmtk_report_gc_start();
 

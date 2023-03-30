@@ -15,7 +15,10 @@ MMTkMutatorContext MMTkMutatorContext::bind(::Thread* current) {
     printf("ERROR: Unmatched free list allocator size: rs=%zu cpp=%zu\n", FREE_LIST_ALLOCATOR_SIZE, sizeof(FreeListAllocator));
     guarantee(false, "ERROR");
   }
-  return *((MMTkMutatorContext*) ::bind_mutator((void*) current));
+  auto original_rust_mutator_pointer = (MMTkMutatorContext*) ::bind_mutator((void*) current);
+  MMTkMutatorContext context = *original_rust_mutator_pointer;
+  context.original_rust_mutator_pointer = original_rust_mutator_pointer;
+  return context;
 }
 
 bool MMTkMutatorContext::is_ready_to_bind() {
@@ -57,4 +60,9 @@ void MMTkMutatorContext::flush() {
 
 void MMTkMutatorContext::destroy() {
   ::destroy_mutator((MMTk_Mutator) this);
+  if (original_rust_mutator_pointer != NULL) {
+    *original_rust_mutator_pointer = *this;
+    release_mutator(original_rust_mutator_pointer);
+    original_rust_mutator_pointer = NULL;
+  }
 }

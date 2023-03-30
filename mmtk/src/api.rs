@@ -126,6 +126,11 @@ pub extern "C" fn flush_mutator(mutator: *mut Mutator<OpenJDK>) {
 }
 
 #[no_mangle]
+pub unsafe extern "C" fn release_mutator(mutator: *mut Mutator<OpenJDK>) {
+    let _boxed = Box::from_raw(mutator);
+}
+
+#[no_mangle]
 // We trust the mutator pointer is valid.
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
 pub extern "C" fn alloc(
