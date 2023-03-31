@@ -60,9 +60,9 @@ void MMTkMutatorContext::flush() {
 
 void MMTkMutatorContext::destroy() {
   ::destroy_mutator((MMTk_Mutator) this);
-  if (original_rust_mutator_pointer != NULL) {
-    *original_rust_mutator_pointer = *this;
-    release_mutator(original_rust_mutator_pointer);
-    original_rust_mutator_pointer = NULL;
-  }
+  // if (original_rust_mutator_pointer != NULL) {
+  //   *original_rust_mutator_pointer = *this;
+  //   release_mutator(original_rust_mutator_pointer);
+  //   original_rust_mutator_pointer = NULL;
+  // }
 }
