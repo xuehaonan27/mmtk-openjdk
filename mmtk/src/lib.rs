@@ -267,7 +267,7 @@ impl<const COMPRESSED: bool> OpenJDKEdge<COMPRESSED> {
 
 impl<const COMPRESSED: bool> Edge for OpenJDKEdge<COMPRESSED> {
     /// Load object reference from the edge.
-    fn load<const X: bool>(&self) -> ObjectReference {
+    fn load(&self) -> ObjectReference {
         if COMPRESSED {
             let slot = self.untagged_address();
             if self.is_compressed() {
@@ -281,7 +281,7 @@ impl<const COMPRESSED: bool> Edge for OpenJDKEdge<COMPRESSED> {
     }
 
     /// Store the object reference `object` into the edge.
-    fn store<const X: bool>(&self, object: ObjectReference) {
+    fn store(&self, object: ObjectReference) {
         if COMPRESSED {
             let slot = self.untagged_address();
             if self.is_compressed() {
@@ -294,7 +294,7 @@ impl<const COMPRESSED: bool> Edge for OpenJDKEdge<COMPRESSED> {
         }
     }
 
-    fn compare_exchange<const X: bool>(
+    fn compare_exchange(
         &self,
         old_object: ObjectReference,
         new_object: ObjectReference,

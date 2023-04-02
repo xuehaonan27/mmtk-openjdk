@@ -16,12 +16,12 @@ fn set_referent<E: Edge>(reff: ObjectReference, referent: ObjectReference) {
     let oop = Oop::from(reff);
     let slot = InstanceRefKlass::referent_address::<E>(oop);
     mmtk::plan::lxr::record_edge_for_validation(slot, referent);
-    slot.store::<true>(referent)
+    slot.store(referent)
 }
 
 fn get_referent<E: Edge>(object: ObjectReference) -> ObjectReference {
     let oop = Oop::from(object);
-    InstanceRefKlass::referent_address::<E>(oop).load::<true>()
+    InstanceRefKlass::referent_address::<E>(oop).load()
 }
 
 fn get_next_reference_slot<E: Edge>(object: ObjectReference) -> E {
@@ -30,13 +30,13 @@ fn get_next_reference_slot<E: Edge>(object: ObjectReference) -> E {
 }
 
 fn get_next_reference<E: Edge>(object: ObjectReference) -> ObjectReference {
-    get_next_reference_slot::<E>(object).load::<true>()
+    get_next_reference_slot::<E>(object).load()
 }
 
 fn set_next_reference<E: Edge>(object: ObjectReference, next: ObjectReference) {
     let slot = get_next_reference_slot::<E>(object);
     mmtk::plan::lxr::record_edge_for_validation(slot, next);
-    slot.store::<true>(next)
+    slot.store(next)
 }
 
 pub struct VMReferenceGlue {}
