@@ -25,6 +25,8 @@ impl<const COMPRESSED: bool> ObjectModel<OpenJDK<COMPRESSED>> for VMObjectModel 
     const UNIFIED_OBJECT_REFERENCE_ADDRESS: bool = true;
     const OBJECT_REF_OFFSET_LOWER_BOUND: isize = 0;
 
+    const COMPRESSED_PTR_ENABLED: bool = COMPRESSED;
+
     fn copy(
         from: ObjectReference,
         copy: CopySemantics,
@@ -122,10 +124,6 @@ impl<const COMPRESSED: bool> ObjectModel<OpenJDK<COMPRESSED>> for VMObjectModel 
         let c_str: &CStr = unsafe { CStr::from_ptr(c_string) };
         let s: &str = c_str.to_str().unwrap();
         s.to_string()
-    }
-
-    fn compressed_pointers_enabled() -> bool {
-        crate::use_compressed_oops()
     }
 
     fn get_class_pointer(object: ObjectReference) -> Address {

@@ -293,10 +293,8 @@ pub struct OopDesc {
 }
 
 lazy_static! {
-    static ref COMPRESSED_KLASS_BASE: Address =
-        unsafe { ((*UPCALLS).compressed_klass_base)() };
-    static ref COMPRESSED_KLASS_SHIFT: usize =
-        unsafe { ((*UPCALLS).compressed_klass_shift)() };
+    static ref COMPRESSED_KLASS_BASE: Address = unsafe { ((*UPCALLS).compressed_klass_base)() };
+    static ref COMPRESSED_KLASS_SHIFT: usize = unsafe { ((*UPCALLS).compressed_klass_shift)() };
 }
 
 impl OopDesc {
