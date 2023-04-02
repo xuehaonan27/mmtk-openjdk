@@ -251,9 +251,9 @@ pub struct OpenJDK<const COMPRESSED: bool>;
 /// The type of edges in OpenJDK.
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
 #[repr(transparent)]
-pub struct OpenJDKEdge(pub Address);
+pub struct OpenJDKEdge<const COMPRESSED: bool>(pub Address);
 
-impl OpenJDKEdge {
+impl<const COMPRESSED: bool> OpenJDKEdge<COMPRESSED> {
     const MASK: usize = 1usize << 63;
 
     const fn is_compressed(&self) -> bool {
@@ -265,9 +265,9 @@ impl OpenJDKEdge {
     }
 }
 
-impl Edge for OpenJDKEdge {
+impl<const COMPRESSED: bool> Edge for OpenJDKEdge<COMPRESSED> {
     /// Load object reference from the edge.
-    fn load<const COMPRESSED: bool>(&self) -> ObjectReference {
+    fn load<const X: bool>(&self) -> ObjectReference {
         if COMPRESSED {
             let slot = self.untagged_address();
             if self.is_compressed() {
@@ -281,7 +281,7 @@ impl Edge for OpenJDKEdge {
     }
 
     /// Store the object reference `object` into the edge.
-    fn store<const COMPRESSED: bool>(&self, object: ObjectReference) {
+    fn store<const X: bool>(&self, object: ObjectReference) {
         if COMPRESSED {
             let slot = self.untagged_address();
             if self.is_compressed() {
@@ -294,7 +294,7 @@ impl Edge for OpenJDKEdge {
         }
     }
 
-    fn compare_exchange<const COMPRESSED: bool>(
+    fn compare_exchange<const X: bool>(
         &self,
         old_object: ObjectReference,
         new_object: ObjectReference,
@@ -356,20 +356,20 @@ impl Edge for OpenJDKEdge {
 }
 
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
-pub struct OpenJDKEdgeRange {
-    pub start: OpenJDKEdge,
-    pub end: OpenJDKEdge,
+pub struct OpenJDKEdgeRange<const COMPRESSED: bool> {
+    pub start: OpenJDKEdge<COMPRESSED>,
+    pub end: OpenJDKEdge<COMPRESSED>,
 }
 
 /// Iterate edges within `Range<Address>`.
-pub struct AddressRangeIterator {
+pub struct AddressRangeIterator<const COMPRESSED: bool> {
     cursor: Address,
     limit: Address,
     width: usize,
 }
 
-impl Iterator for AddressRangeIterator {
-    type Item = OpenJDKEdge;
+impl<const COMPRESSED: bool> Iterator for AddressRangeIterator<COMPRESSED> {
+    type Item = OpenJDKEdge<COMPRESSED>;
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.cursor >= self.limit {
@@ -382,14 +382,14 @@ impl Iterator for AddressRangeIterator {
     }
 }
 
-pub struct ChunkIterator {
+pub struct ChunkIterator<const COMPRESSED: bool> {
     cursor: Address,
     limit: Address,
     step: usize,
 }
 
-impl Iterator for ChunkIterator {
-    type Item = OpenJDKEdgeRange;
+impl<const COMPRESSED: bool> Iterator for ChunkIterator<COMPRESSED> {
+    type Item = OpenJDKEdgeRange<COMPRESSED>;
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.cursor >= self.limit {
@@ -409,10 +409,10 @@ impl Iterator for ChunkIterator {
     }
 }
 
-impl MemorySlice for OpenJDKEdgeRange {
-    type Edge = OpenJDKEdge;
-    type EdgeIterator = AddressRangeIterator;
-    type ChunkIterator = ChunkIterator;
+impl<const COMPRESSED: bool> MemorySlice for OpenJDKEdgeRange<COMPRESSED> {
+    type Edge = OpenJDKEdge<COMPRESSED>;
+    type EdgeIterator = AddressRangeIterator<COMPRESSED>;
+    type ChunkIterator = ChunkIterator<COMPRESSED>;
 
     fn iter_edges(&self) -> Self::EdgeIterator {
         AddressRangeIterator {
@@ -475,8 +475,8 @@ impl<const COMPRESSED: bool> VMBinding for OpenJDK<COMPRESSED> {
     type VMActivePlan = active_plan::VMActivePlan;
     type VMReferenceGlue = reference_glue::VMReferenceGlue;
 
-    type VMEdge = OpenJDKEdge;
-    type VMMemorySlice = OpenJDKEdgeRange;
+    type VMEdge = OpenJDKEdge<COMPRESSED>;
+    type VMMemorySlice = OpenJDKEdgeRange<COMPRESSED>;
 
     const MIN_ALIGNMENT: usize = 8;
     const MAX_ALIGNMENT: usize = 8;

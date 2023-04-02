@@ -1,6 +1,5 @@
-use crate::OpenJDKEdge;
-
 use super::UPCALLS;
+use crate::Edge;
 use atomic::Ordering;
 use mmtk::util::constants::*;
 use mmtk::util::conversions;
@@ -273,11 +272,11 @@ impl InstanceRefKlass {
         }
         *DISCOVERED_OFFSET
     }
-    pub fn referent_address(oop: Oop) -> OpenJDKEdge {
-        OpenJDKEdge(oop.get_field_address(Self::referent_offset()))
+    pub fn referent_address<E: Edge>(oop: Oop) -> E {
+        E::from_address(oop.get_field_address(Self::referent_offset()))
     }
-    pub fn discovered_address(oop: Oop) -> OpenJDKEdge {
-        OpenJDKEdge(oop.get_field_address(Self::discovered_offset()))
+    pub fn discovered_address<E: Edge>(oop: Oop) -> E {
+        E::from_address(oop.get_field_address(Self::discovered_offset()))
     }
 }
 
@@ -456,7 +455,10 @@ impl ArrayOopDesc {
             self.length::<COMPRESSED>() as _,
         )
     }
-    pub unsafe fn slice<const COMPRESSED: bool>(&self, ty: BasicType) -> crate::OpenJDKEdgeRange {
+    pub unsafe fn slice<const COMPRESSED: bool>(
+        &self,
+        ty: BasicType,
+    ) -> crate::OpenJDKEdgeRange<COMPRESSED> {
         let base = self.base::<COMPRESSED>(ty);
         let start = crate::OpenJDKEdge(base);
         let end = crate::OpenJDKEdge(
@@ -504,7 +506,7 @@ struct ChunkedHandleList {
 }
 
 impl ChunkedHandleList {
-    unsafe fn oops_do_chunk<V: EdgeVisitor<OpenJDKEdge>, const COMPRESSED: bool>(
+    unsafe fn oops_do_chunk<E: Edge, V: EdgeVisitor<E>, const COMPRESSED: bool>(
         &self,
         chunk: &'static Chunk,
         size: u32,
@@ -517,22 +519,22 @@ impl ChunkedHandleList {
                 if COMPRESSED {
                     word = word | (1usize << 63);
                 }
-                closure.visit_edge(OpenJDKEdge(Address::from_usize(word)))
+                closure.visit_edge(E::from_address(Address::from_usize(word)))
             }
         }
     }
 
-    fn oops_do<V: EdgeVisitor<OpenJDKEdge>, const COMPRESSED: bool>(&self, closure: &mut V) {
+    fn oops_do<E: Edge, V: EdgeVisitor<E>, const COMPRESSED: bool>(&self, closure: &mut V) {
         let head = self.head.load(Ordering::Acquire);
         if !head.is_null() {
             let head = unsafe { &*head };
             let size = head.size.load(Ordering::Acquire);
-            unsafe { self.oops_do_chunk::<_, COMPRESSED>(head, size, closure) };
+            unsafe { self.oops_do_chunk::<_, _, COMPRESSED>(head, size, closure) };
             let mut c = head.next;
             while !c.is_null() {
                 let chunk = unsafe { &*c };
                 let size = chunk.size.load(Ordering::Relaxed);
-                unsafe { self.oops_do_chunk::<_, COMPRESSED>(chunk, size, closure) };
+                unsafe { self.oops_do_chunk::<_, _, COMPRESSED>(chunk, size, closure) };
                 c = chunk.next;
             }
         }
@@ -567,10 +569,10 @@ impl ClassLoaderData {
             .is_ok()
     }
 
-    pub fn oops_do<V: EdgeVisitor<OpenJDKEdge>, const COMPRESSED: bool>(&self, closure: &mut V) {
+    pub fn oops_do<E: Edge, V: EdgeVisitor<E>, const COMPRESSED: bool>(&self, closure: &mut V) {
         if closure.should_claim_clds() && !self.claim() {
             return;
         }
-        self.handles.oops_do::<_, COMPRESSED>(closure);
+        self.handles.oops_do::<_, _, COMPRESSED>(closure);
     }
 }

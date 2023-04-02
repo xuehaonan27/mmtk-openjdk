@@ -9,34 +9,34 @@ use mmtk::scheduler::{GCWork, GCWorker, ProcessEdgesWork, WorkBucketStage};
 use mmtk::util::opaque_pointer::VMWorkerThread;
 use mmtk::util::ObjectReference;
 use mmtk::vm::edge_shape::Edge;
-use mmtk::vm::ReferenceGlue;
+use mmtk::vm::{ReferenceGlue, VMBinding};
 use mmtk::MMTK;
 
-pub fn set_referent<const COMPRESSED: bool>(reff: ObjectReference, referent: ObjectReference) {
+fn set_referent<E: Edge>(reff: ObjectReference, referent: ObjectReference) {
     let oop = Oop::from(reff);
-    let slot = InstanceRefKlass::referent_address(oop);
+    let slot = InstanceRefKlass::referent_address::<E>(oop);
     mmtk::plan::lxr::record_edge_for_validation(slot, referent);
-    slot.store::<COMPRESSED>(referent)
+    slot.store::<true>(referent)
 }
 
-fn get_referent<const COMPRESSED: bool>(object: ObjectReference) -> ObjectReference {
+fn get_referent<E: Edge>(object: ObjectReference) -> ObjectReference {
     let oop = Oop::from(object);
-    InstanceRefKlass::referent_address(oop).load::<COMPRESSED>()
+    InstanceRefKlass::referent_address::<E>(oop).load::<true>()
 }
 
-fn get_next_reference_slot(object: ObjectReference) -> crate::OpenJDKEdge {
+fn get_next_reference_slot<E: Edge>(object: ObjectReference) -> E {
     let oop = Oop::from(object);
-    InstanceRefKlass::discovered_address(oop)
+    InstanceRefKlass::discovered_address::<E>(oop)
 }
 
-fn get_next_reference<const COMPRESSED: bool>(object: ObjectReference) -> ObjectReference {
-    get_next_reference_slot(object).load::<COMPRESSED>()
+fn get_next_reference<E: Edge>(object: ObjectReference) -> ObjectReference {
+    get_next_reference_slot::<E>(object).load::<true>()
 }
 
-fn set_next_reference<const COMPRESSED: bool>(object: ObjectReference, next: ObjectReference) {
-    let slot = get_next_reference_slot(object);
+fn set_next_reference<E: Edge>(object: ObjectReference, next: ObjectReference) {
+    let slot = get_next_reference_slot::<E>(object);
     mmtk::plan::lxr::record_edge_for_validation(slot, next);
-    slot.store::<COMPRESSED>(next)
+    slot.store::<true>(next)
 }
 
 pub struct VMReferenceGlue {}
@@ -66,7 +66,7 @@ impl DiscoveredList {
         }
     }
 
-    pub fn add<const COMPRESSED: bool>(
+    pub fn add<E: Edge, const COMPRESSED: bool>(
         &self,
         reference: ObjectReference,
         referent: ObjectReference,
@@ -79,7 +79,7 @@ impl DiscoveredList {
         // Note that the list is a singly-linked list, and the tail object should point to itself.
         let oop = Oop::from(reference);
         let head = self.head.load(Ordering::Relaxed);
-        let addr = InstanceRefKlass::discovered_address(oop);
+        let addr = InstanceRefKlass::discovered_address::<E>(oop);
         if COMPRESSED {
             let discovered_addr = unsafe { addr.to_address().as_ref::<Atomic<u32>>() };
             let next_discovered = if head.is_null() { reference } else { head };
@@ -95,7 +95,7 @@ impl DiscoveredList {
             {
                 self.head.store(reference, Ordering::Relaxed);
             }
-            debug_assert!(!get_next_reference::<COMPRESSED>(reference).is_null());
+            debug_assert!(!get_next_reference::<E>(reference).is_null());
         } else {
             let discovered_addr = unsafe { addr.to_address().as_ref::<Atomic<ObjectReference>>() };
             let next_discovered = if head.is_null() { reference } else { head };
@@ -112,12 +112,12 @@ impl DiscoveredList {
                 self.head.store(reference, Ordering::SeqCst);
             }
             debug_assert!(
-                !get_next_reference::<COMPRESSED>(reference).is_null(),
+                !get_next_reference::<E>(reference).is_null(),
                 "discover ref {:?}->{:?} next={:?} real-next={:?} bin={:?}",
                 reference,
                 referent,
                 next_discovered,
-                get_next_reference::<COMPRESSED>(reference),
+                get_next_reference::<E>(reference),
                 mmtk::scheduler::worker::current_worker_ordinal().unwrap()
             );
         }
@@ -153,8 +153,8 @@ impl DiscoveredLists {
         self.allow_discover.load(Ordering::SeqCst)
     }
 
-    pub fn is_discovered<const COMPRESSED: bool>(&self, reference: ObjectReference) -> bool {
-        !get_next_reference::<COMPRESSED>(reference).is_null()
+    pub fn is_discovered<E: Edge>(&self, reference: ObjectReference) -> bool {
+        !get_next_reference::<E>(reference).is_null()
     }
 
     pub fn get_by_rt_and_index(&self, rt: ReferenceType, index: usize) -> &DiscoveredList {
@@ -273,37 +273,41 @@ impl<E: ProcessEdgesWork, const COMPRESSED: bool> GCWork<E::VM>
         let mut trace = E::new(vec![], false, mmtk);
         trace.set_worker(worker);
         let retain = self.rt == ReferenceType::Soft && !mmtk.get_plan().is_emergency_collection();
-        let new_list = iterate_list::<_, COMPRESSED>(self.head, |reference| {
-            debug_assert!(
-                get_next_reference::<COMPRESSED>(reference).is_null(),
-                "next must be null. ref={:?} {:?} bin={}",
-                reference,
-                self.rt,
-                self.list_index
-            );
-            let reference = trace.trace_object(reference);
-            let referent = get_referent::<COMPRESSED>(reference);
-            if referent.is_null() {
-                // Remove from the discovered list
-                return DiscoveredListIterationResult::Remove;
-            } else if referent.is_reachable() || retain {
-                // Keep this referent
-                let forwarded = trace.trace_object(referent);
-                debug_assert!(forwarded.get_forwarded_object().is_none());
-                debug_assert!(reference.get_forwarded_object().is_none());
-                set_referent::<COMPRESSED>(reference, forwarded);
-                // Remove from the discovered list
-                return DiscoveredListIterationResult::Remove;
-            } else {
-                if self.rt != ReferenceType::Final {
-                    // Clear this referent
-                    set_referent::<COMPRESSED>(reference, ObjectReference::NULL);
-                    // set_referent(reference, ObjectReference::NULL);
+        let new_list =
+            iterate_list::<_, <E::VM as VMBinding>::VMEdge, COMPRESSED>(self.head, |reference| {
+                debug_assert!(
+                    get_next_reference::<<E::VM as VMBinding>::VMEdge>(reference).is_null(),
+                    "next must be null. ref={:?} {:?} bin={}",
+                    reference,
+                    self.rt,
+                    self.list_index
+                );
+                let reference = trace.trace_object(reference);
+                let referent = get_referent::<<E::VM as VMBinding>::VMEdge>(reference);
+                if referent.is_null() {
+                    // Remove from the discovered list
+                    return DiscoveredListIterationResult::Remove;
+                } else if referent.is_reachable() || retain {
+                    // Keep this referent
+                    let forwarded = trace.trace_object(referent);
+                    debug_assert!(forwarded.get_forwarded_object().is_none());
+                    debug_assert!(reference.get_forwarded_object().is_none());
+                    set_referent::<<E::VM as VMBinding>::VMEdge>(reference, forwarded);
+                    // Remove from the discovered list
+                    return DiscoveredListIterationResult::Remove;
+                } else {
+                    if self.rt != ReferenceType::Final {
+                        // Clear this referent
+                        set_referent::<<E::VM as VMBinding>::VMEdge>(
+                            reference,
+                            ObjectReference::NULL,
+                        );
+                        // set_referent(reference, ObjectReference::NULL);
+                    }
+                    // Keep the reference
+                    return DiscoveredListIterationResult::Enqueue(reference);
                 }
-                // Keep the reference
-                return DiscoveredListIterationResult::Enqueue(reference);
-            }
-        });
+            });
         // Flush the list to the Universe::pending_list
         if let Some((head, tail)) = new_list {
             debug_assert!(!head.is_null() && !tail.is_null());
@@ -314,7 +318,7 @@ impl<E: ProcessEdgesWork, const COMPRESSED: bool> GCWork<E::VM>
                     .store(head, Ordering::SeqCst);
             } else {
                 let old_head = unsafe { ((*crate::UPCALLS).swap_reference_pending_list)(head) };
-                set_next_reference::<COMPRESSED>(tail, old_head);
+                set_next_reference::<<E::VM as VMBinding>::VMEdge>(tail, old_head);
             }
         } else {
             if self.rt == ReferenceType::Final {
@@ -339,14 +343,15 @@ impl<E: ProcessEdgesWork, const COMPRESSED: bool> GCWork<E::VM>
     fn do_work(&mut self, worker: &mut GCWorker<E::VM>, mmtk: &'static MMTK<E::VM>) {
         let mut trace = E::new(vec![], false, mmtk);
         trace.set_worker(worker);
-        let new_list = iterate_list::<_, COMPRESSED>(self.head, |reference| {
-            let reference = trace.trace_object(reference);
-            let referent = get_referent::<COMPRESSED>(reference);
-            let forwarded = trace.trace_object(referent);
-            set_referent::<COMPRESSED>(reference, forwarded);
-            debug_assert!(forwarded.get_forwarded_object().is_none());
-            return DiscoveredListIterationResult::Enqueue(reference);
-        });
+        let new_list =
+            iterate_list::<_, <E::VM as VMBinding>::VMEdge, COMPRESSED>(self.head, |reference| {
+                let reference = trace.trace_object(reference);
+                let referent = get_referent::<<E::VM as VMBinding>::VMEdge>(reference);
+                let forwarded = trace.trace_object(referent);
+                set_referent::<<E::VM as VMBinding>::VMEdge>(reference, forwarded);
+                debug_assert!(forwarded.get_forwarded_object().is_none());
+                return DiscoveredListIterationResult::Enqueue(reference);
+            });
 
         if let Some((head, tail)) = new_list {
             debug_assert!(!head.is_null() && !tail.is_null());
@@ -355,7 +360,7 @@ impl<E: ProcessEdgesWork, const COMPRESSED: bool> GCWork<E::VM>
                 .head
                 .store(ObjectReference::NULL, Ordering::SeqCst);
             let old_head = unsafe { ((*crate::UPCALLS).swap_reference_pending_list)(head) };
-            set_next_reference::<COMPRESSED>(tail, old_head);
+            set_next_reference::<<E::VM as VMBinding>::VMEdge>(tail, old_head);
         }
         trace.flush();
     }
@@ -368,6 +373,7 @@ enum DiscoveredListIterationResult {
 
 fn iterate_list<
     F: FnMut(ObjectReference) -> DiscoveredListIterationResult,
+    E: Edge,
     const COMPRESSED: bool,
 >(
     head: ObjectReference,
@@ -386,15 +392,15 @@ fn iterate_list<
         debug_assert!(reference.get_forwarded_object().is_none());
         debug_assert!(reference.is_reachable());
         // Update next_ref forwarding pointer
-        let next_ref = get_next_reference::<COMPRESSED>(reference);
+        let next_ref = get_next_reference::<E>(reference);
         let next_ref = next_ref.get_forwarded_object().unwrap_or(next_ref);
         debug_assert!(next_ref.get_forwarded_object().is_none());
         // Reaches the end of the list?
         let end_of_list = next_ref == reference || next_ref.is_null();
         // Remove `reference` from current list
-        set_next_reference::<COMPRESSED>(reference, ObjectReference::NULL);
+        set_next_reference::<E>(reference, ObjectReference::NULL);
         if let Some(forwarded_ref) = reference.get_forwarded_object() {
-            set_next_reference::<COMPRESSED>(forwarded_ref, ObjectReference::NULL);
+            set_next_reference::<E>(forwarded_ref, ObjectReference::NULL);
         }
         // Process reference
         let result = visitor(reference);
@@ -403,7 +409,7 @@ fn iterate_list<
             DiscoveredListIterationResult::Enqueue(reference) => {
                 // Add to new list
                 if let Some(new_head) = new_head {
-                    set_next_reference::<COMPRESSED>(reference, new_head);
+                    set_next_reference::<E>(reference, new_head);
                 } else {
                     new_tail = Some(reference);
                 }
