@@ -10,7 +10,6 @@ use std::sync::atomic::{AtomicU32, AtomicUsize};
 use std::sync::Mutex;
 
 use libc::{c_char, c_void, uintptr_t};
-use mmtk::scheduler::GCWorker;
 use mmtk::util::alloc::AllocationError;
 use mmtk::util::constants::{
     BYTES_IN_ADDRESS, BYTES_IN_INT, LOG_BYTES_IN_ADDRESS, LOG_BYTES_IN_INT,
@@ -20,7 +19,19 @@ use mmtk::util::opaque_pointer::*;
 use mmtk::util::{Address, ObjectReference};
 use mmtk::vm::edge_shape::{Edge, MemorySlice};
 use mmtk::vm::VMBinding;
-use mmtk::{MMTKBuilder, Mutator, MMTK};
+use mmtk::{MMTKBuilder, MMTK};
+
+macro_rules! with_singleton {
+    (|$x: ident| $($expr:tt)*) => {
+        if crate::use_compressed_oops() {
+            let $x: &'static mmtk::MMTK<crate::OpenJDK<true>> = &*crate::SINGLETON_COMPRESSED;
+            $($expr)*
+        } else {
+            let $x: &'static mmtk::MMTK<crate::OpenJDK<false>> = &*crate::SINGLETON_UNCOMPRESSED;
+            $($expr)*
+        }
+    };
+}
 
 mod abi;
 pub mod active_plan;
@@ -43,7 +54,7 @@ pub struct NewBuffer {
 /// A closure for reporting mutators.  The C++ code should pass `data` back as the last argument.
 #[repr(C)]
 pub struct MutatorClosure {
-    pub func: extern "C" fn(mutator: *mut Mutator<OpenJDK>, data: *mut libc::c_void),
+    pub func: extern "C" fn(mutator: *mut libc::c_void, data: *mut libc::c_void),
     pub data: *mut libc::c_void,
 }
 
@@ -72,7 +83,7 @@ pub struct OpenJDK_Upcalls {
     pub spawn_gc_thread: extern "C" fn(tls: VMThread, kind: libc::c_int, ctx: *mut libc::c_void),
     pub block_for_gc: extern "C" fn(),
     pub out_of_memory: extern "C" fn(tls: VMThread, err_kind: AllocationError),
-    pub get_next_mutator: extern "C" fn() -> *mut Mutator<OpenJDK>,
+    pub get_next_mutator: extern "C" fn() -> *mut libc::c_void,
     pub reset_mutator_iterator: extern "C" fn(),
     pub scan_object: extern "C" fn(
         trace: *mut c_void,
@@ -83,7 +94,7 @@ pub struct OpenJDK_Upcalls {
     ),
     pub dump_object: extern "C" fn(object: ObjectReference),
     pub get_object_size: extern "C" fn(object: ObjectReference) -> usize,
-    pub get_mmtk_mutator: extern "C" fn(tls: VMMutatorThread) -> *mut Mutator<OpenJDK>,
+    pub get_mmtk_mutator: extern "C" fn(tls: VMMutatorThread) -> *mut libc::c_void,
     pub is_mutator: extern "C" fn(tls: VMThread) -> bool,
     pub harness_begin: extern "C" fn(),
     pub harness_end: extern "C" fn(),
@@ -129,10 +140,6 @@ lazy_static! {
         unsafe { ((*UPCALLS).java_lang_classloader_loader_data_offset)() };
 }
 
-pub fn current_worker() -> &'static mut GCWorker<OpenJDK> {
-    GCWorker::<OpenJDK>::current()
-}
-
 pub static mut UPCALLS: *const OpenJDK_Upcalls = null_mut();
 
 #[no_mangle]
@@ -157,14 +164,14 @@ pub static GLOBAL_ALLOC_BIT_ADDRESS: uintptr_t =
 
 #[no_mangle]
 pub static FREE_LIST_ALLOCATOR_SIZE: uintptr_t =
-    std::mem::size_of::<mmtk::util::alloc::FreeListAllocator<OpenJDK>>();
+    std::mem::size_of::<mmtk::util::alloc::FreeListAllocator<OpenJDK<false>>>();
 
 #[no_mangle]
 pub static DISABLE_ALLOCATION_FAST_PATH: i32 = cfg!(feature = "no_fast_alloc") as _;
 
 #[no_mangle]
 pub static IMMIX_ALLOCATOR_SIZE: uintptr_t =
-    std::mem::size_of::<mmtk::util::alloc::ImmixAllocator<OpenJDK>>();
+    std::mem::size_of::<mmtk::util::alloc::ImmixAllocator<OpenJDK<false>>>();
 
 #[no_mangle]
 pub static mut CONCURRENT_MARKING_ACTIVE: u8 = 0;
@@ -206,7 +213,7 @@ fn compress(o: ObjectReference) -> u32 {
     if o.is_null() {
         0u32
     } else {
-        unsafe { ((o.to_address::<OpenJDK>() - BASE) >> SHIFT) as u32 }
+        unsafe { ((o.to_raw_address() - BASE) >> SHIFT) as u32 }
     }
 }
 
@@ -214,7 +221,7 @@ fn decompress(v: u32) -> ObjectReference {
     if v == 0 {
         ObjectReference::NULL
     } else {
-        unsafe { (BASE + ((v as usize) << SHIFT)).to_object_reference::<OpenJDK>() }
+        unsafe { (BASE + ((v as usize) << SHIFT)).to_object_reference::<OpenJDK<false>>() }
     }
 }
 
@@ -239,7 +246,7 @@ fn initialize_compressed_oops() {
 }
 
 #[derive(Default)]
-pub struct OpenJDK;
+pub struct OpenJDK<const COMPRESSED: bool>;
 
 /// The type of edges in OpenJDK.
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
@@ -310,8 +317,8 @@ impl Edge for OpenJDKEdge {
                 let slot = self.untagged_address();
                 unsafe {
                     match slot.compare_exchange::<AtomicUsize>(
-                        old_object.to_address::<OpenJDK>().as_usize(),
-                        new_object.to_address::<OpenJDK>().as_usize(),
+                        old_object.to_raw_address().as_usize(),
+                        new_object.to_raw_address().as_usize(),
                         success,
                         failure,
                     ) {
@@ -323,8 +330,8 @@ impl Edge for OpenJDKEdge {
         } else {
             unsafe {
                 match self.0.compare_exchange::<AtomicUsize>(
-                    old_object.to_address::<OpenJDK>().as_usize(),
-                    new_object.to_address::<OpenJDK>().as_usize(),
+                    old_object.to_raw_address().as_usize(),
+                    new_object.to_raw_address().as_usize(),
                     success,
                     failure,
                 ) {
@@ -461,7 +468,7 @@ impl MemorySlice for OpenJDKEdgeRange {
     }
 }
 
-impl VMBinding for OpenJDK {
+impl<const COMPRESSED: bool> VMBinding for OpenJDK<COMPRESSED> {
     type VMObjectModel = object_model::VMObjectModel;
     type VMScanning = scanning::VMScanning;
     type VMCollection = collection::VMCollection;
@@ -483,18 +490,26 @@ pub static MMTK_INITIALIZED: AtomicBool = AtomicBool::new(false);
 
 lazy_static! {
     pub static ref BUILDER: Mutex<MMTKBuilder> = Mutex::new(MMTKBuilder::new());
-    pub static ref SINGLETON: MMTK<OpenJDK> = {
+    pub static ref SINGLETON_COMPRESSED: MMTK<OpenJDK<true>> = {
         let mut builder = BUILDER.lock().unwrap();
-        if use_compressed_oops() {
-            builder.set_option("use_35bit_address_space", "true");
-            builder.set_option("use_35bit_address_space", "true");
-        }
+        assert!(use_compressed_oops());
+        builder.set_option("use_35bit_address_space", "true");
+        builder.set_option("use_35bit_address_space", "true");
         assert!(!MMTK_INITIALIZED.load(Ordering::Relaxed));
         let ret = mmtk::memory_manager::mmtk_init(&builder);
         MMTK_INITIALIZED.store(true, std::sync::atomic::Ordering::SeqCst);
-        if use_compressed_oops() {
-            initialize_compressed_oops();
+        initialize_compressed_oops();
+        unsafe {
+            HEAP_START = VM_LAYOUT_CONSTANTS.heap_start;
+            HEAP_END = VM_LAYOUT_CONSTANTS.heap_end;
         }
+        *ret
+    };
+    pub static ref SINGLETON_UNCOMPRESSED: MMTK<OpenJDK<false>> = {
+        let builder = BUILDER.lock().unwrap();
+        assert!(!MMTK_INITIALIZED.load(Ordering::Relaxed));
+        let ret = mmtk::memory_manager::mmtk_init(&builder);
+        MMTK_INITIALIZED.store(true, std::sync::atomic::Ordering::SeqCst);
         unsafe {
             HEAP_START = VM_LAYOUT_CONSTANTS.heap_start;
             HEAP_END = VM_LAYOUT_CONSTANTS.heap_end;
@@ -503,9 +518,23 @@ lazy_static! {
     };
 }
 
+fn singleton<const COMPRESSED: bool>() -> &'static MMTK<OpenJDK<COMPRESSED>> {
+    if COMPRESSED {
+        unsafe {
+            &*(&*SINGLETON_COMPRESSED as *const MMTK<OpenJDK<true>>
+                as *const MMTK<OpenJDK<COMPRESSED>>)
+        }
+    } else {
+        unsafe {
+            &*(&*SINGLETON_UNCOMPRESSED as *const MMTK<OpenJDK<false>>
+                as *const MMTK<OpenJDK<COMPRESSED>>)
+        }
+    }
+}
+
 #[no_mangle]
 pub static MMTK_MARK_COMPACT_HEADER_RESERVED_IN_BYTES: usize =
-    mmtk::util::alloc::MarkCompactAllocator::<OpenJDK>::HEADER_RESERVED_IN_BYTES;
+    mmtk::util::alloc::MarkCompactAllocator::<OpenJDK<false>>::HEADER_RESERVED_IN_BYTES;
 
 lazy_static! {
     /// A global storage for all the cached CodeCache root pointers

@@ -1,7 +1,6 @@
 use super::abi::*;
 use super::{OpenJDKEdge, UPCALLS};
 use crate::reference_glue::DISCOVERED_LISTS;
-use crate::SINGLETON;
 use mmtk::util::opaque_pointer::*;
 use mmtk::util::{Address, ObjectReference};
 use mmtk::vm::edge_shape::Edge;
@@ -156,7 +155,10 @@ impl OopIterate for InstanceRefKlass {
 
         let disable_discovery = !closure.should_discover_references();
 
-        if Self::should_discover_refs(self.instance_klass.reference_type, disable_discovery) {
+        if Self::should_discover_refs::<COMPRESSED>(
+            self.instance_klass.reference_type,
+            disable_discovery,
+        ) {
             match self.instance_klass.reference_type {
                 ReferenceType::None => {
                     panic!("oop_iterate on InstanceRefKlass with reference_type as None")
@@ -174,17 +176,26 @@ impl OopIterate for InstanceRefKlass {
 }
 
 impl InstanceRefKlass {
-    fn should_discover_refs(mut rt: ReferenceType, disable_discovery: bool) -> bool {
+    fn should_discover_refs<const COMPRESSED: bool>(
+        mut rt: ReferenceType,
+        disable_discovery: bool,
+    ) -> bool {
         if rt == ReferenceType::Other {
             rt = ReferenceType::Weak;
         }
         if disable_discovery {
             return false;
         }
-        if *SINGLETON.get_options().no_finalizer && rt == ReferenceType::Final {
+        if *crate::singleton::<COMPRESSED>().get_options().no_finalizer
+            && rt == ReferenceType::Final
+        {
             return false;
         }
-        if *SINGLETON.get_options().no_reference_types && rt != ReferenceType::Final {
+        if *crate::singleton::<COMPRESSED>()
+            .get_options()
+            .no_reference_types
+            && rt != ReferenceType::Final
+        {
             return false;
         }
         true
@@ -209,7 +220,7 @@ impl InstanceRefKlass {
         }
         // Skip young referents
         let reference: ObjectReference = oop.into();
-        if !SINGLETON
+        if !crate::singleton::<COMPRESSED>()
             .get_plan()
             .should_process_reference(reference, referent)
         {

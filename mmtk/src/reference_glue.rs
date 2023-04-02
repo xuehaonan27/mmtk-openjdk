@@ -3,7 +3,7 @@ use std::sync::atomic::AtomicBool;
 use std::sync::Mutex;
 
 use crate::abi::{InstanceRefKlass, Oop, ReferenceType};
-use crate::{OpenJDK, SINGLETON};
+use crate::OpenJDK;
 use atomic::{Atomic, Ordering};
 use mmtk::scheduler::{GCWork, GCWorker, ProcessEdgesWork, WorkBucketStage};
 use mmtk::util::opaque_pointer::VMWorkerThread;
@@ -41,7 +41,7 @@ fn set_next_reference<const COMPRESSED: bool>(object: ObjectReference, next: Obj
 
 pub struct VMReferenceGlue {}
 
-impl ReferenceGlue<OpenJDK> for VMReferenceGlue {
+impl<const COMPRESSED: bool> ReferenceGlue<OpenJDK<COMPRESSED>> for VMReferenceGlue {
     type FinalizableType = ObjectReference;
 
     fn set_referent(_reff: ObjectReference, _referent: ObjectReference) {
@@ -72,7 +72,9 @@ impl DiscoveredList {
         referent: ObjectReference,
     ) {
         // Keep reference and referent alive during SATB
-        SINGLETON.get_plan().discover_reference(reference, referent);
+        crate::singleton::<COMPRESSED>()
+            .get_plan()
+            .discover_reference(reference, referent);
         // Add to the corresponding list
         // Note that the list is a singly-linked list, and the tail object should point to itself.
         let oop = Oop::from(reference);
@@ -132,7 +134,7 @@ pub struct DiscoveredLists {
 
 impl DiscoveredLists {
     pub fn new() -> Self {
-        let workers = crate::SINGLETON.scheduler.num_workers();
+        let workers = with_singleton!(|singleton| singleton.scheduler.num_workers());
         let build_lists = |rt| (0..workers).map(|_| DiscoveredList::new(rt)).collect();
         Self {
             soft: build_lists(ReferenceType::Soft),
@@ -170,9 +172,9 @@ impl DiscoveredLists {
         self.get_by_rt_and_index(rt, id)
     }
 
-    pub fn process_lists<E: ProcessEdgesWork<VM = OpenJDK>, const COMPRESSED: bool>(
+    pub fn process_lists<E: ProcessEdgesWork, const COMPRESSED: bool>(
         &self,
-        worker: &mut GCWorker<OpenJDK>,
+        worker: &mut GCWorker<E::VM>,
         rt: ReferenceType,
         lists: &[DiscoveredList],
         clear: bool,
@@ -192,39 +194,35 @@ impl DiscoveredLists {
                 rt,
                 _p: PhantomData::<E>,
             };
-            packets.push(Box::new(w) as Box<dyn GCWork<OpenJDK>>);
+            packets.push(Box::new(w) as Box<dyn GCWork<E::VM>>);
         }
         worker.scheduler().work_buckets[WorkBucketStage::Unconstrained].bulk_add(packets);
     }
 
-    pub fn reconsider_soft_refs<E: ProcessEdgesWork<VM = OpenJDK>>(
-        &self,
-        _worker: &mut GCWorker<OpenJDK>,
-    ) {
-    }
+    pub fn reconsider_soft_refs<E: ProcessEdgesWork>(&self, _worker: &mut GCWorker<E::VM>) {}
 
-    pub fn process_soft_weak_final_refs<
-        E: ProcessEdgesWork<VM = OpenJDK>,
-        const COMPRESSED: bool,
-    >(
+    pub fn process_soft_weak_final_refs<E: ProcessEdgesWork, const COMPRESSED: bool>(
         &self,
-        worker: &mut GCWorker<OpenJDK>,
+        worker: &mut GCWorker<E::VM>,
     ) {
         self.allow_discover.store(false, Ordering::SeqCst);
-        if !*SINGLETON.get_options().no_reference_types {
+        if !*crate::singleton::<COMPRESSED>()
+            .get_options()
+            .no_reference_types
+        {
             self.process_lists::<E, COMPRESSED>(worker, ReferenceType::Soft, &self.soft, true);
             self.process_lists::<E, COMPRESSED>(worker, ReferenceType::Weak, &self.weak, true);
         }
-        if !*SINGLETON.get_options().no_finalizer {
+        if !*crate::singleton::<COMPRESSED>().get_options().no_finalizer {
             self.process_lists::<E, COMPRESSED>(worker, ReferenceType::Final, &self.r#final, false);
         }
     }
 
-    pub fn resurrect_final_refs<E: ProcessEdgesWork<VM = OpenJDK>, const COMPRESSED: bool>(
+    pub fn resurrect_final_refs<E: ProcessEdgesWork, const COMPRESSED: bool>(
         &self,
-        worker: &mut GCWorker<OpenJDK>,
+        worker: &mut GCWorker<E::VM>,
     ) {
-        assert!(!*SINGLETON.get_options().no_finalizer);
+        assert!(!*crate::singleton::<COMPRESSED>().get_options().no_finalizer);
         let lists = &self.r#final;
         let mut packets = vec![];
         for i in 0..lists.len() {
@@ -238,16 +236,20 @@ impl DiscoveredLists {
                 head,
                 _p: PhantomData::<E>,
             };
-            packets.push(Box::new(w) as Box<dyn GCWork<OpenJDK>>);
+            packets.push(Box::new(w) as Box<dyn GCWork<E::VM>>);
         }
         worker.scheduler().work_buckets[WorkBucketStage::Unconstrained].bulk_add(packets);
     }
 
-    pub fn process_phantom_refs<E: ProcessEdgesWork<VM = OpenJDK>, const COMPRESSED: bool>(
+    pub fn process_phantom_refs<E: ProcessEdgesWork, const COMPRESSED: bool>(
         &self,
-        worker: &mut GCWorker<OpenJDK>,
+        worker: &mut GCWorker<E::VM>,
     ) {
-        assert!(!*SINGLETON.get_options().no_reference_types);
+        assert!(
+            !*crate::singleton::<COMPRESSED>()
+                .get_options()
+                .no_reference_types
+        );
         self.process_lists::<E, COMPRESSED>(worker, ReferenceType::Phantom, &self.phantom, true);
     }
 }
@@ -257,17 +259,17 @@ lazy_static! {
     pub static ref DISCOVERED_LISTS: DiscoveredLists = DiscoveredLists::new();
 }
 
-pub struct ProcessDiscoveredList<E: ProcessEdgesWork<VM = OpenJDK>, const COMPRESSED: bool> {
+pub struct ProcessDiscoveredList<E: ProcessEdgesWork, const COMPRESSED: bool> {
     list_index: usize,
     head: ObjectReference,
     rt: ReferenceType,
     _p: PhantomData<E>,
 }
 
-impl<E: ProcessEdgesWork<VM = OpenJDK>, const COMPRESSED: bool> GCWork<OpenJDK>
+impl<E: ProcessEdgesWork, const COMPRESSED: bool> GCWork<E::VM>
     for ProcessDiscoveredList<E, COMPRESSED>
 {
-    fn do_work(&mut self, worker: &mut GCWorker<OpenJDK>, mmtk: &'static MMTK<OpenJDK>) {
+    fn do_work(&mut self, worker: &mut GCWorker<E::VM>, mmtk: &'static MMTK<E::VM>) {
         let mut trace = E::new(vec![], false, mmtk);
         trace.set_worker(worker);
         let retain = self.rt == ReferenceType::Soft && !mmtk.get_plan().is_emergency_collection();
@@ -325,16 +327,16 @@ impl<E: ProcessEdgesWork<VM = OpenJDK>, const COMPRESSED: bool> GCWork<OpenJDK>
     }
 }
 
-pub struct ResurrectFinalizables<E: ProcessEdgesWork<VM = OpenJDK>, const COMPRESSED: bool> {
+pub struct ResurrectFinalizables<E: ProcessEdgesWork, const COMPRESSED: bool> {
     list_index: usize,
     head: ObjectReference,
     _p: PhantomData<E>,
 }
 
-impl<E: ProcessEdgesWork<VM = OpenJDK>, const COMPRESSED: bool> GCWork<OpenJDK>
+impl<E: ProcessEdgesWork, const COMPRESSED: bool> GCWork<E::VM>
     for ResurrectFinalizables<E, COMPRESSED>
 {
-    fn do_work(&mut self, worker: &mut GCWorker<OpenJDK>, mmtk: &'static MMTK<OpenJDK>) {
+    fn do_work(&mut self, worker: &mut GCWorker<E::VM>, mmtk: &'static MMTK<E::VM>) {
         let mut trace = E::new(vec![], false, mmtk);
         trace.set_worker(worker);
         let new_list = iterate_list::<_, COMPRESSED>(self.head, |reference| {

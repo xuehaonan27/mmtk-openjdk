@@ -6,22 +6,27 @@ use crate::{OpenJDK, OpenJDKEdge, UPCALLS};
 use mmtk::scheduler::*;
 use mmtk::util::ObjectReference;
 use mmtk::vm::RootsWorkFactory;
+use mmtk::vm::*;
 use mmtk::MMTK;
 
 macro_rules! scan_roots_work {
     ($struct_name: ident, $func_name: ident) => {
-        pub struct $struct_name<F: RootsWorkFactory<OpenJDKEdge>> {
+        pub struct $struct_name<VM: VMBinding, F: RootsWorkFactory<VM::VMEdge>> {
             factory: F,
+            _p: std::marker::PhantomData<VM>,
         }
 
-        impl<F: RootsWorkFactory<OpenJDKEdge>> $struct_name<F> {
+        impl<VM: VMBinding, F: RootsWorkFactory<VM::VMEdge>> $struct_name<VM, F> {
             pub fn new(factory: F) -> Self {
-                Self { factory }
+                Self {
+                    factory,
+                    _p: std::marker::PhantomData,
+                }
             }
         }
 
-        impl<F: RootsWorkFactory<OpenJDKEdge>> GCWork<OpenJDK> for $struct_name<F> {
-            fn do_work(&mut self, _worker: &mut GCWorker<OpenJDK>, _mmtk: &'static MMTK<OpenJDK>) {
+        impl<VM: VMBinding, F: RootsWorkFactory<VM::VMEdge>> GCWork<VM> for $struct_name<VM, F> {
+            fn do_work(&mut self, _worker: &mut GCWorker<VM>, _mmtk: &'static MMTK<VM>) {
                 unsafe {
                     ((*UPCALLS).$func_name)(to_edges_closure(&mut self.factory));
                 }
@@ -83,8 +88,14 @@ fn to_edges_closure_cld<F: RootsWorkFactory<OpenJDKEdge>, const WEAK: bool>(
         data: factory as *mut F as *mut libc::c_void,
     }
 }
-impl<F: RootsWorkFactory<OpenJDKEdge>> GCWork<OpenJDK> for ScanClassLoaderDataGraphRoots<F> {
-    fn do_work(&mut self, _worker: &mut GCWorker<OpenJDK>, mmtk: &'static MMTK<OpenJDK>) {
+impl<const COMPRESSED: bool, F: RootsWorkFactory<OpenJDKEdge>> GCWork<OpenJDK<COMPRESSED>>
+    for ScanClassLoaderDataGraphRoots<F>
+{
+    fn do_work(
+        &mut self,
+        _worker: &mut GCWorker<OpenJDK<COMPRESSED>>,
+        mmtk: &'static MMTK<OpenJDK<COMPRESSED>>,
+    ) {
         unsafe {
             ((*UPCALLS).scan_class_loader_data_graph_roots)(
                 to_edges_closure_cld::<F, false>(&mut self.factory),
@@ -106,8 +117,14 @@ impl<F: RootsWorkFactory<OpenJDKEdge>> ScanCodeCacheRoots<F> {
     }
 }
 
-impl<F: RootsWorkFactory<OpenJDKEdge>> GCWork<OpenJDK> for ScanCodeCacheRoots<F> {
-    fn do_work(&mut self, _worker: &mut GCWorker<OpenJDK>, _mmtk: &'static MMTK<OpenJDK>) {
+impl<const COMPRESSED: bool, F: RootsWorkFactory<OpenJDKEdge>> GCWork<OpenJDK<COMPRESSED>>
+    for ScanCodeCacheRoots<F>
+{
+    fn do_work(
+        &mut self,
+        _worker: &mut GCWorker<OpenJDK<COMPRESSED>>,
+        _mmtk: &'static MMTK<OpenJDK<COMPRESSED>>,
+    ) {
         // Collect all the cached roots
         let mut edges = Vec::with_capacity(F::BUFFER_SIZE);
         for roots in (*crate::CODE_CACHE_ROOTS.lock().unwrap()).values() {
@@ -172,8 +189,14 @@ impl<F: RootsWorkFactory<OpenJDKEdge>> ScaWeakProcessorRoots<F> {
     }
 }
 
-impl<F: RootsWorkFactory<OpenJDKEdge>> GCWork<OpenJDK> for ScaWeakProcessorRoots<F> {
-    fn do_work(&mut self, _worker: &mut GCWorker<OpenJDK>, _mmtk: &'static MMTK<OpenJDK>) {
+impl<const COMPRESSED: bool, F: RootsWorkFactory<OpenJDKEdge>> GCWork<OpenJDK<COMPRESSED>>
+    for ScaWeakProcessorRoots<F>
+{
+    fn do_work(
+        &mut self,
+        _worker: &mut GCWorker<OpenJDK<COMPRESSED>>,
+        _mmtk: &'static MMTK<OpenJDK<COMPRESSED>>,
+    ) {
         unsafe {
             ((*UPCALLS).scan_weak_processor_roots)(to_edges_closure_weakref::<_>(
                 &mut self.factory,
