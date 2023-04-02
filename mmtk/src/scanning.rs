@@ -45,18 +45,18 @@ impl<const COMPRESSED: bool> Scanning<OpenJDK<COMPRESSED>> for VMScanning {
     const SCAN_MUTATORS_IN_SAFEPOINT: bool = false;
     const SINGLE_THREAD_MUTATOR_SCANNING: bool = false;
 
-    fn scan_object<EV: EdgeVisitor<OpenJDKEdge<COMPRESSED>>, const COMPRESSED2: bool>(
+    fn scan_object(
         tls: VMWorkerThread,
         object: ObjectReference,
-        edge_visitor: &mut EV,
+        edge_visitor: &mut impl EdgeVisitor<OpenJDKEdge<COMPRESSED>>,
     ) {
         crate::object_scanning::scan_object::<_, _, COMPRESSED>(object, edge_visitor, tls);
     }
 
-    fn scan_object_with_klass<EV: EdgeVisitor<OpenJDKEdge<COMPRESSED>>, const COMPRESSED2: bool>(
+    fn scan_object_with_klass(
         tls: VMWorkerThread,
         object: ObjectReference,
-        edge_visitor: &mut EV,
+        edge_visitor: &mut impl EdgeVisitor<OpenJDKEdge<COMPRESSED>>,
         klass: Address,
     ) {
         crate::object_scanning::scan_object_with_klass::<_, _, COMPRESSED>(
