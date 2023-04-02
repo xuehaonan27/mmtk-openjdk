@@ -148,11 +148,7 @@ pub static GLOBAL_SIDE_METADATA_VM_BASE_ADDRESS: uintptr_t =
 
 #[no_mangle]
 pub static GLOBAL_SIDE_METADATA_VM_BASE_ADDRESS_COMPRESSED: uintptr_t =
-    crate::vm_metadata::LOGGING_SIDE_METADATA_SPEC
-        .as_spec()
-        .extract_side_spec()
-        .upper_bound_address_for_contiguous()
-        .as_usize();
+    mmtk::util::metadata::side_metadata::GLOBAL_SIDE_METADATA_VM_BASE_ADDRESS.as_usize();
 
 #[no_mangle]
 pub static RC_TABLE_BASE_ADDRESS: uintptr_t =
