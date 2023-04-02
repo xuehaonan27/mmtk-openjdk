@@ -67,17 +67,15 @@ impl<const COMPRESSED: bool> Scanning<OpenJDK<COMPRESSED>> for VMScanning {
         );
     }
 
-    fn obj_array_data<const COMPRESSED2: bool>(
-        o: ObjectReference,
-    ) -> crate::OpenJDKEdgeRange<COMPRESSED> {
+    fn obj_array_data(o: ObjectReference) -> crate::OpenJDKEdgeRange<COMPRESSED> {
         crate::object_scanning::obj_array_data::<COMPRESSED>(unsafe { std::mem::transmute(o) })
     }
 
-    fn is_obj_array<const COMPRESSED2: bool>(o: ObjectReference) -> bool {
+    fn is_obj_array(o: ObjectReference) -> bool {
         crate::object_scanning::is_obj_array::<COMPRESSED>(unsafe { std::mem::transmute(o) })
     }
 
-    fn is_val_array<const COMPRESSED2: bool>(o: ObjectReference) -> bool {
+    fn is_val_array(o: ObjectReference) -> bool {
         crate::object_scanning::is_val_array::<COMPRESSED>(unsafe { std::mem::transmute(o) })
     }
 
