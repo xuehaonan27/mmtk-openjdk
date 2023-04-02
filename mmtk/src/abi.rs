@@ -292,19 +292,19 @@ pub struct OopDesc {
     klass: KlassField,
 }
 
+lazy_static! {
+    static ref COMPRESSED_KLASS_BASE: Address =
+        unsafe { ((*UPCALLS).compressed_klass_base)() };
+    static ref COMPRESSED_KLASS_SHIFT: usize =
+        unsafe { ((*UPCALLS).compressed_klass_shift)() };
+}
+
 impl OopDesc {
     pub fn start(&self) -> Address {
         unsafe { mem::transmute(self) }
     }
     pub(crate) fn klass_ptr<const COMPRESSED: bool>(&self) -> Address {
-        // self.klass
         if COMPRESSED {
-            lazy_static! {
-                static ref COMPRESSED_KLASS_BASE: Address =
-                    unsafe { ((*UPCALLS).compressed_klass_base)() };
-                static ref COMPRESSED_KLASS_SHIFT: usize =
-                    unsafe { ((*UPCALLS).compressed_klass_shift)() };
-            }
             let compressed = unsafe { self.klass.narrow_klass };
             let addr = *COMPRESSED_KLASS_BASE + ((compressed as usize) << *COMPRESSED_KLASS_SHIFT);
             addr
@@ -313,14 +313,7 @@ impl OopDesc {
         }
     }
     pub fn klass<const COMPRESSED: bool>(&self) -> &'static Klass {
-        // self.klass
         if COMPRESSED {
-            lazy_static! {
-                static ref COMPRESSED_KLASS_BASE: Address =
-                    unsafe { ((*UPCALLS).compressed_klass_base)() };
-                static ref COMPRESSED_KLASS_SHIFT: usize =
-                    unsafe { ((*UPCALLS).compressed_klass_shift)() };
-            }
             let compressed = unsafe { self.klass.narrow_klass };
             let addr = *COMPRESSED_KLASS_BASE + ((compressed as usize) << *COMPRESSED_KLASS_SHIFT);
             unsafe { &*addr.to_ptr::<Klass>() }
