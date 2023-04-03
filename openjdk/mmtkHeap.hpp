@@ -34,6 +34,7 @@
 #include "gc/shared/oopStorageParState.hpp"
 #include "gc/shared/strongRootsScope.hpp"
 #include "gc/shared/workgroup.hpp"
+#include "gc/shared/softRefPolicy.hpp"
 #include "memory/iterator.hpp"
 #include "memory/metaspace.hpp"
 #include "mmtkCollectorPolicy.hpp"
