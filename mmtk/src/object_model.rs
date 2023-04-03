@@ -8,10 +8,12 @@ use mmtk::vm::*;
 
 pub struct VMObjectModel {}
 
-impl ObjectModel<OpenJDK> for VMObjectModel {
-    const GLOBAL_LOG_BIT_SPEC: VMGlobalLogBitSpec = vm_metadata::LOGGING_SIDE_METADATA_SPEC;
-    const GLOBAL_LOG_BIT_SPEC_COMPRESSED: VMGlobalLogBitSpecCompressed =
-        vm_metadata::LOGGING_SIDE_METADATA_SPEC_COMPRESSED;
+impl<const COMPRESSED: bool> ObjectModel<OpenJDK<COMPRESSED>> for VMObjectModel {
+    const GLOBAL_LOG_BIT_SPEC: VMGlobalLogBitSpec = if COMPRESSED {
+        vm_metadata::LOGGING_SIDE_METADATA_SPEC_COMPRESSED
+    } else {
+        vm_metadata::LOGGING_SIDE_METADATA_SPEC
+    };
 
     const LOCAL_FORWARDING_POINTER_SPEC: VMLocalForwardingPointerSpec =
         vm_metadata::FORWARDING_POINTER_METADATA_SPEC;
@@ -23,10 +25,12 @@ impl ObjectModel<OpenJDK> for VMObjectModel {
     const UNIFIED_OBJECT_REFERENCE_ADDRESS: bool = true;
     const OBJECT_REF_OFFSET_LOWER_BOUND: isize = 0;
 
+    const COMPRESSED_PTR_ENABLED: bool = COMPRESSED;
+
     fn copy(
         from: ObjectReference,
         copy: CopySemantics,
-        copy_context: &mut GCWorkerCopyContext<OpenJDK>,
+        copy_context: &mut GCWorkerCopyContext<OpenJDK<COMPRESSED>>,
     ) -> ObjectReference {
         let bytes = if crate::use_compressed_oops() {
             unsafe { Oop::from(from).size::<true>() }
@@ -54,9 +58,9 @@ impl ObjectModel<OpenJDK> for VMObjectModel {
                 unsafe { (dst + i).store((src + i).load::<u8>()) };
             }
         }
-        let start = Self::ref_to_object_start(to);
+        let start = <Self as ObjectModel<OpenJDK<COMPRESSED>>>::ref_to_object_start(to);
         if region != Address::ZERO {
-            fill_alignment_gap::<OpenJDK>(region, start);
+            fill_alignment_gap::<OpenJDK<COMPRESSED>>(region, start);
         }
         start + bytes
     }
@@ -66,7 +70,7 @@ impl ObjectModel<OpenJDK> for VMObjectModel {
     }
 
     fn get_current_size(object: ObjectReference) -> usize {
-        if crate::use_compressed_oops() {
+        if COMPRESSED {
             unsafe { Oop::from(object).size::<true>() }
         } else {
             unsafe { Oop::from(object).size::<false>() }
@@ -74,7 +78,7 @@ impl ObjectModel<OpenJDK> for VMObjectModel {
     }
 
     fn get_size_when_copied(object: ObjectReference) -> usize {
-        Self::get_current_size(object)
+        <Self as ObjectModel<OpenJDK<COMPRESSED>>>::get_current_size(object)
     }
 
     fn get_align_when_copied(_object: ObjectReference) -> usize {
@@ -120,10 +124,6 @@ impl ObjectModel<OpenJDK> for VMObjectModel {
         let c_str: &CStr = unsafe { CStr::from_ptr(c_string) };
         let s: &str = c_str.to_str().unwrap();
         s.to_string()
-    }
-
-    fn compressed_pointers_enabled() -> bool {
-        crate::use_compressed_oops()
     }
 
     fn get_class_pointer(object: ObjectReference) -> Address {
