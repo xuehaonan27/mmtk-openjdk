@@ -29,6 +29,7 @@
 #include "interpreter/oopMapCache.hpp"
 #include "logging/log.hpp"
 #include "interpreter/oopMapCache.hpp"
+#include "gc/shared/gcLocker.hpp"
 
 VM_MMTkSTWOperation::VM_MMTkSTWOperation(MMTkVMCompanionThread *companion_thread):
     _companion_thread(companion_thread) {
@@ -40,6 +41,19 @@ bool VM_MMTkSTWOperation::doit_prologue() {
 }
 
 void VM_MMTkSTWOperation::doit() {
+    if (GCLocker::check_active_before_gc()) {
+        // If some threads is in JNI critical region, we don't do a GC for now,
+        // and end this VM operation earlier. Under such case, `GCLocker::check_active_before_gc`
+        // will remember there is a pending GC. After the thread exits the critical region,
+        // if a pending GC needs to be triggered, the java thread will
+        // call `MMTkHeap::collect(GCCause::_gc_locker)`.
+        // Since we've already have a unfinished GC request inside mmtk,
+        // mmtk will not trigger another GC, but simply blocking this thread.
+        // After all threads are successfully blocked, the previously
+        // triggered pending GC will proceed.
+        _companion_thread->_wait_for_gc_locker = true;
+        return;
+    }
     log_trace(vmthread)("Entered VM_MMTkSTWOperation::doit().");
     _companion_thread->reach_suspended_and_wait_for_resume();
     log_trace(vmthread)("Leaving VM_MMTkSTWOperation::doit()");

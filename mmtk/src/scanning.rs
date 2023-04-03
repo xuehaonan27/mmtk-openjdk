@@ -1,6 +1,7 @@
 use crate::gc_work::*;
+use crate::Edge;
 use crate::{EdgesClosure, OpenJDK};
-use crate::{NewBuffer, OpenJDKEdge, SINGLETON, UPCALLS};
+use crate::{NewBuffer, OpenJDKEdge, UPCALLS};
 use mmtk::memory_manager;
 use mmtk::scheduler::WorkBucketStage;
 use mmtk::util::opaque_pointer::*;
@@ -11,15 +12,15 @@ use mmtk::MutatorContext;
 
 pub struct VMScanning {}
 
-extern "C" fn report_edges_and_renew_buffer<F: RootsWorkFactory<OpenJDKEdge>>(
+extern "C" fn report_edges_and_renew_buffer<E: Edge, F: RootsWorkFactory<E>>(
     ptr: *mut Address,
     length: usize,
     capacity: usize,
     factory_ptr: *mut libc::c_void,
 ) -> NewBuffer {
     if !ptr.is_null() {
-        let ptr = ptr as *mut OpenJDKEdge;
-        let buf = unsafe { Vec::<OpenJDKEdge>::from_raw_parts(ptr, length, capacity) };
+        let ptr = ptr as *mut E;
+        let buf = unsafe { Vec::<E>::from_raw_parts(ptr, length, capacity) };
         let factory: &mut F = unsafe { &mut *(factory_ptr as *mut F) };
         factory.create_process_edge_roots_work(buf);
     }
@@ -33,32 +34,32 @@ extern "C" fn report_edges_and_renew_buffer<F: RootsWorkFactory<OpenJDKEdge>>(
     NewBuffer { ptr, capacity }
 }
 
-pub(crate) fn to_edges_closure<F: RootsWorkFactory<OpenJDKEdge>>(factory: &mut F) -> EdgesClosure {
+pub(crate) fn to_edges_closure<E: Edge, F: RootsWorkFactory<E>>(factory: &mut F) -> EdgesClosure {
     EdgesClosure {
-        func: report_edges_and_renew_buffer::<F>,
+        func: report_edges_and_renew_buffer::<E, F>,
         data: factory as *mut F as *mut libc::c_void,
     }
 }
 
-impl Scanning<OpenJDK> for VMScanning {
+impl<const COMPRESSED: bool> Scanning<OpenJDK<COMPRESSED>> for VMScanning {
     const SCAN_MUTATORS_IN_SAFEPOINT: bool = false;
     const SINGLE_THREAD_MUTATOR_SCANNING: bool = false;
 
-    fn scan_object<EV: EdgeVisitor<OpenJDKEdge>, const COMPRESSED: bool>(
+    fn scan_object(
         tls: VMWorkerThread,
         object: ObjectReference,
-        edge_visitor: &mut EV,
+        edge_visitor: &mut impl EdgeVisitor<OpenJDKEdge<COMPRESSED>>,
     ) {
-        crate::object_scanning::scan_object::<EV, COMPRESSED>(object, edge_visitor, tls);
+        crate::object_scanning::scan_object::<_, _, COMPRESSED>(object, edge_visitor, tls);
     }
 
-    fn scan_object_with_klass<EV: EdgeVisitor<OpenJDKEdge>, const COMPRESSED: bool>(
+    fn scan_object_with_klass(
         tls: VMWorkerThread,
         object: ObjectReference,
-        edge_visitor: &mut EV,
+        edge_visitor: &mut impl EdgeVisitor<OpenJDKEdge<COMPRESSED>>,
         klass: Address,
     ) {
-        crate::object_scanning::scan_object_with_klass::<EV, COMPRESSED>(
+        crate::object_scanning::scan_object_with_klass::<_, _, COMPRESSED>(
             object,
             edge_visitor,
             tls,
@@ -66,15 +67,15 @@ impl Scanning<OpenJDK> for VMScanning {
         );
     }
 
-    fn obj_array_data<const COMPRESSED: bool>(o: ObjectReference) -> crate::OpenJDKEdgeRange {
+    fn obj_array_data(o: ObjectReference) -> crate::OpenJDKEdgeRange<COMPRESSED> {
         crate::object_scanning::obj_array_data::<COMPRESSED>(unsafe { std::mem::transmute(o) })
     }
 
-    fn is_obj_array<const COMPRESSED: bool>(o: ObjectReference) -> bool {
+    fn is_obj_array(o: ObjectReference) -> bool {
         crate::object_scanning::is_obj_array::<COMPRESSED>(unsafe { std::mem::transmute(o) })
     }
 
-    fn is_val_array<const COMPRESSED: bool>(o: ObjectReference) -> bool {
+    fn is_val_array(o: ObjectReference) -> bool {
         crate::object_scanning::is_val_array::<COMPRESSED>(unsafe { std::mem::transmute(o) })
     }
 
@@ -83,7 +84,10 @@ impl Scanning<OpenJDK> for VMScanning {
         // TODO
     }
 
-    fn scan_thread_roots(_tls: VMWorkerThread, mut factory: impl RootsWorkFactory<OpenJDKEdge>) {
+    fn scan_thread_roots(
+        _tls: VMWorkerThread,
+        mut factory: impl RootsWorkFactory<OpenJDKEdge<COMPRESSED>>,
+    ) {
         unsafe {
             ((*UPCALLS).scan_all_thread_roots)(to_edges_closure(&mut factory));
         }
@@ -91,8 +95,8 @@ impl Scanning<OpenJDK> for VMScanning {
 
     fn scan_thread_root(
         _tls: VMWorkerThread,
-        mutator: &'static mut Mutator<OpenJDK>,
-        mut factory: impl RootsWorkFactory<OpenJDKEdge>,
+        mutator: &'static mut Mutator<OpenJDK<COMPRESSED>>,
+        mut factory: impl RootsWorkFactory<OpenJDKEdge<COMPRESSED>>,
     ) {
         let tls = mutator.get_tls();
         unsafe {
@@ -100,9 +104,12 @@ impl Scanning<OpenJDK> for VMScanning {
         }
     }
 
-    fn scan_vm_specific_roots(_tls: VMWorkerThread, factory: impl RootsWorkFactory<OpenJDKEdge>) {
+    fn scan_vm_specific_roots(
+        _tls: VMWorkerThread,
+        factory: impl RootsWorkFactory<OpenJDKEdge<COMPRESSED>>,
+    ) {
         memory_manager::add_work_packets(
-            &SINGLETON,
+            &crate::singleton::<COMPRESSED>(),
             WorkBucketStage::RCProcessIncs,
             vec![
                 Box::new(ScanUniverseRoots::new(factory.clone())) as _,
@@ -118,9 +125,11 @@ impl Scanning<OpenJDK> for VMScanning {
                 Box::new(ScaWeakProcessorRoots::new(factory.clone())) as _,
             ],
         );
-        if !(Self::SCAN_MUTATORS_IN_SAFEPOINT && Self::SINGLE_THREAD_MUTATOR_SCANNING) {
+        if !(<VMScanning as Scanning<OpenJDK<COMPRESSED>>>::SCAN_MUTATORS_IN_SAFEPOINT
+            && <VMScanning as Scanning<OpenJDK<COMPRESSED>>>::SINGLE_THREAD_MUTATOR_SCANNING)
+        {
             memory_manager::add_work_packet(
-                &SINGLETON,
+                &crate::singleton::<COMPRESSED>(),
                 WorkBucketStage::RCProcessIncs,
                 ScanVMThreadRoots::new(factory),
             );

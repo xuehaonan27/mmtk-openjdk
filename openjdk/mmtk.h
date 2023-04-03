@@ -42,6 +42,7 @@ extern const char* get_mmtk_version();
 extern MMTk_Mutator bind_mutator(void *tls);
 extern void destroy_mutator(MMTk_Mutator mutator);
 extern void flush_mutator(MMTk_Mutator mutator);
+extern void release_mutator(MMTk_Mutator mutator);
 
 extern void mmtk_report_gc_start();
 
@@ -116,7 +117,7 @@ extern bool will_never_move(void* object);
 extern bool process(char* name, char* value);
 extern bool process_bulk(char* options);
 extern void scan_region();
-extern void handle_user_collection_request(void *tls);
+extern void handle_user_collection_request(void *tls, bool force);
 
 extern void start_control_collector(void *tls, void *context);
 extern void start_worker(void *tls, void* worker);

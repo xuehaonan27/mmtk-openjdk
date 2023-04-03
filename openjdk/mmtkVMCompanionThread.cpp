@@ -27,6 +27,7 @@
 #include "mmtkVMCompanionThread.hpp"
 #include "runtime/mutex.hpp"
 #include "logging/log.hpp"
+#include "gc/shared/gcLocker.hpp"
 
 MMTkVMCompanionThread::MMTkVMCompanionThread():
     NamedThread(),
@@ -49,7 +50,7 @@ void MMTkVMCompanionThread::run() {
   for (;;) {
     // Wait for suspend request
     log_trace(gc)("MMTkVMCompanionThread: Waiting for suspend request...");
-    {
+    if (!_wait_for_gc_locker) {
       MutexLockerEx locker(_lock, Mutex::_no_safepoint_check_flag);
       assert(_reached_state == _threads_resumed, "Threads should be running at this moment.");
       while (_desired_state != _threads_suspended) {
@@ -61,6 +62,7 @@ void MMTkVMCompanionThread::run() {
     // Let the VM thread stop the world.
     log_trace(gc)("MMTkVMCompanionThread: Letting VMThread execute VM op...");
     if (_vm_thread_requires_gc_pause) {
+      guarantee(!_wait_for_gc_locker, "VM thread is triggering a GC when the MMTkVMCompanionThread is waiting for GC locker");
       MutexLockerEx locker(_lock, Mutex::_no_safepoint_check_flag);
       _vm_thread_requires_gc_pause = false;
       _vm_thread_suspend_for_gc = true;
@@ -69,6 +71,25 @@ void MMTkVMCompanionThread::run() {
         _lock->wait(Mutex::_no_safepoint_check_flag);
       }
     } else {
+      if (_wait_for_gc_locker) {
+        // When VM_MMTkSTWOperation early exits due to a jni critical region,
+        // _wait_for_gc_locker will be set to true before exsting safepoint.
+        // This main loop will continue one more iteration and reach here.
+        // We wait until GC locker is inactive, to avoid busy looping.
+        #ifndef PRODUCT
+          auto safepoint_check_required = JNICritical_lock->_safepoint_check_required;
+          JNICritical_lock->_safepoint_check_required = Monitor::_safepoint_check_sometimes;
+        #endif
+        MutexLockerEx locker(JNICritical_lock, Mutex::_no_safepoint_check_flag);
+        while (GCLocker::is_active_and_needs_gc()) {
+          JNICritical_lock->wait(true);
+        }
+        #ifndef PRODUCT
+          JNICritical_lock->_safepoint_check_required = safepoint_check_required;
+        #endif
+        // clear the flag
+        _wait_for_gc_locker = false;
+      }
       VM_MMTkSTWOperation op(this);
       // VMThread::execute() is blocking. The companion thread will be blocked
       // here waiting for the VM thread to execute op, and the VM thread will
@@ -79,7 +100,7 @@ void MMTkVMCompanionThread::run() {
 
     // Tell the waiter thread that the world has resumed.
     log_trace(gc)("MMTkVMCompanionThread: Notifying threads resumption...");
-    {
+    if (!_wait_for_gc_locker) {
       MutexLockerEx locker(_lock, Mutex::_no_safepoint_check_flag);
       assert(_desired_state == _threads_resumed, "start-the-world should be requested.");
       assert(_reached_state == _threads_suspended, "Threads should still be suspended at this moment.");
@@ -158,7 +179,7 @@ void MMTkVMCompanionThread::wait_for_reached(stw_state desired_state) {
 // This method will block until the GC requests start-the-world.
 void MMTkVMCompanionThread::reach_suspended_and_wait_for_resume() {
   assert(Thread::current()->is_VM_thread(), "reach_suspended_and_wait_for_resume can only be executed by the VM thread");
-
+  
   MutexLockerEx locker(_lock, Mutex::_no_safepoint_check_flag);
 
   // Tell the waiter thread that the world has stopped.
