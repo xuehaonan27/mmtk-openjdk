@@ -163,7 +163,7 @@ pub static FREE_LIST_ALLOCATOR_SIZE: uintptr_t =
     std::mem::size_of::<mmtk::util::alloc::FreeListAllocator<OpenJDK<false>>>();
 
 #[no_mangle]
-pub static DISABLE_ALLOCATION_FAST_PATH: i32 = cfg!(feature = "no_fast_alloc") as _;
+pub static DISABLE_ALLOCATION_FAST_PATH: i32 = (cfg!(feature = "no_fast_alloc") || cfg!(feature = "object_size_distribution")) as _;
 
 #[no_mangle]
 pub static IMMIX_ALLOCATOR_SIZE: uintptr_t =
@@ -539,3 +539,21 @@ lazy_static! {
 
 /// A counter tracking the total size of the `CODE_CACHE_ROOTS`.
 static CODE_CACHE_ROOTS_SIZE: AtomicUsize = AtomicUsize::new(0);
+
+lazy_static! {
+    static ref OBJ_COUNT: Mutex<HashMap<usize, (usize, usize)>> = Mutex::new(HashMap::new());
+}
+
+fn record_alloc(size: usize) {
+    assert!(cfg!(feature = "object_size_distribution"));
+    let mut counts = OBJ_COUNT.lock().unwrap();
+    counts.entry(size.next_power_of_two()).and_modify(|x| {
+        x.0 += 1;
+        x.1 += size;
+    }).or_insert((1, size));
+}
+
+extern fn dump_and_reset_obj_dist() {
+    assert!(cfg!(feature = "object_size_distribution"));
+    mmtk::dump_and_reset_obj_dist("Dynamic", &mut OBJ_COUNT.lock().unwrap());
+}

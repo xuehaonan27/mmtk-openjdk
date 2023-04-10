@@ -60,6 +60,9 @@ impl<const COMPRESSED: bool> Collection<OpenJDK<COMPRESSED>> for VMCollection {
     }
 
     fn resume_mutators(tls: VMWorkerThread, lxr: bool, current_gc_should_unload_classes: bool) {
+        if cfg!(feature = "object_size_distribution") {
+            crate::dump_and_reset_obj_dist();
+        }
         DISCOVERED_LISTS.enable_discover();
         unsafe {
             ((*UPCALLS).resume_mutators)(tls, lxr, current_gc_should_unload_classes);

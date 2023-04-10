@@ -92,7 +92,11 @@ MMTkBarrierSet::MMTkBarrierSet(MemRegion whole_heap):
              get_selected_barrier()->create_c2(),
              BarrierSet::FakeRtti(BarrierSet::ThirdPartyHeapBarrierSet)),
   _whole_heap(whole_heap),
-  _runtime(get_selected_barrier()->create_runtime()) {}
+  _runtime(get_selected_barrier()->create_runtime()) {
+    if (!MMTK_ENABLE_ALLOCATION_FASTPATH || disable_fast_alloc()) {
+      fprintf(stderr, "Allocation fast-path disabled\n");
+    }
+  }
 
 void MMTkBarrierSet::write_ref_array_work(MemRegion mr) {
   guarantee(false, "NoBarrier::write_ref_arrey_work not supported");
