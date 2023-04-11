@@ -114,8 +114,7 @@ extern char* mmtk_active_barrier();
 extern void initialize_collection(void *tls);
 extern void gc_init(size_t heap_size);
 extern bool will_never_move(void* object);
-extern bool process(char* name, char* value);
-extern bool process_bulk(char* options);
+extern bool process_bulk(char* options, size_t threads);
 extern void scan_region();
 extern void handle_user_collection_request(void *tls, bool force);
 

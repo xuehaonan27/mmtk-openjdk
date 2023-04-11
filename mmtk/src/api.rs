@@ -347,24 +347,14 @@ pub extern "C" fn mmtk_harness_end_impl() {
 #[no_mangle]
 // We trust the name/value pointer is valid.
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
-pub extern "C" fn process(name: *const c_char, value: *const c_char) -> bool {
-    let name_str: &CStr = unsafe { CStr::from_ptr(name) };
-    let value_str: &CStr = unsafe { CStr::from_ptr(value) };
-    let mut builder = BUILDER.lock().unwrap();
-    memory_manager::process(
-        &mut builder,
-        name_str.to_str().unwrap(),
-        value_str.to_str().unwrap(),
-    )
-}
-
-#[no_mangle]
-// We trust the name/value pointer is valid.
-#[allow(clippy::not_unsafe_ptr_arg_deref)]
-pub extern "C" fn process_bulk(options: *const c_char) -> bool {
+pub extern "C" fn process_bulk(options: *const c_char, parallel_gc_threads: usize) -> bool {
     let options_str: &CStr = unsafe { CStr::from_ptr(options) };
     let mut builder = BUILDER.lock().unwrap();
-    memory_manager::process_bulk(&mut builder, options_str.to_str().unwrap())
+    let mut result = memory_manager::process_bulk(&mut builder, options_str.to_str().unwrap());
+    if builder.options.threads.is_default {
+        result |= builder.set_option("threads", &format!("{}", parallel_gc_threads));
+    }
+    result
 }
 
 #[no_mangle]

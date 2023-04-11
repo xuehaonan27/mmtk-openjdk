@@ -92,10 +92,9 @@ jint MMTkHeap::initialize() {
   //  printf("policy max heap size %zu, min heap size %zu\n", heap_size, collector_policy()->min_heap_byte_size());
 
   // Set options
-  if (ThirdPartyHeapOptions != NULL) {
-    bool set_options = process_bulk(strdup(ThirdPartyHeapOptions));
-    guarantee(set_options, "Failed to set MMTk options. Please check if the options are valid: %s\n", ThirdPartyHeapOptions);
-  }
+  bool set_options = process_bulk(strdup(ThirdPartyHeapOptions), ParallelGCThreads);
+  guarantee(set_options, "Failed to set MMTk options. Please check if the options are valid: %s\n", ThirdPartyHeapOptions);
+
   // Set heap size
   bool set_heap_size = mmtk_set_heap_size(min_heap_size, max_heap_size);
   guarantee(set_heap_size, "Failed to set MMTk heap size. Please check if the heap size is valid: min = %ld, max = %ld\n", min_heap_size, max_heap_size);

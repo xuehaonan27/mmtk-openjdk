@@ -34,6 +34,7 @@
 #include "runtime/vm_version.hpp"
 #include "thirdPartyHeapArguments.hpp"
 #include "utilities/defaultStream.hpp"
+#include "runtime/abstract_vm_version.hpp"
 
 size_t ThirdPartyHeapArguments::conservative_max_heap_alignment() {
   return CollectorPolicy::compute_heap_alignment();
@@ -47,6 +48,14 @@ void ThirdPartyHeapArguments::initialize() {
   // auto compressed_oops = mmtk_use_compressed_ptrs();
   // FLAG_SET_DEFAULT(UseCompressedOops, compressed_oops);
   FLAG_SET_DEFAULT(UseCompressedClassPointers, UseCompressedOops);
+
+  FLAG_SET_DEFAULT(ParallelGCThreads, Abstract_VM_Version::parallel_worker_threads());
+  if (ParallelGCThreads == 0) {
+    assert(!FLAG_IS_DEFAULT(ParallelGCThreads), "The default value for ParallelGCThreads should not be 0.");
+    vm_exit_during_initialization("The flag -XX:+UseG1GC can not be combined with -XX:ParallelGCThreads=0", NULL);
+  }
+
+  if (ThirdPartyHeapOptions == NULL) ThirdPartyHeapOptions = "";
 }
 
 CollectedHeap* ThirdPartyHeapArguments::create_heap() {
