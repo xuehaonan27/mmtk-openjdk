@@ -9,10 +9,11 @@ use mmtk::vm::*;
 pub struct VMObjectModel {}
 
 impl<const COMPRESSED: bool> ObjectModel<OpenJDK<COMPRESSED>> for VMObjectModel {
-    const GLOBAL_LOG_BIT_SPEC: VMGlobalLogBitSpec = if COMPRESSED {
-        vm_metadata::LOGGING_SIDE_METADATA_SPEC_COMPRESSED
+    const GLOBAL_LOG_BIT_SPEC: VMGlobalLogBitSpec = vm_metadata::LOGGING_SIDE_METADATA_SPEC;
+    const GLOBAL_FIELD_UNLOG_BIT_SPEC: VMGlobalFieldUnlogBitSpec = if COMPRESSED {
+        vm_metadata::FIELD_LOGGING_SIDE_METADATA_SPEC_COMPRESSED
     } else {
-        vm_metadata::LOGGING_SIDE_METADATA_SPEC
+        vm_metadata::FIELD_LOGGING_SIDE_METADATA_SPEC
     };
 
     const LOCAL_FORWARDING_POINTER_SPEC: VMLocalForwardingPointerSpec =

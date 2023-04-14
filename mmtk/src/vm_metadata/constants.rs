@@ -13,8 +13,11 @@ pub(crate) const FORWARDING_POINTER_OFFSET: isize = 0;
 /// 1 bit per object
 pub(crate) const LOGGING_SIDE_METADATA_SPEC: VMGlobalLogBitSpec = VMGlobalLogBitSpec::side_first();
 
-pub(crate) const LOGGING_SIDE_METADATA_SPEC_COMPRESSED: VMGlobalLogBitSpec =
-    VMGlobalLogBitSpec::side_first_compressed();
+pub(crate) const FIELD_LOGGING_SIDE_METADATA_SPEC: VMGlobalFieldUnlogBitSpec =
+    VMGlobalFieldUnlogBitSpec::side_first();
+
+pub(crate) const FIELD_LOGGING_SIDE_METADATA_SPEC_COMPRESSED: VMGlobalFieldUnlogBitSpec =
+    VMGlobalFieldUnlogBitSpec::side_first_compressed();
 
 // Global MetadataSpecs - End
 

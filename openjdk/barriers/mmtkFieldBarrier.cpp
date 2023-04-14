@@ -6,7 +6,7 @@
 constexpr int kUnloggedValue = 1;
 
 static inline intptr_t side_metadata_base_address() {
-  return UseCompressedOops ? SIDE_METADATA_BASE_ADDRESS_COMPRESSED : SIDE_METADATA_BASE_ADDRESS;
+  return UseCompressedOops ? FIELD_UNLOG_BITS_BASE_ADDRESS_COMPRESSED : FIELD_UNLOG_BITS_BASE_ADDRESS;
 }
 
 
@@ -78,7 +78,7 @@ void MMTkFieldBarrierSetAssembler::object_reference_write_pre(MacroAssembler* ma
   Register tmp4 = rscratch2;
   Register tmp5 = tmp1 == dst.base() || tmp1 == dst.index() ? tmp2 : tmp1;
 
-  // tmp5 = load-byte (SIDE_METADATA_BASE_ADDRESS + (obj >> 6));
+  // tmp5 = load-byte (side_metadata_base_address() + (obj >> 6));
   __ lea(tmp3, dst);
   __ shrptr(tmp3, UseCompressedOops ? 5 : 6);
   __ movptr(tmp5, side_metadata_base_address());
@@ -246,7 +246,7 @@ void MMTkFieldBarrierSetC1::object_reference_write_pre(LIRAccess& access, LIR_Op
     __ jump(slow);
   } else {
     LIR_Opr addr = slot;
-    // uint8_t* meta_addr = (uint8_t*) (SIDE_METADATA_BASE_ADDRESS + (addr >> 6));
+    // uint8_t* meta_addr = (uint8_t*) (side_metadata_base_address() + (addr >> 6));
     LIR_Opr offset = gen->new_pointer_register();
     __ move(addr, offset);
     __ unsigned_shift_right(offset, UseCompressedOops ? 5 : 6, offset);
