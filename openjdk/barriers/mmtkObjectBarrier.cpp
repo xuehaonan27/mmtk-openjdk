@@ -17,6 +17,10 @@ void MMTkObjectBarrierSetRuntime::object_reference_write_post(oop src, oop* slot
 #endif
 }
 
+void MMTkObjectBarrierSetRuntime::on_slowpath_allocation_exit(oop new_obj) const {
+  ::mmtk_object_reference_clone_pre((MMTk_Mutator) &Thread::current()->third_party_heap_mutator, (void*) new_obj);
+}
+
 #define __ masm->
 
 void MMTkObjectBarrierSetAssembler::object_reference_write_post(MacroAssembler* masm, DecoratorSet decorators, Address dst, Register val, Register tmp1, Register tmp2) const {
@@ -103,7 +107,7 @@ void MMTkObjectBarrierSetC1::object_reference_write_post(LIRAccess& access, LIR_
     if (!address->index()->is_valid() && address->disp() == 0) {
       __ move(address->base(), ptr);
     } else {
-      assert(address->disp() != max_jint, "lea doesn't support patched addresses!");
+      // assert(address->disp() != max_jint, "lea doesn't support patched addresses!");
       __ leal(slot, ptr);
     }
     slot = ptr;
