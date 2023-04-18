@@ -261,6 +261,13 @@ fn oop_iterate<E: Edge, V: EdgeVisitor<E>, const COMPRESSED: bool>(
     } else {
         oop.klass::<COMPRESSED>()
     };
+    let p = klass as *const Klass as usize;
+    assert!(
+        p >= 0x10000_0000 && p <= 0x11000_0000,
+        "Invalid object {:?} klass={:?}",
+        oop as *const OopDesc,
+        klass as *const Klass,
+    );
     let klass_id = klass.id;
     assert!(
         klass_id as i32 >= 0 && (klass_id as i32) < 6,

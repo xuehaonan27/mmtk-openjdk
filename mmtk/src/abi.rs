@@ -372,6 +372,14 @@ impl OopDesc {
     /// Calculate object instance size
     pub unsafe fn size<const COMPRESSED: bool>(&self) -> usize {
         let klass = self.klass::<COMPRESSED>();
+
+        let p = klass as *const Klass as usize;
+        assert!(
+            p >= 0x10000_0000 && p <= 0x11000_0000,
+            "Invalid object {:?} klass={:?}",
+            self as *const OopDesc,
+            klass as *const Klass,
+        );
         let lh = klass.layout_helper;
         // The (scalar) instance size is pre-recorded in the TIB?
         if lh > Klass::LH_NEUTRAL_VALUE {
