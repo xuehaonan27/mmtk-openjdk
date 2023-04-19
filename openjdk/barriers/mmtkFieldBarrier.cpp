@@ -31,9 +31,9 @@ void MMTkFieldBarrierSetRuntime::object_reference_write_pre(oop src, oop* slot, 
 #endif
 }
 
-void MMTkFieldBarrierSetRuntime::on_slowpath_allocation_exit(oop new_obj) const {
+void MMTkFieldBarrierSetRuntime::object_probable_write(oop new_obj) const {
   if (mmtk_get_rc((void*) new_obj) != 0) {
-    ::mmtk_object_reference_clone_pre((MMTk_Mutator) &Thread::current()->third_party_heap_mutator, (void*) new_obj);
+    ::mmtk_object_probable_write((MMTk_Mutator) &Thread::current()->third_party_heap_mutator, (void*) new_obj);
   }
 }
 
