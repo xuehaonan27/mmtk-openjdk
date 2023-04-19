@@ -79,6 +79,9 @@ extern void mmtk_array_copy_post(MMTk_Mutator mutator, void* src, void* dst, siz
 
 extern void mmtk_object_reference_clone_pre(MMTk_Mutator mutator, void* obj);
 
+/// C2 slowpath allocation barrier
+extern void mmtk_object_probable_write(MMTk_Mutator mutator, void* obj);
+
 extern void release_buffer(void** buffer, size_t len, size_t cap);
 
 extern bool is_in_mmtk_spaces(void* ref);

@@ -27,7 +27,7 @@ public:
   virtual void clone_pre(DecoratorSet decorators, oop value) const override {
     ::mmtk_object_reference_clone_pre((MMTk_Mutator) &Thread::current()->third_party_heap_mutator, (void*) value);
   };
-  virtual void on_slowpath_allocation_exit(oop new_obj) const override;
+  virtual void object_probable_write(oop new_obj) const override;
 };
 
 class MMTkFieldBarrierSetAssembler: public MMTkBarrierSetAssembler {
