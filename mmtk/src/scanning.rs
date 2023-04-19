@@ -122,6 +122,7 @@ impl<const COMPRESSED: bool> Scanning<OpenJDK<COMPRESSED>> for VMScanning {
                 Box::new(ScanCodeCacheRoots::new(factory.clone())) as _,
                 Box::new(ScanStringTableRoots::new(factory.clone())) as _,
                 Box::new(ScanClassLoaderDataGraphRoots::new(factory.clone())) as _,
+                Box::new(ScaWeakProcessorRoots::new(factory.clone())) as _,
             ],
         );
         if !(<VMScanning as Scanning<OpenJDK<COMPRESSED>>>::SCAN_MUTATORS_IN_SAFEPOINT

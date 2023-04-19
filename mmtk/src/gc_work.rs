@@ -188,7 +188,6 @@ pub struct ScaWeakProcessorRoots<E: Edge, F: RootsWorkFactory<E>> {
 }
 
 impl<E: Edge, F: RootsWorkFactory<E>> ScaWeakProcessorRoots<E, F> {
-    #[allow(unused)]
     pub fn new(factory: F) -> Self {
         Self {
             factory,
