@@ -163,7 +163,8 @@ pub static FREE_LIST_ALLOCATOR_SIZE: uintptr_t =
     std::mem::size_of::<mmtk::util::alloc::FreeListAllocator<OpenJDK<false>>>();
 
 #[no_mangle]
-pub static DISABLE_ALLOCATION_FAST_PATH: i32 = (cfg!(feature = "no_fast_alloc") || cfg!(feature = "object_size_distribution")) as _;
+pub static DISABLE_ALLOCATION_FAST_PATH: i32 =
+    (cfg!(feature = "no_fast_alloc") || cfg!(feature = "object_size_distribution")) as _;
 
 #[no_mangle]
 pub static IMMIX_ALLOCATOR_SIZE: uintptr_t =
@@ -547,13 +548,16 @@ lazy_static! {
 fn record_alloc(size: usize) {
     assert!(cfg!(feature = "object_size_distribution"));
     let mut counts = OBJ_COUNT.lock().unwrap();
-    counts.entry(size.next_power_of_two()).and_modify(|x| {
-        x.0 += 1;
-        x.1 += size;
-    }).or_insert((1, size));
+    counts
+        .entry(size.next_power_of_two())
+        .and_modify(|x| {
+            x.0 += 1;
+            x.1 += size;
+        })
+        .or_insert((1, size));
 }
 
-extern fn dump_and_reset_obj_dist() {
+extern "C" fn dump_and_reset_obj_dist() {
     assert!(cfg!(feature = "object_size_distribution"));
     mmtk::dump_and_reset_obj_dist("Dynamic", &mut OBJ_COUNT.lock().unwrap());
 }
