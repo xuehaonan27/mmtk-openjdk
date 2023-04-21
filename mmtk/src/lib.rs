@@ -78,8 +78,7 @@ pub struct OpenJDK_Upcalls {
         closure: MutatorClosure,
         current_gc_should_unload_classes: bool,
     ),
-    pub resume_mutators:
-        extern "C" fn(tls: VMWorkerThread, lxr: bool, current_gc_should_unload_classes: bool),
+    pub resume_mutators: extern "C" fn(tls: VMWorkerThread),
     pub spawn_gc_thread: extern "C" fn(tls: VMThread, kind: libc::c_int, ctx: *mut libc::c_void),
     pub block_for_gc: extern "C" fn(),
     pub out_of_memory: extern "C" fn(tls: VMThread, err_kind: AllocationError),
@@ -131,6 +130,7 @@ pub struct OpenJDK_Upcalls {
     pub compressed_klass_shift: extern "C" fn() -> usize,
     pub nmethod_fix_relocation: extern "C" fn(Address),
     pub clear_claimed_marks: extern "C" fn(),
+    pub unload_classes: extern "C" fn(),
 }
 
 lazy_static! {

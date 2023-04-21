@@ -165,7 +165,7 @@ struct EdgesClosure {
  */
 typedef struct {
     void (*stop_all_mutators) (void *tls, bool scan_mutators_in_safepoint, MutatorClosure closure, bool current_gc_should_unload_classes);
-    void (*resume_mutators) (void *tls, bool lxr, bool current_gc_should_unload_classes);
+    void (*resume_mutators) (void *tls);
     void (*spawn_gc_thread) (void *tls, int kind, void *ctx);
     void (*block_for_gc) ();
     void (*out_of_memory) (void *tls, MMTkAllocationError err_kind);
@@ -210,6 +210,7 @@ typedef struct {
     size_t (*compressed_klass_shift)();
     void (*nmethod_fix_relocation)(void* nmethod);
     void (*clear_claimed_marks)();
+    void (*unload_classes)();
 } OpenJDK_Upcalls;
 
 extern void openjdk_gc_init(OpenJDK_Upcalls *calls);

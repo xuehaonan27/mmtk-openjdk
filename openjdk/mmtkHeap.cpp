@@ -152,6 +152,7 @@ jint MMTkHeap::initialize() {
   unsigned int ncpus = (unsigned int) os::initial_active_processor_count();
   _workers = new WorkGang("GC Thread", ncpus, /* are_GC_task_threads */true, /* are_ConcurrentGC_threads */false);
   _workers->initialize_workers();
+  _workers->update_active_workers(Abstract_VM_Version::parallel_worker_threads());
 
   os::start_thread(_companion_thread);
   // Set up the GCTaskManager

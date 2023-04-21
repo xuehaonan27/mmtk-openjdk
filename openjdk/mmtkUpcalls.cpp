@@ -189,9 +189,8 @@ static void mmtk_update_weak_processor(bool lxr) {
   }
 }
 
-static void mmtk_resume_mutators(void *tls, bool lxr, bool current_gc_should_unload_classes) {
-  nmethod::oops_do_marking_epilogue();
-  if (ClassUnloading && current_gc_should_unload_classes) {
+static void mmtk_unload_classes() {
+  if (ClassUnloading) {
     // Unload classes and purge SystemDictionary.
     auto purged_classes = SystemDictionary::do_unloading(NULL, false /* Defer cleaning */);
     MMTkIsAliveClosure is_alive;
@@ -201,6 +200,10 @@ static void mmtk_resume_mutators(void *tls, bool lxr, bool current_gc_should_unl
     MetaspaceGC::compute_new_size();
     MetaspaceUtils::verify_metrics();
   }
+}
+
+static void mmtk_resume_mutators(void *tls) {
+  nmethod::oops_do_marking_epilogue();
   // BiasedLocking::restore_marks();
   CodeCache::gc_epilogue();
   JvmtiExport::gc_epilogue();
@@ -561,4 +564,5 @@ OpenJDK_Upcalls mmtk_upcalls = {
   mmtk_compressed_klass_shift,
   nmethod_fix_relocation,
   mmtk_clear_claimed_marks,
+  mmtk_unload_classes,
 };
