@@ -131,6 +131,7 @@ pub struct OpenJDK_Upcalls {
     pub nmethod_fix_relocation: extern "C" fn(Address),
     pub clear_claimed_marks: extern "C" fn(),
     pub unload_classes: extern "C" fn(),
+    pub gc_epilogue: extern "C" fn(),
 }
 
 lazy_static! {

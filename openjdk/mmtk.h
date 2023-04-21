@@ -211,6 +211,7 @@ typedef struct {
     void (*nmethod_fix_relocation)(void* nmethod);
     void (*clear_claimed_marks)();
     void (*unload_classes)();
+    void (*gc_epilogue)();
 } OpenJDK_Upcalls;
 
 extern void openjdk_gc_init(OpenJDK_Upcalls *calls);

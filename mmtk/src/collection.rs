@@ -142,9 +142,12 @@ impl<const COMPRESSED: bool> Collection<OpenJDK<COMPRESSED>> for VMCollection {
         unsafe { crate::CONCURRENT_MARKING_ACTIVE = if active { 1 } else { 0 } }
     }
 
-    fn unload_vm_resources() {
+    fn vm_release(do_unloading: bool) {
         unsafe {
-            ((*UPCALLS).unload_classes)();
+            if do_unloading {
+                ((*UPCALLS).unload_classes)();
+            }
+            ((*UPCALLS).gc_epilogue)();
         }
     }
 }

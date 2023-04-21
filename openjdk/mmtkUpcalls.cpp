@@ -202,7 +202,7 @@ static void mmtk_unload_classes() {
   }
 }
 
-static void mmtk_resume_mutators(void *tls) {
+static void mmtk_gc_epilogue() {
   nmethod::oops_do_marking_epilogue();
   // BiasedLocking::restore_marks();
   CodeCache::gc_epilogue();
@@ -210,7 +210,9 @@ static void mmtk_resume_mutators(void *tls) {
 #if COMPILER2_OR_JVMCI
   DerivedPointerTable::update_pointers();
 #endif
+}
 
+static void mmtk_resume_mutators(void *tls) {
   // Note: we don't have to hold gc_lock to increment the counter.
   // The increment has to be done before mutators can be resumed
   // otherwise, mutators might see a stale value
@@ -565,4 +567,5 @@ OpenJDK_Upcalls mmtk_upcalls = {
   nmethod_fix_relocation,
   mmtk_clear_claimed_marks,
   mmtk_unload_classes,
+  mmtk_gc_epilogue,
 };
