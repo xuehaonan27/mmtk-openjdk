@@ -59,13 +59,13 @@ impl<const COMPRESSED: bool> Collection<OpenJDK<COMPRESSED>> for VMCollection {
         }
     }
 
-    fn resume_mutators(tls: VMWorkerThread, lxr: bool, current_gc_should_unload_classes: bool) {
+    fn resume_mutators(tls: VMWorkerThread) {
         if cfg!(feature = "object_size_distribution") {
             crate::dump_and_reset_obj_dist();
         }
         DISCOVERED_LISTS.enable_discover();
         unsafe {
-            ((*UPCALLS).resume_mutators)(tls, lxr, current_gc_should_unload_classes);
+            ((*UPCALLS).resume_mutators)(tls);
         }
     }
 
@@ -140,5 +140,14 @@ impl<const COMPRESSED: bool> Collection<OpenJDK<COMPRESSED>> for VMCollection {
 
     fn set_concurrent_marking_state(active: bool) {
         unsafe { crate::CONCURRENT_MARKING_ACTIVE = if active { 1 } else { 0 } }
+    }
+
+    fn vm_release(do_unloading: bool) {
+        unsafe {
+            if do_unloading {
+                ((*UPCALLS).unload_classes)();
+            }
+            ((*UPCALLS).gc_epilogue)();
+        }
     }
 }
