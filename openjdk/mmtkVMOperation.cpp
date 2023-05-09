@@ -54,6 +54,7 @@ void VM_MMTkSTWOperation::doit() {
         _companion_thread->_wait_for_gc_locker = true;
         return;
     }
+    JvmtiGCMarker _jgcm;
     log_trace(vmthread)("Entered VM_MMTkSTWOperation::doit().");
     _companion_thread->reach_suspended_and_wait_for_resume();
     log_trace(vmthread)("Leaving VM_MMTkSTWOperation::doit()");
