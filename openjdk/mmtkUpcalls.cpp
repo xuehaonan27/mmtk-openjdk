@@ -182,7 +182,11 @@ static void mmtk_update_weak_processor(bool lxr) {
   MMTkForwardClosure forward;
   if (lxr) {
     MMTkLXRFastIsAliveClosure is_alive;
-    WeakProcessor::weak_oops_do(&is_alive, &forward);
+    MMTkLXRFastUpdateClosure fast_update;
+    JNIHandles::weak_global_handles()->weak_oops_do(&fast_update);
+    JvmtiExport::weak_oops_do(&is_alive, &forward);
+    SystemDictionary::vm_weak_oop_storage()->weak_oops_do(&fast_update);
+    JFR_ONLY(Jfr::weak_oops_do(&is_alive, &forward);)
   } else {
     MMTkIsAliveClosure is_alive;
     WeakProcessor::weak_oops_do(&is_alive, &forward);
