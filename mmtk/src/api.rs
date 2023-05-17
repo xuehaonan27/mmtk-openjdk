@@ -561,10 +561,10 @@ pub extern "C" fn mmtk_register_nmethod(nm: Address) {
         Some(slots) => slots,
         _ => return,
     };
-    let mut roots = crate::CODE_CACHE_ROOTS.lock().unwrap();
+    let mut roots = crate::NURSERY_CODE_CACHE_ROOTS.lock().unwrap();
     // Relaxed add instead of `fetch_add`, since we've already acquired the lock.
-    crate::CODE_CACHE_ROOTS_SIZE.store(
-        crate::CODE_CACHE_ROOTS_SIZE.load(Ordering::Relaxed) + slots.len(),
+    crate::NURSERY_CODE_CACHE_ROOTS_SIZE.store(
+        crate::NURSERY_CODE_CACHE_ROOTS_SIZE.load(Ordering::Relaxed) + slots.len(),
         Ordering::Relaxed,
     );
     roots.insert(nm, slots);
@@ -573,11 +573,19 @@ pub extern "C" fn mmtk_register_nmethod(nm: Address) {
 /// Unregister a nmethod.
 #[no_mangle]
 pub extern "C" fn mmtk_unregister_nmethod(nm: Address) {
-    let mut roots = crate::CODE_CACHE_ROOTS.lock().unwrap();
+    let mut roots = crate::NURSERY_CODE_CACHE_ROOTS.lock().unwrap();
     if let Some(slots) = roots.remove(&nm) {
         // Relaxed sub instead of `fetch_sub`, since we've already acquired the lock.
-        crate::CODE_CACHE_ROOTS_SIZE.store(
-            crate::CODE_CACHE_ROOTS_SIZE.load(Ordering::Relaxed) - slots.len(),
+        crate::NURSERY_CODE_CACHE_ROOTS_SIZE.store(
+            crate::NURSERY_CODE_CACHE_ROOTS_SIZE.load(Ordering::Relaxed) - slots.len(),
+            Ordering::Relaxed,
+        );
+    }
+    let mut roots = crate::MATURE_CODE_CACHE_ROOTS.lock().unwrap();
+    if let Some(slots) = roots.remove(&nm) {
+        // Relaxed sub instead of `fetch_sub`, since we've already acquired the lock.
+        crate::MATURE_CODE_CACHE_ROOTS_SIZE.store(
+            crate::MATURE_CODE_CACHE_ROOTS_SIZE.load(Ordering::Relaxed) - slots.len(),
             Ordering::Relaxed,
         );
     }

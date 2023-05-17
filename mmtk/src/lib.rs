@@ -540,11 +540,13 @@ pub static MMTK_MARK_COMPACT_HEADER_RESERVED_IN_BYTES: usize =
 
 lazy_static! {
     /// A global storage for all the cached CodeCache root pointers
-    static ref CODE_CACHE_ROOTS: Mutex<HashMap<Address, Vec<Address>>> = Mutex::new(HashMap::new());
+    static ref NURSERY_CODE_CACHE_ROOTS: Mutex<HashMap<Address, Vec<Address>>> = Mutex::new(HashMap::new());
+    static ref MATURE_CODE_CACHE_ROOTS: Mutex<HashMap<Address, Vec<Address>>> = Mutex::new(HashMap::new());
 }
 
 /// A counter tracking the total size of the `CODE_CACHE_ROOTS`.
-static CODE_CACHE_ROOTS_SIZE: AtomicUsize = AtomicUsize::new(0);
+static NURSERY_CODE_CACHE_ROOTS_SIZE: AtomicUsize = AtomicUsize::new(0);
+static MATURE_CODE_CACHE_ROOTS_SIZE: AtomicUsize = AtomicUsize::new(0);
 
 lazy_static! {
     static ref OBJ_COUNT: Mutex<HashMap<usize, (usize, usize)>> = Mutex::new(HashMap::new());

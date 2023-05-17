@@ -9,6 +9,7 @@ use mmtk::util::ObjectReference;
 use mmtk::vm::RootsWorkFactory;
 use mmtk::vm::*;
 use mmtk::MMTK;
+use std::collections::HashMap;
 use std::marker::PhantomData;
 
 macro_rules! scan_roots_work {
@@ -44,22 +45,7 @@ scan_roots_work!(ScanManagementRoots, scan_management_roots);
 scan_roots_work!(ScanJvmtiExportRoots, scan_jvmti_export_roots);
 scan_roots_work!(ScanAOTLoaderRoots, scan_aot_loader_roots);
 scan_roots_work!(ScanSystemDictionaryRoots, scan_system_dictionary_roots);
-scan_roots_work!(ScanStringTableRoots, scan_string_table_roots);
 scan_roots_work!(ScanVMThreadRoots, scan_vm_thread_roots);
-
-pub struct ScanClassLoaderDataGraphRoots<E: Edge, F: RootsWorkFactory<E>> {
-    factory: F,
-    _p: PhantomData<E>,
-}
-
-impl<E: Edge, F: RootsWorkFactory<E>> ScanClassLoaderDataGraphRoots<E, F> {
-    pub fn new(factory: F) -> Self {
-        Self {
-            factory,
-            _p: PhantomData,
-        }
-    }
-}
 
 extern "C" fn report_edges_and_renew_buffer_cld<
     E: Edge,
@@ -95,6 +81,21 @@ fn to_edges_closure_cld<E: Edge, F: RootsWorkFactory<E>, const WEAK: bool>(
         data: factory as *mut F as *mut libc::c_void,
     }
 }
+
+pub struct ScanClassLoaderDataGraphRoots<E: Edge, F: RootsWorkFactory<E>> {
+    factory: F,
+    _p: PhantomData<E>,
+}
+
+impl<E: Edge, F: RootsWorkFactory<E>> ScanClassLoaderDataGraphRoots<E, F> {
+    pub fn new(factory: F) -> Self {
+        Self {
+            factory,
+            _p: PhantomData,
+        }
+    }
+}
+
 impl<VM: VMBinding, F: RootsWorkFactory<VM::VMEdge>> GCWork<VM>
     for ScanClassLoaderDataGraphRoots<VM::VMEdge, F>
 {
@@ -106,6 +107,60 @@ impl<VM: VMBinding, F: RootsWorkFactory<VM::VMEdge>> GCWork<VM>
                 mmtk.get_plan()
                     .current_gc_should_scan_all_classloader_strong_roots(),
             );
+        }
+    }
+}
+extern "C" fn report_edges_and_renew_buffer_st<E: Edge, F: RootsWorkFactory<E>>(
+    ptr: *mut Address,
+    length: usize,
+    capacity: usize,
+    factory_ptr: *mut libc::c_void,
+) -> NewBuffer {
+    if !ptr.is_null() {
+        let ptr = ptr as *mut E;
+        let buf = unsafe { Vec::<E>::from_raw_parts(ptr, length, capacity) };
+        let factory: &mut F = unsafe { &mut *(factory_ptr as *mut F) };
+        factory.create_process_edge_roots_work_for_cld_roots(buf, true);
+    }
+    let (ptr, _, capacity) = {
+        // TODO: Use Vec::into_raw_parts() when the method is available.
+        use std::mem::ManuallyDrop;
+        let new_vec = Vec::with_capacity(F::BUFFER_SIZE);
+        let mut me = ManuallyDrop::new(new_vec);
+        (me.as_mut_ptr(), me.len(), me.capacity())
+    };
+    NewBuffer { ptr, capacity }
+}
+
+fn to_edges_closure_st<E: Edge, F: RootsWorkFactory<E>>(factory: &mut F) -> EdgesClosure {
+    EdgesClosure {
+        func: report_edges_and_renew_buffer_st::<E, F>,
+        data: factory as *mut F as *mut libc::c_void,
+    }
+}
+
+pub struct ScanStringTableRoots<E: Edge, F: RootsWorkFactory<E>> {
+    factory: F,
+    _p: PhantomData<E>,
+}
+
+impl<E: Edge, F: RootsWorkFactory<E>> ScanStringTableRoots<E, F> {
+    pub fn new(factory: F) -> Self {
+        Self {
+            factory,
+            _p: PhantomData,
+        }
+    }
+}
+
+impl<VM: VMBinding, F: RootsWorkFactory<VM::VMEdge>> GCWork<VM>
+    for ScanStringTableRoots<VM::VMEdge, F>
+{
+    fn do_work(&mut self, _worker: &mut GCWorker<VM>, mmtk: &'static MMTK<VM>) {
+        unsafe {
+            ((*UPCALLS).scan_string_table_roots)(to_edges_closure_st::<VM::VMEdge, F>(
+                &mut self.factory,
+            ));
         }
     }
 }
@@ -127,22 +182,67 @@ impl<E: Edge, F: RootsWorkFactory<E>> ScanCodeCacheRoots<E, F> {
 impl<VM: VMBinding, F: RootsWorkFactory<VM::VMEdge>> GCWork<VM>
     for ScanCodeCacheRoots<VM::VMEdge, F>
 {
-    fn do_work(&mut self, _worker: &mut GCWorker<VM>, _mmtk: &'static MMTK<VM>) {
-        // Collect all the cached roots
+    fn do_work(&mut self, _worker: &mut GCWorker<VM>, mmtk: &'static MMTK<VM>) {
         let mut edges = Vec::with_capacity(F::BUFFER_SIZE);
-        for roots in (*crate::CODE_CACHE_ROOTS.lock().unwrap()).values() {
-            for r in roots {
-                edges.push(VM::VMEdge::from_address(*r));
-                if edges.len() >= F::BUFFER_SIZE {
-                    self.factory
-                        .create_process_edge_roots_work(std::mem::take(&mut edges));
-                    edges.reserve(F::BUFFER_SIZE);
+        let mut c = 0usize;
+        if mmtk
+            .get_plan()
+            .current_gc_should_scan_all_classloader_strong_roots()
+            || mmtk.get_plan().current_gc_should_perform_class_unloading()
+        {
+            // Collect all the cached roots
+            let mut mature = crate::MATURE_CODE_CACHE_ROOTS.lock().unwrap();
+            for roots in mature.values() {
+                c += roots.len();
+                for r in roots {
+                    edges.push(VM::VMEdge::from_address(*r));
+                    if edges.len() >= F::BUFFER_SIZE {
+                        self.factory.create_process_edge_roots_work_for_cld_roots(
+                            std::mem::take(&mut edges),
+                            false,
+                        );
+                        edges.reserve(F::BUFFER_SIZE);
+                    }
                 }
             }
+            let mut nursery_guard = crate::NURSERY_CODE_CACHE_ROOTS.lock().unwrap();
+            let mut nursery = std::mem::take::<HashMap<Address, Vec<Address>>>(&mut nursery_guard);
+            for (key, roots) in nursery {
+                c += roots.len();
+                for r in &roots {
+                    edges.push(VM::VMEdge::from_address(*r));
+                    if edges.len() >= F::BUFFER_SIZE {
+                        self.factory.create_process_edge_roots_work_for_cld_roots(
+                            std::mem::take(&mut edges),
+                            false,
+                        );
+                        edges.reserve(F::BUFFER_SIZE);
+                    }
+                }
+                mature.insert(key, roots);
+            }
+        } else {
+            let mut nursery_guard = crate::NURSERY_CODE_CACHE_ROOTS.lock().unwrap();
+            let mut nursery = std::mem::take::<HashMap<Address, Vec<Address>>>(&mut nursery_guard);
+            let mut mature = crate::MATURE_CODE_CACHE_ROOTS.lock().unwrap();
+            for (key, roots) in nursery {
+                c += roots.len();
+                for r in &roots {
+                    edges.push(VM::VMEdge::from_address(*r));
+                    if edges.len() >= F::BUFFER_SIZE {
+                        self.factory.create_process_edge_roots_work_for_cld_roots(
+                            std::mem::take(&mut edges),
+                            false,
+                        );
+                        edges.reserve(F::BUFFER_SIZE);
+                    }
+                }
+                mature.insert(key, roots);
+            }
         }
-        // Create work packet
         if !edges.is_empty() {
-            self.factory.create_process_edge_roots_work(edges);
+            self.factory
+                .create_process_edge_roots_work_for_cld_roots(edges, false);
         }
         // Use the following code to scan CodeCache directly, instead of scanning the "remembered set".
         // unsafe {
@@ -162,7 +262,6 @@ extern "C" fn report_edges_and_renew_buffer_weakref<E: Edge, F: RootsWorkFactory
             Vec::<ObjectReference>::from_raw_parts(ptr as *mut ObjectReference, length, capacity)
         };
         let factory: &mut F = unsafe { &mut *(factory_ptr as *mut F) };
-        // println!("weakref nodes {:?}", buf);
         factory.create_process_node_roots_work(buf);
     }
     let (ptr, _, capacity) = {
