@@ -3,6 +3,7 @@ use crate::Edge;
 use crate::{EdgesClosure, OpenJDK};
 use crate::{NewBuffer, OpenJDKEdge, UPCALLS};
 use mmtk::memory_manager;
+use mmtk::scheduler::RootKind;
 use mmtk::scheduler::WorkBucketStage;
 use mmtk::util::opaque_pointer::*;
 use mmtk::util::{Address, ObjectReference};
@@ -22,7 +23,7 @@ extern "C" fn report_edges_and_renew_buffer<E: Edge, F: RootsWorkFactory<E>>(
         let ptr = ptr as *mut E;
         let buf = unsafe { Vec::<E>::from_raw_parts(ptr, length, capacity) };
         let factory: &mut F = unsafe { &mut *(factory_ptr as *mut F) };
-        factory.create_process_edge_roots_work(buf);
+        factory.create_process_edge_roots_work(buf, RootKind::Strong);
     }
     let (ptr, _, capacity) = {
         // TODO: Use Vec::into_raw_parts() when the method is available.

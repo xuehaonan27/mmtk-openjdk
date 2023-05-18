@@ -57,11 +57,16 @@ extern "C" fn report_edges_and_renew_buffer_cld<
     capacity: usize,
     factory_ptr: *mut libc::c_void,
 ) -> NewBuffer {
+    let root_kind = if WEAK {
+        RootKind::Weak
+    } else {
+        RootKind::Young
+    };
     if !ptr.is_null() {
         let ptr = ptr as *mut E;
         let buf = unsafe { Vec::<E>::from_raw_parts(ptr, length, capacity) };
         let factory: &mut F = unsafe { &mut *(factory_ptr as *mut F) };
-        factory.create_process_edge_roots_work_for_cld_roots(buf, WEAK);
+        factory.create_process_edge_roots_work(buf, root_kind);
     }
     let (ptr, _, capacity) = {
         // TODO: Use Vec::into_raw_parts() when the method is available.
@@ -184,22 +189,22 @@ impl<VM: VMBinding, F: RootsWorkFactory<VM::VMEdge>> GCWork<VM>
 {
     fn do_work(&mut self, _worker: &mut GCWorker<VM>, mmtk: &'static MMTK<VM>) {
         let mut edges = Vec::with_capacity(F::BUFFER_SIZE);
-        let mut c = 0usize;
-        if mmtk
+        let scan_all_roots = mmtk
             .get_plan()
             .current_gc_should_scan_all_classloader_strong_roots()
-            || mmtk.get_plan().current_gc_should_perform_class_unloading()
-        {
-            // Collect all the cached roots
-            let mut mature = crate::MATURE_CODE_CACHE_ROOTS.lock().unwrap();
+            || mmtk.get_plan().current_gc_should_perform_class_unloading();
+        let mut mature = crate::MATURE_CODE_CACHE_ROOTS.lock().unwrap();
+        let mut nursery_guard = crate::NURSERY_CODE_CACHE_ROOTS.lock().unwrap();
+        let nursery = std::mem::take::<HashMap<Address, Vec<Address>>>(&mut nursery_guard);
+        if scan_all_roots {
+            // Collect all the mature cached roots
             for roots in mature.values() {
-                c += roots.len();
                 for r in roots {
                     edges.push(VM::VMEdge::from_address(*r));
                     if edges.len() >= F::BUFFER_SIZE {
-                        self.factory.create_process_edge_roots_work_for_cld_roots(
+                        self.factory.create_process_edge_roots_work(
                             std::mem::take(&mut edges),
-                            false,
+                            RootKind::Young,
                         );
                         edges.reserve(F::BUFFER_SIZE);
                     }
@@ -240,14 +245,24 @@ impl<VM: VMBinding, F: RootsWorkFactory<VM::VMEdge>> GCWork<VM>
                 mature.insert(key, roots);
             }
         }
+        // Young roots
+        for (key, roots) in nursery {
+            for r in &roots {
+                edges.push(VM::VMEdge::from_address(*r));
+                if edges.len() >= F::BUFFER_SIZE {
+                    self.factory.create_process_edge_roots_work(
+                        std::mem::take(&mut edges),
+                        RootKind::Young,
+                    );
+                    edges.reserve(F::BUFFER_SIZE);
+                }
+            }
+            mature.insert(key, roots);
+        }
         if !edges.is_empty() {
             self.factory
-                .create_process_edge_roots_work_for_cld_roots(edges, false);
+                .create_process_edge_roots_work(edges, RootKind::Young);
         }
-        // Use the following code to scan CodeCache directly, instead of scanning the "remembered set".
-        // unsafe {
-        //     ((*UPCALLS).scan_code_cache_roots)(create_process_edges_work::<E> as _);
-        // }
     }
 }
 
@@ -262,7 +277,7 @@ extern "C" fn report_edges_and_renew_buffer_weakref<E: Edge, F: RootsWorkFactory
             Vec::<ObjectReference>::from_raw_parts(ptr as *mut ObjectReference, length, capacity)
         };
         let factory: &mut F = unsafe { &mut *(factory_ptr as *mut F) };
-        factory.create_process_node_roots_work(buf);
+        factory.create_process_node_roots_work(buf, RootKind::Weak);
     }
     let (ptr, _, capacity) = {
         // TODO: Use Vec::into_raw_parts() when the method is available.
