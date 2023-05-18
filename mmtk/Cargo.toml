@@ -40,7 +40,7 @@ atomic = "0.5.1"
 # - change branch
 # - change repo name
 # But other changes including adding/removing whitespaces in commented lines may break the CI.
-mmtk = { git = "https://github.com/wenyuzhao/mmtk-core.git", rev = "e2383164e377e4d95bf943b6a389e3b7e53e12ff" }
+mmtk = { git = "https://github.com/wenyuzhao/mmtk-core.git", rev = "5051fc88a4785a3ba1f0c6256fad346d49a6f379" }
 # Uncomment the following to build locally
 # mmtk = { path = "../../mmtk-core" }
 
