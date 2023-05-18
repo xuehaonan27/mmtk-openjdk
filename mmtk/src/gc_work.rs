@@ -115,6 +115,7 @@ impl<VM: VMBinding, F: RootsWorkFactory<VM::VMEdge>> GCWork<VM>
         }
     }
 }
+
 extern "C" fn report_edges_and_renew_buffer_st<E: Edge, F: RootsWorkFactory<E>>(
     ptr: *mut Address,
     length: usize,
@@ -125,7 +126,7 @@ extern "C" fn report_edges_and_renew_buffer_st<E: Edge, F: RootsWorkFactory<E>>(
         let ptr = ptr as *mut E;
         let buf = unsafe { Vec::<E>::from_raw_parts(ptr, length, capacity) };
         let factory: &mut F = unsafe { &mut *(factory_ptr as *mut F) };
-        factory.create_process_edge_roots_work_for_cld_roots(buf, true);
+        factory.create_process_edge_roots_work(buf, RootKind::Weak);
     }
     let (ptr, _, capacity) = {
         // TODO: Use Vec::into_raw_parts() when the method is available.
@@ -161,7 +162,7 @@ impl<E: Edge, F: RootsWorkFactory<E>> ScanStringTableRoots<E, F> {
 impl<VM: VMBinding, F: RootsWorkFactory<VM::VMEdge>> GCWork<VM>
     for ScanStringTableRoots<VM::VMEdge, F>
 {
-    fn do_work(&mut self, _worker: &mut GCWorker<VM>, mmtk: &'static MMTK<VM>) {
+    fn do_work(&mut self, _worker: &mut GCWorker<VM>, _mmtk: &'static MMTK<VM>) {
         unsafe {
             ((*UPCALLS).scan_string_table_roots)(to_edges_closure_st::<VM::VMEdge, F>(
                 &mut self.factory,
@@ -209,40 +210,6 @@ impl<VM: VMBinding, F: RootsWorkFactory<VM::VMEdge>> GCWork<VM>
                         edges.reserve(F::BUFFER_SIZE);
                     }
                 }
-            }
-            let mut nursery_guard = crate::NURSERY_CODE_CACHE_ROOTS.lock().unwrap();
-            let mut nursery = std::mem::take::<HashMap<Address, Vec<Address>>>(&mut nursery_guard);
-            for (key, roots) in nursery {
-                c += roots.len();
-                for r in &roots {
-                    edges.push(VM::VMEdge::from_address(*r));
-                    if edges.len() >= F::BUFFER_SIZE {
-                        self.factory.create_process_edge_roots_work_for_cld_roots(
-                            std::mem::take(&mut edges),
-                            false,
-                        );
-                        edges.reserve(F::BUFFER_SIZE);
-                    }
-                }
-                mature.insert(key, roots);
-            }
-        } else {
-            let mut nursery_guard = crate::NURSERY_CODE_CACHE_ROOTS.lock().unwrap();
-            let mut nursery = std::mem::take::<HashMap<Address, Vec<Address>>>(&mut nursery_guard);
-            let mut mature = crate::MATURE_CODE_CACHE_ROOTS.lock().unwrap();
-            for (key, roots) in nursery {
-                c += roots.len();
-                for r in &roots {
-                    edges.push(VM::VMEdge::from_address(*r));
-                    if edges.len() >= F::BUFFER_SIZE {
-                        self.factory.create_process_edge_roots_work_for_cld_roots(
-                            std::mem::take(&mut edges),
-                            false,
-                        );
-                        edges.reserve(F::BUFFER_SIZE);
-                    }
-                }
-                mature.insert(key, roots);
             }
         }
         // Young roots
