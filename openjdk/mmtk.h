@@ -9,7 +9,7 @@
 extern "C" {
 #endif
 
-#define _LOS_CHECK true
+#define NO_LOS_CHECK true
 
 typedef void* MMTk_Mutator;
 typedef void* MMTk_TraceLocal;
