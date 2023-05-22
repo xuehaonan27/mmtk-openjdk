@@ -72,6 +72,10 @@ void MMTkBarrierSetC2::expand_allocate(PhaseMacroExpand* x,
   if (tv >= 0) {
     always_slow = (tv == 1);
     initial_slow_test = NULL;
+#if NO_LOS_CHECK
+  } else {
+    initial_slow_test = BoolNode::make_predicate(initial_slow_test, &x->_igvn);
+#endif
   }
 
   // We will do MMTk size check.
@@ -87,7 +91,7 @@ void MMTkBarrierSetC2::expand_allocate(PhaseMacroExpand* x,
   // But we need to figure out which allocator we are using by querying MMTk.
   AllocatorSelector selector = MMTkHeap::heap()->default_allocator_selector;
   if (selector.tag == TAG_MARK_COMPACT) extra_header = MMTK_MARK_COMPACT_HEADER_RESERVED_IN_BYTES;
-
+#if !NO_LOS_CHECK
   // Check if allocation size is constant
   long const_size = x->_igvn.find_long_con(size_in_bytes, -1);
   if (const_size >= 0) {
@@ -130,6 +134,7 @@ void MMTkBarrierSetC2::expand_allocate(PhaseMacroExpand* x,
       initial_slow_test = BoolNode::make_predicate(new_slow_test, &x->_igvn);
     }
   }
+#endif
 
   if (x->C->env()->dtrace_alloc_probes() || !MMTK_ENABLE_ALLOCATION_FASTPATH || disable_fast_alloc()
       // Malloc allocator has no fastpath

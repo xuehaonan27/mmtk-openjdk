@@ -59,6 +59,7 @@ void MMTkBarrierSetAssembler::eden_allocate(MacroAssembler* masm, Register threa
     AllocatorSelector selector = MMTkHeap::heap()->default_allocator_selector;
     if (selector.tag == TAG_MARK_COMPACT) extra_header = MMTK_MARK_COMPACT_HEADER_RESERVED_IN_BYTES;
 
+#if !NO_LOS_CHECK
     if (var_size_in_bytes == noreg) {
       // constant alloc size. If it is larger than max_non_los_bytes, we directly go to slowpath.
       if ((size_t)con_size_in_bytes > max_non_los_bytes - extra_header) {
@@ -70,6 +71,7 @@ void MMTkBarrierSetAssembler::eden_allocate(MacroAssembler* masm, Register threa
       __ cmpptr(var_size_in_bytes, max_non_los_bytes - extra_header);
       __ jcc(Assembler::aboveEqual, slow_case);
     }
+#endif
 
     if (selector.tag == TAG_MALLOC || selector.tag == TAG_LARGE_OBJECT || selector.tag == TAG_FREE_LIST) {
       __ jmp(slow_case);
