@@ -215,6 +215,7 @@ typedef struct {
     void (*clear_claimed_marks)();
     void (*unload_classes)();
     void (*gc_epilogue)();
+    void (*scan_code_cache_roots2) (void* ptr, size_t len, EdgesClosure closure);
 } OpenJDK_Upcalls;
 
 extern void openjdk_gc_init(OpenJDK_Upcalls *calls);

@@ -542,8 +542,8 @@ thread_local! {
 
 /// Report a list of pointers in nmethod to mmtk.
 #[no_mangle]
-pub extern "C" fn mmtk_add_nmethod_oop(addr: Address) {
-    NMETHOD_SLOTS.with(|x| x.borrow_mut().push(addr))
+pub extern "C" fn mmtk_add_nmethod_oop(_addr: Address) {
+    unreachable!("mmtk_add_nmethod_oop")
 }
 
 /// Register a nmethod.
@@ -551,18 +551,8 @@ pub extern "C" fn mmtk_add_nmethod_oop(addr: Address) {
 /// This function will transfer all the locally cached pointers of this nmethod to the global storage.
 #[no_mangle]
 pub extern "C" fn mmtk_register_nmethod(nm: Address) {
-    let slots = NMETHOD_SLOTS.with(|x| {
-        if x.borrow().len() == 0 {
-            return None;
-        }
-        Some(x.replace(vec![]))
-    });
-    let slots = match slots {
-        Some(slots) => slots,
-        _ => return,
-    };
     let mut roots = crate::NURSERY_CODE_CACHE_ROOTS.lock().unwrap();
-    roots.insert(nm, slots);
+    roots.insert(nm);
 }
 
 /// Unregister a nmethod.

@@ -4,7 +4,7 @@ extern crate atomic;
 extern crate once_cell;
 extern crate spin;
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::ptr::null_mut;
 use std::sync::atomic::{AtomicU32, AtomicUsize};
 use std::sync::Mutex;
@@ -132,6 +132,8 @@ pub struct OpenJDK_Upcalls {
     pub clear_claimed_marks: extern "C" fn(),
     pub unload_classes: extern "C" fn(),
     pub gc_epilogue: extern "C" fn(),
+    pub scan_code_cache_roots2:
+        extern "C" fn(nm: *const Address, len: usize, closure: EdgesClosure),
 }
 
 lazy_static! {
@@ -540,8 +542,8 @@ pub static MMTK_MARK_COMPACT_HEADER_RESERVED_IN_BYTES: usize =
 
 lazy_static! {
     /// A global storage for all the cached CodeCache root pointers
-    static ref NURSERY_CODE_CACHE_ROOTS: Mutex<HashMap<Address, Vec<Address>>> = Mutex::new(HashMap::new());
-    static ref MATURE_CODE_CACHE_ROOTS: Mutex<HashMap<Address, Vec<Address>>> = Mutex::new(HashMap::new());
+    static ref NURSERY_CODE_CACHE_ROOTS: Mutex<HashSet<Address>> = Mutex::new(HashSet::new());
+    static ref MATURE_CODE_CACHE_ROOTS: Mutex<HashSet<Address>> = Mutex::new(HashSet::new());
 }
 
 lazy_static! {

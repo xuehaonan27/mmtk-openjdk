@@ -459,6 +459,60 @@ static void mmtk_scan_class_loader_data_graph_roots(EdgesClosure closure, EdgesC
 static void mmtk_scan_weak_processor_roots(EdgesClosure closure) { MMTkCollectRootObjects cl(closure); MMTkHeap::heap()->scan_weak_processor_roots(cl); }
 static void mmtk_scan_vm_thread_roots(EdgesClosure closure) { MMTkRootsClosure2 cl(closure); MMTkHeap::heap()->scan_vm_thread_roots(cl); }
 
+class MMTkScanNMethodOopClosure: public OopClosure {
+  EdgesClosure _edges_closure;
+  void** _buffer;
+  size_t _cap;
+  size_t _cursor;
+
+  template <class T> void do_oop_work(T* p, bool narrow) {
+    T heap_oop = RawAccess<>::oop_load(p);
+    if (!CompressedOops::is_null(heap_oop)) {
+      if (UseCompressedOops && !narrow) {
+        guarantee((uintptr_t(p) & (1ull << 63)) == 0, "test");
+        p = (T*) (uintptr_t(p) | (1ull << 63));
+      }
+      // printf("%p\n", (void*) p);
+      _buffer[_cursor++] = (void*) p;
+      if (_cursor >= _cap) {
+        flush();
+      };
+    }
+  }
+
+  void flush() {
+    if (_cursor > 0) {
+      NewBuffer buf = _edges_closure.invoke(_buffer, _cursor, _cap);
+      _buffer = buf.buf;
+      _cap = buf.cap;
+      _cursor = 0;
+    }
+  }
+
+public:
+  MMTkScanNMethodOopClosure(EdgesClosure edges_closure): _edges_closure(edges_closure), _cursor(0) {
+    NewBuffer buf = edges_closure.invoke(NULL, 0, 0);
+    _buffer = buf.buf;
+    _cap = buf.cap;
+  }
+  ~MMTkScanNMethodOopClosure() {
+    if (_cursor > 0) flush();
+    if (_buffer != NULL) {
+      release_buffer(_buffer, _cursor, _cap);
+    }
+  }
+  void do_oop(oop* p)       { do_oop_work(p, false); }
+  void do_oop(narrowOop* p) { do_oop_work(p, true); }
+};
+
+static void mmtk_scan_code_cache_roots2(void* ptr, size_t len, EdgesClosure closure) {
+  MMTkScanNMethodOopClosure cl(closure);
+  for (size_t i = 0; i < len; i++) {
+    nmethod* nm = *(((nmethod**) ptr) + i);
+    nm->oops_do(&cl);
+  }
+}
+
 static size_t mmtk_number_of_mutators() {
   return Threads::number_of_threads();
 }
@@ -568,4 +622,5 @@ OpenJDK_Upcalls mmtk_upcalls = {
   mmtk_clear_claimed_marks,
   mmtk_unload_classes,
   mmtk_gc_epilogue,
+  mmtk_scan_code_cache_roots2,
 };
