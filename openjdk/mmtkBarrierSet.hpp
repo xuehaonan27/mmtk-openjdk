@@ -61,6 +61,7 @@ struct MMTkAllocatorOffsets {
  * @return the offsets to the top and end of the TLAB
  */
 MMTkAllocatorOffsets get_tlab_top_and_end_offsets(AllocatorSelector selector);
+MMTkAllocatorOffsets get_immix_large_tlab_top_and_end_offsets(AllocatorSelector selector);
 
 #define FN_ADDR(function) CAST_FROM_FN_PTR(address, function)
 

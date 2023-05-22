@@ -239,14 +239,46 @@ void MMTkBarrierSetC2::expand_allocate(PhaseMacroExpand* x,
     // Plug the failing-heap-space-need-gc test into the slow-path region
     Node *needgc_true = new IfTrueNode(needgc_iff);
     x->transform_later(needgc_true);
-    if (initial_slow_test) {
+
+    if (selector.tag == TAG_IMMIX) {
+      Node *large_top_adr, *large_end_adr;
+      // Calculate offsets of TLAB top and end
+      MMTkAllocatorOffsets alloc_offsets = get_immix_large_tlab_top_and_end_offsets(selector);
+      large_top_adr = x->basic_plus_adr(x->top()/*not oop*/, thread, alloc_offsets.tlab_top_offset);
+      large_end_adr = x->basic_plus_adr(x->top()/*not oop*/, thread, alloc_offsets.tlab_end_offset);
+      // Get old top pointer
+      Node* old_top = new LoadPNode(needgc_true, contended_phi_rawmem, eden_top_adr, TypeRawPtr::BOTTOM, TypeRawPtr::BOTTOM, MemNode::unordered);
+      x->transform_later(old_top);
+      // Add to heap top to get a new heap top
+      Node* new_top = new AddPNode(x->top(), old_top, size_in_bytes);
+      x->transform_later(new_top);
+      // Check for needing a GC; compare against heap end
+      Node* needgc_cmp = new CmpPNode(new_top, eden_end);
+      x->transform_later(needgc_cmp);
+      Node* needgc_bol = new BoolNode(needgc_cmp, BoolTest::ge);
+      x->transform_later(needgc_bol);
+      needgc_iff = new IfNode(needgc_true, needgc_bol, PROB_UNLIKELY_MAG(4), COUNT_UNKNOWN);
+      x->transform_later(needgc_iff);
+      // success
+      {
+
+      }
+      // fail. goto slow
+      {
+        slow_region->init_req(need_gc_path, needgc_true);
+        // This completes all paths into the slow merge point
+        x->transform_later(slow_region);
+      }
+    }
+
+    // if (initial_slow_test) {
       slow_region->init_req(need_gc_path, needgc_true);
       // This completes all paths into the slow merge point
       x->transform_later(slow_region);
-    } else {                      // No initial slow path needed!
-      // Just fall from the need-GC path straight into the VM call.
-      slow_region = needgc_true;
-    }
+    // } else {                      // No initial slow path needed!
+    //   // Just fall from the need-GC path straight into the VM call.
+    //   slow_region = needgc_true;
+    // }
     // No need for a GC.  Setup for the Store-Conditional
     Node *needgc_false = new IfFalseNode(needgc_iff);
     x->transform_later(needgc_false);
