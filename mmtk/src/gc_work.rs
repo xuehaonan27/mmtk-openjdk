@@ -162,11 +162,14 @@ impl<E: Edge, F: RootsWorkFactory<E>> ScanStringTableRoots<E, F> {
 impl<VM: VMBinding, F: RootsWorkFactory<VM::VMEdge>> GCWork<VM>
     for ScanStringTableRoots<VM::VMEdge, F>
 {
-    fn do_work(&mut self, _worker: &mut GCWorker<VM>, _mmtk: &'static MMTK<VM>) {
+    fn do_work(&mut self, _worker: &mut GCWorker<VM>, mmtk: &'static MMTK<VM>) {
         unsafe {
-            ((*UPCALLS).scan_string_table_roots)(to_edges_closure_st::<VM::VMEdge, F>(
-                &mut self.factory,
-            ));
+            ((*UPCALLS).scan_string_table_roots)(
+                to_edges_closure_st::<VM::VMEdge, F>(&mut self.factory),
+                mmtk.get_plan()
+                    .downcast_ref::<mmtk::plan::lxr::LXR<VM>>()
+                    .is_some(),
+            );
         }
     }
 }
@@ -280,11 +283,14 @@ impl<E: Edge, F: RootsWorkFactory<E>> ScaWeakProcessorRoots<E, F> {
 impl<VM: VMBinding, F: RootsWorkFactory<VM::VMEdge>> GCWork<VM>
     for ScaWeakProcessorRoots<VM::VMEdge, F>
 {
-    fn do_work(&mut self, _worker: &mut GCWorker<VM>, _mmtk: &'static MMTK<VM>) {
+    fn do_work(&mut self, _worker: &mut GCWorker<VM>, mmtk: &'static MMTK<VM>) {
         unsafe {
-            ((*UPCALLS).scan_weak_processor_roots)(to_edges_closure_weakref::<_, _>(
-                &mut self.factory,
-            ));
+            ((*UPCALLS).scan_weak_processor_roots)(
+                to_edges_closure_weakref::<_, _>(&mut self.factory),
+                mmtk.get_plan()
+                    .downcast_ref::<mmtk::plan::lxr::LXR<VM>>()
+                    .is_some(),
+            );
         }
     }
 }

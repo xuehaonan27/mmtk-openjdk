@@ -8,7 +8,7 @@
 #include "utilities/globalDefinitions.hpp"
 #include "classfile/classLoaderData.inline.hpp"
 
-template <bool YOUNG_ONLY = false>
+template <bool UNPINNED_ONLY = false>
 class MMTkRootsClosure : public OopClosure {
   EdgesClosure _edges_closure;
   void** _buffer;
@@ -19,9 +19,9 @@ class MMTkRootsClosure : public OopClosure {
   void do_oop_work(T* p, bool narrow) {
     T heap_oop = RawAccess<>::oop_load(p);
     if (!CompressedOops::is_null(heap_oop)) {
-      if (YOUNG_ONLY) {
+      if (UNPINNED_ONLY) {
         auto o = CompressedOops::decode(heap_oop);
-        if (0 != mmtk_get_rc((void*) o)) {
+        if (3 == mmtk_get_rc((void*) o)) {
           return;
         }
       }
@@ -63,6 +63,7 @@ public:
   virtual void do_oop(narrowOop* p) { do_oop_work(p, true);  }
 };
 
+template <bool UNPINNED_ONLY = false>
 class MMTkCollectRootObjects : public OopClosure {
   EdgesClosure _edges_closure;
   void** _buffer;
@@ -73,7 +74,11 @@ class MMTkCollectRootObjects : public OopClosure {
   void do_oop_work(T* p, bool narrow) {
     T heap_oop = RawAccess<>::oop_load(p);
     if (!CompressedOops::is_null(heap_oop)) {
-      _buffer[_cursor++] = (void*) CompressedOops::decode(heap_oop);
+      auto o = CompressedOops::decode(heap_oop);
+      if (UNPINNED_ONLY && 3 == mmtk_get_rc((void*) o)) {
+        return;
+      }
+      _buffer[_cursor++] = (void*) o;
       if (_cursor >= _cap) {
         flush();
       }
