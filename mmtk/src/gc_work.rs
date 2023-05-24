@@ -11,6 +11,26 @@ use mmtk::vm::*;
 use mmtk::MMTK;
 use std::collections::HashMap;
 use std::marker::PhantomData;
+use std::sync::atomic::{AtomicUsize, Ordering};
+
+thread_local! {
+    pub static COUNT: AtomicUsize = AtomicUsize::new(0);
+}
+
+pub fn record_roots(len: usize) {
+    super::gc_work::COUNT.with(|x| {
+        let c = x.load(Ordering::Relaxed);
+        x.store(c + len, Ordering::Relaxed);
+    });
+}
+
+fn report_roots(name: &str) {
+    super::gc_work::COUNT.with(|x| {
+        let c = x.load(Ordering::Relaxed);
+        eprintln!(" - {} roots count: {}", name, c);
+        x.store(0, Ordering::Relaxed);
+    });
+}
 
 macro_rules! scan_roots_work {
     ($struct_name: ident, $func_name: ident) => {
@@ -32,6 +52,10 @@ macro_rules! scan_roots_work {
             fn do_work(&mut self, _worker: &mut GCWorker<VM>, _mmtk: &'static MMTK<VM>) {
                 unsafe {
                     ((*UPCALLS).$func_name)(to_edges_closure(&mut self.factory));
+                }
+                if cfg!(feature = "roots_breakdown") {
+                    let name = stringify!($struct_name);
+                    report_roots(&name[4..name.len() - 5]);
                 }
             }
         }
@@ -65,6 +89,9 @@ extern "C" fn report_edges_and_renew_buffer_cld<
     if !ptr.is_null() {
         let ptr = ptr as *mut E;
         let buf = unsafe { Vec::<E>::from_raw_parts(ptr, length, capacity) };
+        if cfg!(feature = "roots_breakdown") {
+            record_roots(buf.len());
+        }
         let factory: &mut F = unsafe { &mut *(factory_ptr as *mut F) };
         factory.create_process_edge_roots_work(buf, root_kind);
     }
@@ -113,6 +140,9 @@ impl<VM: VMBinding, F: RootsWorkFactory<VM::VMEdge>> GCWork<VM>
                     .current_gc_should_scan_all_classloader_strong_roots(),
             );
         }
+        if cfg!(feature = "roots_breakdown") {
+            report_roots("cld");
+        }
     }
 }
 
@@ -125,6 +155,9 @@ extern "C" fn report_edges_and_renew_buffer_st<E: Edge, F: RootsWorkFactory<E>>(
     if !ptr.is_null() {
         let ptr = ptr as *mut E;
         let buf = unsafe { Vec::<E>::from_raw_parts(ptr, length, capacity) };
+        if cfg!(feature = "roots_breakdown") {
+            record_roots(buf.len());
+        }
         let factory: &mut F = unsafe { &mut *(factory_ptr as *mut F) };
         factory.create_process_edge_roots_work(buf, RootKind::Weak);
     }
@@ -171,6 +204,9 @@ impl<VM: VMBinding, F: RootsWorkFactory<VM::VMEdge>> GCWork<VM>
                     .is_some(),
             );
         }
+        if cfg!(feature = "roots_breakdown") {
+            report_roots("string-table");
+        }
     }
 }
 
@@ -200,12 +236,16 @@ impl<VM: VMBinding, F: RootsWorkFactory<VM::VMEdge>> GCWork<VM>
         let mut mature = crate::MATURE_CODE_CACHE_ROOTS.lock().unwrap();
         let mut nursery_guard = crate::NURSERY_CODE_CACHE_ROOTS.lock().unwrap();
         let nursery = std::mem::take::<HashMap<Address, Vec<Address>>>(&mut nursery_guard);
+        let mut c = 0;
         if scan_all_roots {
             // Collect all the mature cached roots
             for roots in mature.values() {
                 for r in roots {
                     edges.push(VM::VMEdge::from_address(*r));
                     if edges.len() >= F::BUFFER_SIZE {
+                        if cfg!(feature = "roots_breakdown") {
+                            c += edges.len();
+                        }
                         self.factory.create_process_edge_roots_work(
                             std::mem::take(&mut edges),
                             RootKind::Young,
@@ -220,6 +260,9 @@ impl<VM: VMBinding, F: RootsWorkFactory<VM::VMEdge>> GCWork<VM>
             for r in &roots {
                 edges.push(VM::VMEdge::from_address(*r));
                 if edges.len() >= F::BUFFER_SIZE {
+                    if cfg!(feature = "roots_breakdown") {
+                        c += edges.len();
+                    }
                     self.factory.create_process_edge_roots_work(
                         std::mem::take(&mut edges),
                         RootKind::Young,
@@ -230,8 +273,14 @@ impl<VM: VMBinding, F: RootsWorkFactory<VM::VMEdge>> GCWork<VM>
             mature.insert(key, roots);
         }
         if !edges.is_empty() {
+            if cfg!(feature = "roots_breakdown") {
+                c += edges.len();
+            }
             self.factory
                 .create_process_edge_roots_work(edges, RootKind::Young);
+        }
+        if cfg!(feature = "roots_breakdown") {
+            eprintln!(" - code-cache roots count: {}", c);
         }
     }
 }
@@ -246,6 +295,9 @@ extern "C" fn report_edges_and_renew_buffer_weakref<E: Edge, F: RootsWorkFactory
         let buf = unsafe {
             Vec::<ObjectReference>::from_raw_parts(ptr as *mut ObjectReference, length, capacity)
         };
+        if cfg!(feature = "roots_breakdown") {
+            record_roots(buf.len());
+        }
         let factory: &mut F = unsafe { &mut *(factory_ptr as *mut F) };
         factory.create_process_node_roots_work(buf, RootKind::Weak);
     }
@@ -291,6 +343,9 @@ impl<VM: VMBinding, F: RootsWorkFactory<VM::VMEdge>> GCWork<VM>
                     .downcast_ref::<mmtk::plan::lxr::LXR<VM>>()
                     .is_some(),
             );
+        }
+        if cfg!(feature = "roots_breakdown") {
+            report_roots("weak-processor");
         }
     }
 }
