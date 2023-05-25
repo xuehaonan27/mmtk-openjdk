@@ -57,6 +57,7 @@ nogc_no_zeroing = ["mmtk/nogc_no_zeroing"]
 # See README.
 global_alloc_bit = ["mmtk/global_alloc_bit"]
 no_fast_alloc = []
+roots_breakdown = []
 
 # This compile time constant places the mark bit in the header of the object instead of on the side.
 mark_bit_in_header = []
