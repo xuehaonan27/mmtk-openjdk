@@ -141,7 +141,7 @@ impl<VM: VMBinding, F: RootsWorkFactory<VM::VMEdge>> GCWork<VM>
             );
         }
         if cfg!(feature = "roots_breakdown") {
-            report_roots("cld");
+            report_roots("ClassLoaderDataGraph");
         }
     }
 }
@@ -205,7 +205,7 @@ impl<VM: VMBinding, F: RootsWorkFactory<VM::VMEdge>> GCWork<VM>
             );
         }
         if cfg!(feature = "roots_breakdown") {
-            report_roots("string-table");
+            report_roots("StringTable");
         }
     }
 }
@@ -280,7 +280,7 @@ impl<VM: VMBinding, F: RootsWorkFactory<VM::VMEdge>> GCWork<VM>
                 .create_process_edge_roots_work(edges, RootKind::Young);
         }
         if cfg!(feature = "roots_breakdown") {
-            eprintln!(" - code-cache roots count: {}", c);
+            eprintln!(" - CodeCache roots count: {}", c);
         }
     }
 }
@@ -346,6 +346,9 @@ impl<VM: VMBinding, F: RootsWorkFactory<VM::VMEdge>> GCWork<VM>
         }
         if cfg!(feature = "roots_breakdown") {
             report_roots("weak-processor");
+        }
+        if cfg!(feature = "roots_breakdown") {
+            report_roots("WeakProcessor");
         }
     }
 }
