@@ -22,6 +22,9 @@ extern "C" fn report_edges_and_renew_buffer<E: Edge, F: RootsWorkFactory<E>>(
     if !ptr.is_null() {
         let ptr = ptr as *mut E;
         let buf = unsafe { Vec::<E>::from_raw_parts(ptr, length, capacity) };
+        if cfg!(feature = "roots_breakdown") {
+            super::gc_work::record_roots(buf.len());
+        }
         let factory: &mut F = unsafe { &mut *(factory_ptr as *mut F) };
         factory.create_process_edge_roots_work(buf, RootKind::Strong);
     }
