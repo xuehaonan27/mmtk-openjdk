@@ -153,13 +153,14 @@ extern "C" fn report_edges_and_renew_buffer_st<E: Edge, F: RootsWorkFactory<E>>(
     factory_ptr: *mut libc::c_void,
 ) -> NewBuffer {
     if !ptr.is_null() {
-        let ptr = ptr as *mut E;
-        let buf = unsafe { Vec::<E>::from_raw_parts(ptr, length, capacity) };
+        let buf = unsafe {
+            Vec::<ObjectReference>::from_raw_parts(ptr as *mut ObjectReference, length, capacity)
+        };
         if cfg!(feature = "roots_breakdown") {
             record_roots(buf.len());
         }
         let factory: &mut F = unsafe { &mut *(factory_ptr as *mut F) };
-        factory.create_process_edge_roots_work(buf, RootKind::Weak);
+        factory.create_process_node_roots_work(buf, RootKind::Weak);
     }
     let (ptr, _, capacity) = {
         // TODO: Use Vec::into_raw_parts() when the method is available.
@@ -196,12 +197,15 @@ impl<VM: VMBinding, F: RootsWorkFactory<VM::VMEdge>> GCWork<VM>
     for ScanStringTableRoots<VM::VMEdge, F>
 {
     fn do_work(&mut self, _worker: &mut GCWorker<VM>, mmtk: &'static MMTK<VM>) {
+        // FIXME: Don't scan anything for full heap GCs
+        let scan_all_roots = mmtk.get_plan().current_gc_should_perform_class_unloading();
         unsafe {
             ((*UPCALLS).scan_string_table_roots)(
                 to_edges_closure_st::<VM::VMEdge, F>(&mut self.factory),
                 mmtk.get_plan()
                     .downcast_ref::<mmtk::plan::lxr::LXR<VM>>()
-                    .is_some(),
+                    .is_some()
+                    && !scan_all_roots,
             );
         }
         if cfg!(feature = "roots_breakdown") {
@@ -336,6 +340,8 @@ impl<VM: VMBinding, F: RootsWorkFactory<VM::VMEdge>> GCWork<VM>
     for ScaWeakProcessorRoots<VM::VMEdge, F>
 {
     fn do_work(&mut self, _worker: &mut GCWorker<VM>, mmtk: &'static MMTK<VM>) {
+        // FIXME: Don't scan anything for full heap GCs
+        let scan_all_roots = mmtk.get_plan().current_gc_should_perform_class_unloading();
         unsafe {
             ((*UPCALLS).scan_weak_processor_roots)(
                 to_edges_closure_weakref::<_, _>(&mut self.factory),
@@ -343,9 +349,6 @@ impl<VM: VMBinding, F: RootsWorkFactory<VM::VMEdge>> GCWork<VM>
                     .downcast_ref::<mmtk::plan::lxr::LXR<VM>>()
                     .is_some(),
             );
-        }
-        if cfg!(feature = "roots_breakdown") {
-            report_roots("weak-processor");
         }
         if cfg!(feature = "roots_breakdown") {
             report_roots("WeakProcessor");

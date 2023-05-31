@@ -37,6 +37,7 @@
 #include "runtime/mutexLocker.hpp"
 #include "runtime/os.hpp"
 #include "runtime/safepoint.hpp"
+#include "runtime/interfaceSupport.inline.hpp"
 #include "runtime/thread.hpp"
 #include "runtime/threadSMR.hpp"
 #include "runtime/vmThread.hpp"
@@ -180,6 +181,7 @@ static void mmtk_clear_claimed_marks() {
 static void mmtk_update_weak_processor(bool lxr) {
   HandleMark hm;
   MMTkForwardClosure forward;
+  StringTable::oops_do(&forward);
   if (lxr) {
     MMTkLXRFastIsAliveClosure is_alive;
     WeakProcessor::weak_oops_do(&is_alive, &forward);
@@ -454,10 +456,10 @@ static void mmtk_scan_system_dictionary_roots(EdgesClosure closure) { MMTkRootsC
 static void mmtk_scan_code_cache_roots(EdgesClosure closure) { MMTkRootsClosure<> cl(closure); MMTkHeap::heap()->scan_code_cache_roots(cl); }
 static void mmtk_scan_string_table_roots(EdgesClosure closure, bool lxr) {
   if (lxr) {
-    MMTkRootsClosure<true> cl(closure);
+    MMTkCollectRootObjects<true> cl(closure);
     MMTkHeap::heap()->scan_string_table_roots(cl);
   } else {
-    MMTkRootsClosure<false> cl(closure);
+    MMTkCollectRootObjects<true> cl(closure);
     MMTkHeap::heap()->scan_string_table_roots(cl);
   }
 }
@@ -471,7 +473,7 @@ static void mmtk_scan_weak_processor_roots(EdgesClosure closure, bool lxr) {
     MMTkCollectRootObjects<true> cl(closure);
     MMTkHeap::heap()->scan_weak_processor_roots(cl);
   } else {
-    MMTkCollectRootObjects<false> cl(closure);
+    MMTkCollectRootObjects<true> cl(closure);
     MMTkHeap::heap()->scan_weak_processor_roots(cl);
   }
 }
