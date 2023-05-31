@@ -24,10 +24,10 @@ pub fn record_roots(len: usize) {
     });
 }
 
-fn report_roots(name: &str) {
+fn report_roots(name: &str, ms: f32) {
     super::gc_work::COUNT.with(|x| {
         let c = x.load(Ordering::Relaxed);
-        eprintln!(" - {} roots count: {}", name, c);
+        eprintln!(" - {} roots count: {} ({:.3}ms)", name, c, ms);
         x.store(0, Ordering::Relaxed);
     });
 }
@@ -50,12 +50,18 @@ macro_rules! scan_roots_work {
 
         impl<VM: VMBinding, F: RootsWorkFactory<VM::VMEdge>> GCWork<VM> for $struct_name<VM, F> {
             fn do_work(&mut self, _worker: &mut GCWorker<VM>, _mmtk: &'static MMTK<VM>) {
+                let t = if cfg!(feature = "roots_breakdown") {
+                    Some(std::time::SystemTime::now())
+                } else {
+                    None
+                };
                 unsafe {
                     ((*UPCALLS).$func_name)(to_edges_closure(&mut self.factory));
                 }
                 if cfg!(feature = "roots_breakdown") {
                     let name = stringify!($struct_name);
-                    report_roots(&name[4..name.len() - 5]);
+                    let ms = t.unwrap().elapsed().unwrap().as_micros() as f32 / 1000f32;
+                    report_roots(&name[4..name.len() - 5], ms);
                 }
             }
         }
@@ -132,6 +138,11 @@ impl<VM: VMBinding, F: RootsWorkFactory<VM::VMEdge>> GCWork<VM>
     for ScanClassLoaderDataGraphRoots<VM::VMEdge, F>
 {
     fn do_work(&mut self, _worker: &mut GCWorker<VM>, mmtk: &'static MMTK<VM>) {
+        let t = if cfg!(feature = "roots_breakdown") {
+            Some(std::time::SystemTime::now())
+        } else {
+            None
+        };
         unsafe {
             ((*UPCALLS).scan_class_loader_data_graph_roots)(
                 to_edges_closure_cld::<VM::VMEdge, F, false>(&mut self.factory),
@@ -141,7 +152,8 @@ impl<VM: VMBinding, F: RootsWorkFactory<VM::VMEdge>> GCWork<VM>
             );
         }
         if cfg!(feature = "roots_breakdown") {
-            report_roots("ClassLoaderDataGraph");
+            let ms = t.unwrap().elapsed().unwrap().as_micros() as f32 / 1000f32;
+            report_roots("ClassLoaderDataGraph", ms);
         }
     }
 }
@@ -159,7 +171,7 @@ extern "C" fn report_edges_and_renew_buffer_st<E: Edge, F: RootsWorkFactory<E>>(
             record_roots(buf.len());
         }
         let factory: &mut F = unsafe { &mut *(factory_ptr as *mut F) };
-        factory.create_process_edge_roots_work(buf,  RootKind::Weak);
+        factory.create_process_edge_roots_work(buf, RootKind::Weak);
     }
     let (ptr, _, capacity) = {
         // TODO: Use Vec::into_raw_parts() when the method is available.
@@ -196,6 +208,11 @@ impl<VM: VMBinding, F: RootsWorkFactory<VM::VMEdge>> GCWork<VM>
     for ScanStringTableRoots<VM::VMEdge, F>
 {
     fn do_work(&mut self, _worker: &mut GCWorker<VM>, mmtk: &'static MMTK<VM>) {
+        let t = if cfg!(feature = "roots_breakdown") {
+            Some(std::time::SystemTime::now())
+        } else {
+            None
+        };
         unsafe {
             ((*UPCALLS).scan_string_table_roots)(
                 to_edges_closure_st::<VM::VMEdge, F>(&mut self.factory),
@@ -205,7 +222,8 @@ impl<VM: VMBinding, F: RootsWorkFactory<VM::VMEdge>> GCWork<VM>
             );
         }
         if cfg!(feature = "roots_breakdown") {
-            report_roots("StringTable");
+            let ms = t.unwrap().elapsed().unwrap().as_micros() as f32 / 1000f32;
+            report_roots("StringTable", ms);
         }
     }
 }
@@ -228,6 +246,11 @@ impl<VM: VMBinding, F: RootsWorkFactory<VM::VMEdge>> GCWork<VM>
     for ScanCodeCacheRoots<VM::VMEdge, F>
 {
     fn do_work(&mut self, _worker: &mut GCWorker<VM>, mmtk: &'static MMTK<VM>) {
+        let t = if cfg!(feature = "roots_breakdown") {
+            Some(std::time::SystemTime::now())
+        } else {
+            None
+        };
         let mut edges = Vec::with_capacity(F::BUFFER_SIZE);
         let scan_all_roots = mmtk
             .get_plan()
@@ -280,7 +303,8 @@ impl<VM: VMBinding, F: RootsWorkFactory<VM::VMEdge>> GCWork<VM>
                 .create_process_edge_roots_work(edges, RootKind::Young);
         }
         if cfg!(feature = "roots_breakdown") {
-            eprintln!(" - CodeCache roots count: {}", c);
+            let ms = t.unwrap().elapsed().unwrap().as_micros() as f32 / 1000f32;
+            eprintln!(" - CodeCache roots count: {} ({:.3})", c, ms);
         }
     }
 }
@@ -336,6 +360,11 @@ impl<VM: VMBinding, F: RootsWorkFactory<VM::VMEdge>> GCWork<VM>
     for ScaWeakProcessorRoots<VM::VMEdge, F>
 {
     fn do_work(&mut self, _worker: &mut GCWorker<VM>, mmtk: &'static MMTK<VM>) {
+        let t = if cfg!(feature = "roots_breakdown") {
+            Some(std::time::SystemTime::now())
+        } else {
+            None
+        };
         unsafe {
             ((*UPCALLS).scan_weak_processor_roots)(
                 to_edges_closure_weakref::<_, _>(&mut self.factory),
@@ -345,7 +374,8 @@ impl<VM: VMBinding, F: RootsWorkFactory<VM::VMEdge>> GCWork<VM>
             );
         }
         if cfg!(feature = "roots_breakdown") {
-            report_roots("WeakProcessor");
+            let ms = t.unwrap().elapsed().unwrap().as_micros() as f32 / 1000f32;
+            report_roots("WeakProcessor", ms);
         }
     }
 }
