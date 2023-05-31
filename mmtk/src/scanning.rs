@@ -112,22 +112,28 @@ impl<const COMPRESSED: bool> Scanning<OpenJDK<COMPRESSED>> for VMScanning {
         _tls: VMWorkerThread,
         factory: impl RootsWorkFactory<OpenJDKEdge<COMPRESSED>>,
     ) {
+        let mut w = vec![
+            Box::new(ScanUniverseRoots::new(factory.clone())) as _,
+            Box::new(ScanJNIHandlesRoots::new(factory.clone())) as _,
+            Box::new(ScanObjectSynchronizerRoots::new(factory.clone())) as _,
+            Box::new(ScanManagementRoots::new(factory.clone())) as _,
+            Box::new(ScanJvmtiExportRoots::new(factory.clone())) as _,
+            Box::new(ScanAOTLoaderRoots::new(factory.clone())) as _,
+            Box::new(ScanSystemDictionaryRoots::new(factory.clone())) as _,
+            Box::new(ScanCodeCacheRoots::new(factory.clone())) as _,
+            Box::new(ScanClassLoaderDataGraphRoots::new(factory.clone())) as _,
+        ];
+        if crate::singleton::<COMPRESSED>()
+            .get_plan()
+            .requires_weak_root_scanning()
+        {
+            w.push(Box::new(ScanStringTableRoots::new(factory.clone())) as _);
+            w.push(Box::new(ScaWeakProcessorRoots::new(factory.clone())) as _);
+        }
         memory_manager::add_work_packets(
             &crate::singleton::<COMPRESSED>(),
             WorkBucketStage::RCProcessIncs,
-            vec![
-                Box::new(ScanUniverseRoots::new(factory.clone())) as _,
-                Box::new(ScanJNIHandlesRoots::new(factory.clone())) as _,
-                Box::new(ScanObjectSynchronizerRoots::new(factory.clone())) as _,
-                Box::new(ScanManagementRoots::new(factory.clone())) as _,
-                Box::new(ScanJvmtiExportRoots::new(factory.clone())) as _,
-                Box::new(ScanAOTLoaderRoots::new(factory.clone())) as _,
-                Box::new(ScanSystemDictionaryRoots::new(factory.clone())) as _,
-                Box::new(ScanCodeCacheRoots::new(factory.clone())) as _,
-                Box::new(ScanStringTableRoots::new(factory.clone())) as _,
-                Box::new(ScanClassLoaderDataGraphRoots::new(factory.clone())) as _,
-                Box::new(ScaWeakProcessorRoots::new(factory.clone())) as _,
-            ],
+            w,
         );
         if !(<VMScanning as Scanning<OpenJDK<COMPRESSED>>>::SCAN_MUTATORS_IN_SAFEPOINT
             && <VMScanning as Scanning<OpenJDK<COMPRESSED>>>::SINGLE_THREAD_MUTATOR_SCANNING)

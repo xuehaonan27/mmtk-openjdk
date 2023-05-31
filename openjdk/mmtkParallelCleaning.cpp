@@ -33,6 +33,9 @@
 #include "gc/shared/gcTraceTime.hpp"
 #include "gc/shared/gcTraceTime.inline.hpp"
 #include "mmtkParallelCleaning.hpp"
+#include "mmtk.h"
+
+using namespace JavaClassFile;
 
 namespace mmtk {
 

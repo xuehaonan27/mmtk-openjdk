@@ -50,6 +50,9 @@
 #include "utilities/vmError.hpp"
 #include "mmtkParallelCleaning.hpp"
 #include "mmtkRootsClosure.hpp"
+
+using namespace JavaClassFile;
+
 /*
 needed support from rust
 heap capacity
@@ -61,7 +64,6 @@ object iterator??!!
 */
 
 //mmtkGCTaskManager* MMTkHeap::_mmtk_gc_task_manager = NULL;
-
 
 MMTkHeap* MMTkHeap::_heap = NULL;
 
