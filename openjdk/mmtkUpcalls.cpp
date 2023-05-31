@@ -54,6 +54,8 @@
 #include "jfr/jfr.hpp"
 #endif
 
+using namespace JavaClassFile;
+
 // Note: This counter must be accessed using the Atomic class.
 static volatile size_t mmtk_start_the_world_count = 0;
 
@@ -181,13 +183,13 @@ static void mmtk_clear_claimed_marks() {
 static void mmtk_update_weak_processor(bool lxr) {
   HandleMark hm;
   MMTkForwardClosure forward;
-  StringTable::oops_do(&forward);
   if (lxr) {
     MMTkLXRFastIsAliveClosure is_alive;
     WeakProcessor::weak_oops_do(&is_alive, &forward);
   } else {
     MMTkIsAliveClosure is_alive;
     WeakProcessor::weak_oops_do(&is_alive, &forward);
+    StringTable::oops_do(&forward);
   }
 }
 
@@ -456,10 +458,10 @@ static void mmtk_scan_system_dictionary_roots(EdgesClosure closure) { MMTkRootsC
 static void mmtk_scan_code_cache_roots(EdgesClosure closure) { MMTkRootsClosure<> cl(closure); MMTkHeap::heap()->scan_code_cache_roots(cl); }
 static void mmtk_scan_string_table_roots(EdgesClosure closure, bool rc_non_stuck_objs_only) {
   if (rc_non_stuck_objs_only) {
-    MMTkCollectRootObjects<true> cl(closure);
+    MMTkRootsClosure<true> cl(closure);
     MMTkHeap::heap()->scan_string_table_roots(cl);
   } else {
-    MMTkCollectRootObjects<false> cl(closure);
+    MMTkRootsClosure<false> cl(closure);
     MMTkHeap::heap()->scan_string_table_roots(cl);
   }
 }

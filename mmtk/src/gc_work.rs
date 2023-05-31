@@ -153,14 +153,13 @@ extern "C" fn report_edges_and_renew_buffer_st<E: Edge, F: RootsWorkFactory<E>>(
     factory_ptr: *mut libc::c_void,
 ) -> NewBuffer {
     if !ptr.is_null() {
-        let buf = unsafe {
-            Vec::<ObjectReference>::from_raw_parts(ptr as *mut ObjectReference, length, capacity)
-        };
+        let ptr = ptr as *mut E;
+        let buf = unsafe { Vec::<E>::from_raw_parts(ptr, length, capacity) };
         if cfg!(feature = "roots_breakdown") {
             record_roots(buf.len());
         }
         let factory: &mut F = unsafe { &mut *(factory_ptr as *mut F) };
-        factory.create_process_node_roots_work(buf, RootKind::Weak);
+        factory.create_process_edge_roots_work(buf,  RootKind::Weak);
     }
     let (ptr, _, capacity) = {
         // TODO: Use Vec::into_raw_parts() when the method is available.

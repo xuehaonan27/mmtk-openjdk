@@ -277,4 +277,6 @@ inline uint8_t mmtk_get_rc(void* o) {
 }
 #endif
 
+namespace JavaClassFile {};
+
 #endif // MMTK_OPENJDK_MMTK_H
