@@ -454,12 +454,12 @@ static void mmtk_scan_jvmti_export_roots(EdgesClosure closure) { MMTkRootsClosur
 static void mmtk_scan_aot_loader_roots(EdgesClosure closure) { MMTkRootsClosure<> cl(closure); MMTkHeap::heap()->scan_aot_loader_roots(cl); }
 static void mmtk_scan_system_dictionary_roots(EdgesClosure closure) { MMTkRootsClosure<> cl(closure); MMTkHeap::heap()->scan_system_dictionary_roots(cl); }
 static void mmtk_scan_code_cache_roots(EdgesClosure closure) { MMTkRootsClosure<> cl(closure); MMTkHeap::heap()->scan_code_cache_roots(cl); }
-static void mmtk_scan_string_table_roots(EdgesClosure closure, bool lxr) {
-  if (lxr) {
+static void mmtk_scan_string_table_roots(EdgesClosure closure, bool rc_non_stuck_objs_only) {
+  if (rc_non_stuck_objs_only) {
     MMTkCollectRootObjects<true> cl(closure);
     MMTkHeap::heap()->scan_string_table_roots(cl);
   } else {
-    MMTkCollectRootObjects<true> cl(closure);
+    MMTkCollectRootObjects<false> cl(closure);
     MMTkHeap::heap()->scan_string_table_roots(cl);
   }
 }
@@ -468,12 +468,12 @@ static void mmtk_scan_class_loader_data_graph_roots(EdgesClosure closure, EdgesC
   MMTkRootsClosure<> weak_cl(weak_closure);
   MMTkHeap::heap()->scan_class_loader_data_graph_roots(cl, weak_cl, scank_all_strong_roots);
 }
-static void mmtk_scan_weak_processor_roots(EdgesClosure closure, bool lxr) {
-  if (lxr) {
+static void mmtk_scan_weak_processor_roots(EdgesClosure closure, bool rc_non_stuck_objs_only) {
+  if (rc_non_stuck_objs_only) {
     MMTkCollectRootObjects<true> cl(closure);
     MMTkHeap::heap()->scan_weak_processor_roots(cl);
   } else {
-    MMTkCollectRootObjects<true> cl(closure);
+    MMTkCollectRootObjects<false> cl(closure);
     MMTkHeap::heap()->scan_weak_processor_roots(cl);
   }
 }

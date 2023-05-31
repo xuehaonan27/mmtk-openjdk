@@ -112,7 +112,7 @@ impl<const COMPRESSED: bool> Scanning<OpenJDK<COMPRESSED>> for VMScanning {
         _tls: VMWorkerThread,
         factory: impl RootsWorkFactory<OpenJDKEdge<COMPRESSED>>,
     ) {
-        let w = vec![
+        let mut w = vec![
             Box::new(ScanUniverseRoots::new(factory.clone())) as _,
             Box::new(ScanJNIHandlesRoots::new(factory.clone())) as _,
             Box::new(ScanObjectSynchronizerRoots::new(factory.clone())) as _,
@@ -122,9 +122,14 @@ impl<const COMPRESSED: bool> Scanning<OpenJDK<COMPRESSED>> for VMScanning {
             Box::new(ScanSystemDictionaryRoots::new(factory.clone())) as _,
             Box::new(ScanCodeCacheRoots::new(factory.clone())) as _,
             Box::new(ScanClassLoaderDataGraphRoots::new(factory.clone())) as _,
-            Box::new(ScanStringTableRoots::new(factory.clone())) as _,
-            Box::new(ScaWeakProcessorRoots::new(factory.clone())) as _,
         ];
+        if crate::singleton::<COMPRESSED>()
+            .get_plan()
+            .requires_weak_root_scanning()
+        {
+            w.push(Box::new(ScanStringTableRoots::new(factory.clone())) as _);
+            w.push(Box::new(ScaWeakProcessorRoots::new(factory.clone())) as _);
+        }
         memory_manager::add_work_packets(
             &crate::singleton::<COMPRESSED>(),
             WorkBucketStage::RCProcessIncs,
