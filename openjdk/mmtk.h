@@ -197,9 +197,9 @@ typedef struct {
     void (*scan_aot_loader_roots) (EdgesClosure closure);
     void (*scan_system_dictionary_roots) (EdgesClosure closure);
     void (*scan_code_cache_roots) (EdgesClosure closure);
-    void (*scan_string_table_roots) (EdgesClosure closure);
+    void (*scan_string_table_roots) (EdgesClosure closure, bool rc_non_stuck_objs_only);
     void (*scan_class_loader_data_graph_roots) (EdgesClosure closure, EdgesClosure weak_closure, bool scan_weak);
-    void (*scan_weak_processor_roots) (EdgesClosure closure);
+    void (*scan_weak_processor_roots) (EdgesClosure closure, bool rc_non_stuck_objs_only);
     void (*scan_vm_thread_roots) (EdgesClosure closure);
     size_t (*number_of_mutators)();
     void (*schedule_finalizer)();
@@ -276,5 +276,7 @@ inline uint8_t mmtk_get_rc(void* o) {
 #ifdef __cplusplus
 }
 #endif
+
+namespace JavaClassFile {};
 
 #endif // MMTK_OPENJDK_MMTK_H
