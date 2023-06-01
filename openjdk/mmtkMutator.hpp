@@ -59,9 +59,9 @@ struct ImmixAllocator {
   uintptr_t mutator_recycled_blocks;
   uintptr_t mutator_recycled_lines;
   uint8_t retry;
-  uintptr_t alloc_chunk_cursor;
-  uint8_t alloc_chunk_tag;
-  uintptr_t alloc_chunk;
+  uint32_t id;
+  uintptr_t available_super_blocks;
+  uintptr_t retired_super_blocks;
 };
 
 struct FLBlock {
