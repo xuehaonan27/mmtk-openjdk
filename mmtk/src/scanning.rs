@@ -127,7 +127,15 @@ impl<const COMPRESSED: bool> Scanning<OpenJDK<COMPRESSED>> for VMScanning {
             .get_plan()
             .requires_weak_root_scanning()
         {
-            w.push(Box::new(ScanStringTableRoots::new(factory.clone())) as _);
+            const PARALLEL_STRING_TABLE_SCANNING: bool = true;
+            let num_string_table_packets: usize = if PARALLEL_STRING_TABLE_SCANNING {
+                crate::singleton::<COMPRESSED>().scheduler.num_workers()
+            } else {
+                1
+            };
+            for _ in 0..num_string_table_packets {
+                w.push(Box::new(ScanStringTableRoots::new(factory.clone())) as _);
+            }
             w.push(Box::new(ScaWeakProcessorRoots::new(factory.clone())) as _);
         }
         memory_manager::add_work_packets(
