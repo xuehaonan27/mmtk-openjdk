@@ -438,9 +438,15 @@ void MMTkHeap::scan_code_cache_roots(OopClosure& cl) {
   MarkingCodeBlobClosure cb_cl(&cl, false);
   CodeCache::blobs_do(&cb_cl);
 }
-void MMTkHeap::scan_string_table_roots(OopClosure& cl) {
-  StringTable::oops_do(&cl);
+
+void MMTkHeap::scan_string_table_roots(OopClosure& cl, OopStorage::ParState<false, false>* par_state_string) {
+  if (par_state_string == NULL) {
+    StringTable::oops_do(&cl);
+  } else {
+    StringTable::possibly_parallel_oops_do(par_state_string, &cl);
+  }
 }
+
 void MMTkHeap::scan_class_loader_data_graph_roots(OopClosure& cl, OopClosure& weak_cl, bool scan_all_strong_roots) {
   if (!ClassUnloading) {
       CLDToOopClosure cld_cl(&cl, false);

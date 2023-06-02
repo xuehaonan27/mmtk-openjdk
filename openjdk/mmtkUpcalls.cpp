@@ -151,11 +151,32 @@ class MMTkLXRFastUpdateClosure : public OopClosure {
   }
 };
 
+template <class T>
+struct MaybeUninit {
+  MaybeUninit() {}
+  T* operator->() {
+    return (T*) &_data;
+  }
+  T& operator*() {
+    return *((T*) &_data);
+  }
+  template<class... Args>
+  void init(Args... args) {
+    new (&_data) T(args...);
+  }
+private:
+  char _data[sizeof(T)];
+};
+
+static MaybeUninit<OopStorage::ParState<false, false>> par_state_string;
+
 static void mmtk_stop_all_mutators(void *tls, bool scan_mutators_in_safepoint, MutatorClosure closure, bool current_gc_should_unload_classes) {
   log_debug(gc)("Requesting the VM to suspend all mutators...");
   MMTkHeap::heap()->companion_thread()->request(MMTkVMCompanionThread::_threads_suspended, true);
   log_debug(gc)("Mutators stopped. Now enumerate threads for scanning...");
   MMTkHeap::heap()->set_is_gc_active(true);
+
+  par_state_string.init(StringTable::weak_storage());
 
   mmtk_report_gc_start();
   if (ClassUnloading && current_gc_should_unload_classes) {
@@ -322,19 +343,6 @@ static bool mmtk_is_mutator(void* tls) {
   return ((Thread*) tls)->third_party_heap_collector == NULL;
 }
 
-template <class T>
-struct MaybeUninit {
-  MaybeUninit() {}
-  T* operator->() {
-    return (T*) &_data;
-  }
-  T& operator*() {
-    return *((T*) &_data);
-  }
-private:
-  char _data[sizeof(T)];
-};
-
 static MaybeUninit<JavaThreadIteratorWithHandle> jtiwh;
 static bool mutator_iteration_start = true;
 
@@ -459,10 +467,10 @@ static void mmtk_scan_code_cache_roots(EdgesClosure closure) { MMTkRootsClosure<
 static void mmtk_scan_string_table_roots(EdgesClosure closure, bool rc_non_stuck_objs_only) {
   if (rc_non_stuck_objs_only) {
     MMTkRootsClosure<true> cl(closure);
-    MMTkHeap::heap()->scan_string_table_roots(cl);
+    MMTkHeap::heap()->scan_string_table_roots(cl, &*par_state_string);
   } else {
     MMTkRootsClosure<false> cl(closure);
-    MMTkHeap::heap()->scan_string_table_roots(cl);
+    MMTkHeap::heap()->scan_string_table_roots(cl, &*par_state_string);
   }
 }
 static void mmtk_scan_class_loader_data_graph_roots(EdgesClosure closure, EdgesClosure weak_closure, bool scank_all_strong_roots) {
