@@ -25,6 +25,7 @@ extern const uintptr_t GLOBAL_ALLOC_BIT_ADDRESS;
 extern const int DISABLE_ALLOCATION_FAST_PATH;
 extern const uintptr_t IMMIX_ALLOCATOR_SIZE;
 extern uint8_t CONCURRENT_MARKING_ACTIVE;
+extern uint8_t RC_ENABLED;
 
 inline bool disable_fast_alloc() {
     return DISABLE_ALLOCATION_FAST_PATH != 0;

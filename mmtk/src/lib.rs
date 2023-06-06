@@ -10,6 +10,7 @@ use std::sync::atomic::{AtomicU32, AtomicUsize};
 use std::sync::Mutex;
 
 use libc::{c_char, c_void, uintptr_t};
+use mmtk::plan::lxr::LXR;
 use mmtk::util::alloc::AllocationError;
 use mmtk::util::constants::{
     BYTES_IN_ADDRESS, BYTES_IN_INT, LOG_BYTES_IN_ADDRESS, LOG_BYTES_IN_INT,
@@ -178,6 +179,9 @@ pub static IMMIX_ALLOCATOR_SIZE: uintptr_t =
 
 #[no_mangle]
 pub static mut CONCURRENT_MARKING_ACTIVE: u8 = 0;
+
+#[no_mangle]
+pub static mut RC_ENABLED: u8 = 0;
 
 #[no_mangle]
 pub static mut HEAP_START: Address = Address::ZERO;
@@ -505,6 +509,10 @@ lazy_static! {
         unsafe {
             HEAP_START = VM_LAYOUT_CONSTANTS.heap_start;
             HEAP_END = VM_LAYOUT_CONSTANTS.heap_end;
+            RC_ENABLED = ret
+                .get_plan()
+                .downcast_ref::<LXR<OpenJDK<true>>>()
+                .is_some() as _;
         }
         *ret
     };
@@ -516,6 +524,10 @@ lazy_static! {
         unsafe {
             HEAP_START = VM_LAYOUT_CONSTANTS.heap_start;
             HEAP_END = VM_LAYOUT_CONSTANTS.heap_end;
+            RC_ENABLED = ret
+                .get_plan()
+                .downcast_ref::<LXR<OpenJDK<false>>>()
+                .is_some() as _;
         }
         *ret
     };
