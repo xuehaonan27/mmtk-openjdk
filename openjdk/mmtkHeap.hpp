@@ -223,7 +223,7 @@ public:
   void scan_weak_processor_roots(OopClosure& cl);
   void scan_vm_thread_roots(OopClosure& cl);
 
-  void complete_cleaning(BoolObjectClosure* is_alive, bool class_unloading_occurred);
+  void complete_cleaning(BoolObjectClosure* is_alive, OopClosure* forward, bool class_unloading_occurred);
 
   jlong _last_gc_time;
 };

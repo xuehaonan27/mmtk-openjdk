@@ -210,18 +210,16 @@ static void mmtk_update_weak_processor(bool lxr) {
   } else {
     MMTkIsAliveClosure is_alive;
     WeakProcessor::weak_oops_do(&is_alive, &forward);
-    StringTable::oops_do(&forward);
   }
 }
 
 static void mmtk_unload_classes() {
-  MMTkForwardClosure forward;
-  StringTable::oops_do(&forward);
   if (ClassUnloading) {
     // Unload classes and purge SystemDictionary.
     auto purged_classes = SystemDictionary::do_unloading(NULL, false /* Defer cleaning */);
     MMTkIsAliveClosure is_alive;
-    MMTkHeap::heap()->complete_cleaning(&is_alive, purged_classes);
+    MMTkForwardClosure forward;
+    MMTkHeap::heap()->complete_cleaning(&is_alive, &forward, purged_classes);
     ClassLoaderDataGraph::purge();
     // Resize and verify metaspace
     MetaspaceGC::compute_new_size();
@@ -480,10 +478,10 @@ static void mmtk_scan_class_loader_data_graph_roots(EdgesClosure closure, EdgesC
 }
 static void mmtk_scan_weak_processor_roots(EdgesClosure closure, bool rc_non_stuck_objs_only) {
   if (rc_non_stuck_objs_only) {
-    MMTkCollectRootObjects<true> cl(closure);
+    MMTkRootsClosure<true> cl(closure);
     MMTkHeap::heap()->scan_weak_processor_roots(cl);
   } else {
-    MMTkCollectRootObjects<false> cl(closure);
+    MMTkRootsClosure<false> cl(closure);
     MMTkHeap::heap()->scan_weak_processor_roots(cl);
   }
 }

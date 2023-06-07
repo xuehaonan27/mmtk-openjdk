@@ -39,12 +39,15 @@ using namespace JavaClassFile;
 
 namespace mmtk {
 
-StringSymbolTableUnlinkTask::StringSymbolTableUnlinkTask(BoolObjectClosure* is_alive) :
+StringSymbolTableUnlinkTask::StringSymbolTableUnlinkTask(uint num_workers, BoolObjectClosure* is_alive, OopClosure* forward) :
   AbstractGangTask("String/Symbol Unlinking"),
   _is_alive(is_alive),
+  _forward(forward),
+  _par_state_string_fwd(StringTable::weak_storage()),
   _par_state_string(StringTable::weak_storage()),
   _strings_processed(0), _strings_removed(0),
-  _symbols_processed(0), _symbols_removed(0) {
+  _symbols_processed(0), _symbols_removed(0),
+  _num_workers(num_workers), _num_entered_barrier(0) {
 
   _initial_string_table_size = (int) StringTable::the_table()->table_size();
   _initial_symbol_table_size = SymbolTable::the_table()->table_size();
@@ -79,6 +82,8 @@ void StringSymbolTableUnlinkTask::work(uint worker_id) {
   int symbols_processed = 0;
   int symbols_removed = 0;
   // if (_process_strings) {
+    StringTable::possibly_parallel_oops_do(&_par_state_string_fwd, _forward);
+    barrier_wait(worker_id);
     StringTable::possibly_parallel_unlink(&_par_state_string, _is_alive, &strings_processed, &strings_removed);
     Atomic::add(strings_processed, &_strings_processed);
     Atomic::add(strings_removed, &_strings_removed);
@@ -96,7 +101,19 @@ size_t StringSymbolTableUnlinkTask::strings_removed()   const { return (size_t)_
 size_t StringSymbolTableUnlinkTask::symbols_processed() const { return (size_t)_symbols_processed; }
 size_t StringSymbolTableUnlinkTask::symbols_removed()   const { return (size_t)_symbols_removed; }
 
+void StringSymbolTableUnlinkTask::barrier_wait(uint worker_id) {
+  MonitorLockerEx ml(_lock, Mutex::_no_safepoint_check_flag);
+  _num_entered_barrier++;
+  if (_num_entered_barrier >= _num_workers) {
+    ml.notify_all();
+  }
+  while (_num_entered_barrier < _num_workers) {
+      ml.wait(Mutex::_no_safepoint_check_flag, 0, false);
+  }
+}
 
+
+Monitor* StringSymbolTableUnlinkTask::_lock = new Monitor(Mutex::leaf, "String Table Unload lock", false, Monitor::_safepoint_check_never);
 Monitor* CodeCacheUnloadingTask::_lock = new Monitor(Mutex::leaf, "Code Cache Unload lock", false, Monitor::_safepoint_check_never);
 
 CodeCacheUnloadingTask::CodeCacheUnloadingTask(uint num_workers, BoolObjectClosure* is_alive, bool unloading_occurred) :
@@ -303,10 +320,11 @@ void ResolvedMethodCleaningTask::work() {
 }
 
 ParallelCleaningTask::ParallelCleaningTask(BoolObjectClosure* is_alive,
+                                           OopClosure* forward,
                                            uint num_workers,
                                            bool unloading_occurred) :
   AbstractGangTask("Parallel Cleaning"),
-  _string_symbol_task(is_alive),
+  _string_symbol_task(num_workers, is_alive, forward),
   _code_cache_task(num_workers, is_alive, unloading_occurred),
   _klass_cleaning_task(is_alive),
   _resolved_method_cleaning_task(is_alive)
