@@ -32,7 +32,11 @@ namespace mmtk {
 
 class StringSymbolTableUnlinkTask : public AbstractGangTask {
 private:
+  static Monitor* _lock;
+
+  OopClosure* _forward;
   BoolObjectClosure* _is_alive;
+  OopStorage::ParState<false /* concurrent */, false /* const */> _par_state_string_fwd;
   OopStorage::ParState<false /* concurrent */, false /* const */> _par_state_string;
   int _initial_string_table_size;
   int _initial_symbol_table_size;
@@ -45,8 +49,11 @@ private:
   volatile int _symbols_processed;
   volatile int _symbols_removed;
 
+  const uint               _num_workers;
+  volatile uint     _num_entered_barrier;
+
 public:
-  StringSymbolTableUnlinkTask(BoolObjectClosure* is_alive);
+  StringSymbolTableUnlinkTask(uint num_workers, BoolObjectClosure* is_alive, OopClosure* forward);
   ~StringSymbolTableUnlinkTask();
 
   void work(uint worker_id);
@@ -56,6 +63,8 @@ public:
 
   size_t symbols_processed() const;
   size_t symbols_removed()   const;
+
+  void barrier_wait(uint worker_id);
 };
 
 class CodeCacheUnloadingTask {
@@ -147,7 +156,7 @@ private:
 
 public:
   // The constructor is run in the VMThread.
-  ParallelCleaningTask(BoolObjectClosure* is_alive, uint num_workers, bool unloading_occurred);
+  ParallelCleaningTask(BoolObjectClosure* is_alive, OopClosure* forward, uint num_workers, bool unloading_occurred);
 
   // The parallel work done by all worker threads.
   void work(uint worker_id);

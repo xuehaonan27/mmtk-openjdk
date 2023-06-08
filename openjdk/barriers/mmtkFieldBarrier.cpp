@@ -1,3 +1,4 @@
+#include "mmtk.h"
 #include "mmtkFieldBarrier.hpp"
 #include "runtime/interfaceSupport.inline.hpp"
 
@@ -32,7 +33,7 @@ void MMTkFieldBarrierSetRuntime::object_reference_write_pre(oop src, oop* slot, 
 }
 
 void MMTkFieldBarrierSetRuntime::object_probable_write(oop new_obj) const {
-  if (mmtk_get_rc((void*) new_obj) != 0) {
+  if (!RC_ENABLED || mmtk_get_rc((void*) new_obj) != 0) {
     ::mmtk_object_probable_write((MMTk_Mutator) &Thread::current()->third_party_heap_mutator, (void*) new_obj);
   }
 }
