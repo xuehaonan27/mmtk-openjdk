@@ -26,6 +26,7 @@ extern const int DISABLE_ALLOCATION_FAST_PATH;
 extern const uintptr_t IMMIX_ALLOCATOR_SIZE;
 extern uint8_t CONCURRENT_MARKING_ACTIVE;
 extern uint8_t RC_ENABLED;
+extern uint8_t REQUIRES_WEAK_HANDLE_BARRIER;
 
 inline bool disable_fast_alloc() {
     return DISABLE_ALLOCATION_FAST_PATH != 0;
@@ -132,6 +133,8 @@ extern void* mmtk_get_forwarded_ref(void* object);
 extern size_t mmtk_add_nmethod_oop(void* object);
 extern size_t mmtk_register_nmethod(void* nm);
 extern size_t mmtk_unregister_nmethod(void* nm);
+
+extern size_t mmtk_register_new_weak_handle(void* entry);
 
 extern size_t mmtk_verbose();
 

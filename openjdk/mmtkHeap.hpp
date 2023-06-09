@@ -170,6 +170,7 @@ public:
 
   virtual void prepare_for_verify() override;
 
+  virtual void register_new_weak_handle(oop* handle) override;
 
 private:
 

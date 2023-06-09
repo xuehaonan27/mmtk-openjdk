@@ -1,3 +1,4 @@
+use crate::abi::Oop;
 use crate::OpenJDK;
 use crate::OpenJDKEdge;
 use crate::OpenJDKEdgeRange;
@@ -577,4 +578,12 @@ pub extern "C" fn mmtk_unregister_nmethod(nm: Address) {
 #[no_mangle]
 pub extern "C" fn mmtk_verbose() -> usize {
     with_singleton!(|singleton| *singleton.options.verbose)
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn mmtk_register_new_weak_handle(oop: *const Oop) {
+    crate::NURSERY_WEAK_HANDLE_ROOTS
+        .lock()
+        .unwrap()
+        .push(Address::from_ptr(oop));
 }

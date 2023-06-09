@@ -184,6 +184,9 @@ pub static mut CONCURRENT_MARKING_ACTIVE: u8 = 0;
 pub static mut RC_ENABLED: u8 = 0;
 
 #[no_mangle]
+pub static mut REQUIRES_WEAK_HANDLE_BARRIER: u8 = 0;
+
+#[no_mangle]
 pub static mut HEAP_START: Address = Address::ZERO;
 
 #[no_mangle]
@@ -513,6 +516,7 @@ lazy_static! {
                 .get_plan()
                 .downcast_ref::<LXR<OpenJDK<true>>>()
                 .is_some() as _;
+            REQUIRES_WEAK_HANDLE_BARRIER = RC_ENABLED;
         }
         *ret
     };
@@ -528,6 +532,7 @@ lazy_static! {
                 .get_plan()
                 .downcast_ref::<LXR<OpenJDK<false>>>()
                 .is_some() as _;
+            REQUIRES_WEAK_HANDLE_BARRIER = RC_ENABLED;
         }
         *ret
     };
@@ -555,6 +560,7 @@ lazy_static! {
     /// A global storage for all the cached CodeCache root pointers
     static ref NURSERY_CODE_CACHE_ROOTS: Mutex<HashMap<Address, Vec<Address>>> = Mutex::new(HashMap::new());
     static ref MATURE_CODE_CACHE_ROOTS: Mutex<HashMap<Address, Vec<Address>>> = Mutex::new(HashMap::new());
+    static ref NURSERY_WEAK_HANDLE_ROOTS: Mutex<Vec<Address>> = Mutex::new(Vec::new());
 }
 
 lazy_static! {
