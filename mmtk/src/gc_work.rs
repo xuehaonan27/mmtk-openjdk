@@ -181,6 +181,9 @@ impl<VM: VMBinding, F: RootsWorkFactory<VM::VMEdge>> GCWork<VM>
             None
         };
         let mut new_roots = crate::NURSERY_WEAK_HANDLE_ROOTS.lock().unwrap();
+        if cfg!(feature = "roots_breakdown") {
+            record_roots(new_roots.len());
+        }
         for slice in new_roots.chunks(mmtk::args::BUFFER_SIZE) {
             let slice = unsafe { std::mem::transmute::<&[Address], &[VM::VMEdge]>(slice) };
             self.factory
@@ -189,7 +192,7 @@ impl<VM: VMBinding, F: RootsWorkFactory<VM::VMEdge>> GCWork<VM>
         new_roots.clear();
         if cfg!(feature = "roots_breakdown") {
             let ms = t.unwrap().elapsed().unwrap().as_micros() as f32 / 1000f32;
-            report_roots("StringTable", ms);
+            report_roots("NewWeakHandleRoots", ms);
         }
     }
 }
