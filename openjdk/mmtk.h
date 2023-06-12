@@ -190,6 +190,7 @@ typedef struct {
     const char* (*dump_object_string) (void* object);
     void (*scan_all_thread_roots)(EdgesClosure closure);
     void (*scan_thread_roots)(EdgesClosure closure, void* tls);
+    void (*scan_multiple_thread_roots)(EdgesClosure closure, void* ptr, size_t len);
     void (*scan_universe_roots) (EdgesClosure closure);
     void (*scan_jni_handle_roots) (EdgesClosure closure);
     void (*scan_object_synchronizer_roots) (EdgesClosure closure);

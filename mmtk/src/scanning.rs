@@ -108,6 +108,22 @@ impl<const COMPRESSED: bool> Scanning<OpenJDK<COMPRESSED>> for VMScanning {
         }
     }
 
+    fn scan_multiple_thread_root(
+        _tls: VMWorkerThread,
+        mutators: Vec<VMMutatorThread>,
+        mut factory: impl RootsWorkFactory<<OpenJDK<COMPRESSED> as mmtk::vm::VMBinding>::VMEdge>,
+    ) {
+        let len = mutators.len();
+        let ptr = mutators.as_ptr();
+        unsafe {
+            ((*UPCALLS).scan_multiple_thread_roots)(
+                to_edges_closure(&mut factory),
+                std::mem::transmute(ptr),
+                len,
+            );
+        }
+    }
+
     fn scan_vm_specific_roots(
         _tls: VMWorkerThread,
         factory: impl RootsWorkFactory<OpenJDKEdge<COMPRESSED>>,
