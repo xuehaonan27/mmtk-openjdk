@@ -254,22 +254,24 @@ extern void add_phantom_candidate(void* ref, void* referent);
 extern void mmtk_harness_begin_impl();
 extern void mmtk_harness_end_impl();
 
+constexpr size_t log_min_obj_size = 3;
+
 inline uint8_t mmtk_get_rc_2bits(void* o) {
-    const uintptr_t index = uintptr_t((void*) o) >> 4;
+    const uintptr_t index = uintptr_t((void*) o) >> log_min_obj_size;
     const uint8_t byte = *((uint8_t*) (RC_TABLE_BASE_ADDRESS + (index >> 2)));
     auto v = byte >> ((index & 0b11) << 1);
     return v & 0b11;
 }
 
 inline uint8_t mmtk_get_rc_4bits(void* o) {
-    const uintptr_t index = uintptr_t((void*) o) >> 4;
+    const uintptr_t index = uintptr_t((void*) o) >> log_min_obj_size;
     const uint8_t byte = *((uint8_t*) (RC_TABLE_BASE_ADDRESS + (index >> 1)));
     auto v = byte >> ((index & 0b1) << 2);
     return v & 0b1111;
 }
 
 inline uint8_t mmtk_get_rc_8bits(void* o) {
-    const uintptr_t index = uintptr_t((void*) o) >> 4;
+    const uintptr_t index = uintptr_t((void*) o) >> log_min_obj_size;
     const uint8_t byte = *((uint8_t*) (RC_TABLE_BASE_ADDRESS + index));
     return byte;
 }
