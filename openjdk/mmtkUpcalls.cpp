@@ -374,14 +374,6 @@ static void mmtk_scan_thread_roots(EdgesClosure closure, void* tls) {
   thread->oops_do(&cl, NULL);
 }
 
-static void mmtk_scan_multiple_thread_roots(EdgesClosure closure, void* ptr, size_t len) {
-  ResourceMark rm;
-  auto mutators = (JavaThread**) ptr;
-  MMTkRootsClosure<> cl(closure);
-  for (auto i = 0; i < len; i++)
-    mutators[i]->oops_do(&cl, NULL);
-}
-
 static void mmtk_scan_object(void* trace, void* object, void* tls, bool follow_clds, bool claim_clds) {
   MMTkScanObjectClosure cl(trace, follow_clds, claim_clds);
   ((oop) object)->oop_iterate(&cl);
@@ -578,7 +570,6 @@ OpenJDK_Upcalls mmtk_upcalls = {
   dump_object_string,
   mmtk_scan_all_thread_roots,
   mmtk_scan_thread_roots,
-  mmtk_scan_multiple_thread_roots,
   mmtk_scan_universe_roots,
   mmtk_scan_jni_handle_roots,
   mmtk_scan_object_synchronizer_roots,
