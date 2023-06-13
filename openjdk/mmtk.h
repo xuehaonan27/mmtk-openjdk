@@ -26,6 +26,7 @@ extern const int DISABLE_ALLOCATION_FAST_PATH;
 extern const uintptr_t IMMIX_ALLOCATOR_SIZE;
 extern uint8_t CONCURRENT_MARKING_ACTIVE;
 extern uint8_t RC_ENABLED;
+extern uint8_t REQUIRES_WEAK_HANDLE_BARRIER;
 
 inline bool disable_fast_alloc() {
     return DISABLE_ALLOCATION_FAST_PATH != 0;
@@ -133,6 +134,8 @@ extern size_t mmtk_add_nmethod_oop(void* object);
 extern size_t mmtk_register_nmethod(void* nm);
 extern size_t mmtk_unregister_nmethod(void* nm);
 
+extern size_t mmtk_register_new_weak_handle(void* entry);
+
 extern size_t mmtk_verbose();
 
 /**
@@ -190,6 +193,7 @@ typedef struct {
     const char* (*dump_object_string) (void* object);
     void (*scan_all_thread_roots)(EdgesClosure closure);
     void (*scan_thread_roots)(EdgesClosure closure, void* tls);
+    void (*scan_multiple_thread_roots)(EdgesClosure closure, void* ptr, size_t len);
     void (*scan_universe_roots) (EdgesClosure closure);
     void (*scan_jni_handle_roots) (EdgesClosure closure);
     void (*scan_object_synchronizer_roots) (EdgesClosure closure);
@@ -250,22 +254,24 @@ extern void add_phantom_candidate(void* ref, void* referent);
 extern void mmtk_harness_begin_impl();
 extern void mmtk_harness_end_impl();
 
+constexpr size_t log_min_obj_size = 3;
+
 inline uint8_t mmtk_get_rc_2bits(void* o) {
-    const uintptr_t index = uintptr_t((void*) o) >> 4;
+    const uintptr_t index = uintptr_t((void*) o) >> log_min_obj_size;
     const uint8_t byte = *((uint8_t*) (RC_TABLE_BASE_ADDRESS + (index >> 2)));
     auto v = byte >> ((index & 0b11) << 1);
     return v & 0b11;
 }
 
 inline uint8_t mmtk_get_rc_4bits(void* o) {
-    const uintptr_t index = uintptr_t((void*) o) >> 4;
+    const uintptr_t index = uintptr_t((void*) o) >> log_min_obj_size;
     const uint8_t byte = *((uint8_t*) (RC_TABLE_BASE_ADDRESS + (index >> 1)));
     auto v = byte >> ((index & 0b1) << 2);
     return v & 0b1111;
 }
 
 inline uint8_t mmtk_get_rc_8bits(void* o) {
-    const uintptr_t index = uintptr_t((void*) o) >> 4;
+    const uintptr_t index = uintptr_t((void*) o) >> log_min_obj_size;
     const uint8_t byte = *((uint8_t*) (RC_TABLE_BASE_ADDRESS + index));
     return byte;
 }
