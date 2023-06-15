@@ -113,6 +113,11 @@ impl<const COMPRESSED: bool> Scanning<OpenJDK<COMPRESSED>> for VMScanning {
         mutators: Vec<VMMutatorThread>,
         mut factory: impl RootsWorkFactory<<OpenJDK<COMPRESSED> as mmtk::vm::VMBinding>::VMEdge>,
     ) {
+        let t = if cfg!(feature = "roots_breakdown") {
+            Some(std::time::SystemTime::now())
+        } else {
+            None
+        };
         let len = mutators.len();
         let ptr = mutators.as_ptr();
         unsafe {
@@ -121,6 +126,10 @@ impl<const COMPRESSED: bool> Scanning<OpenJDK<COMPRESSED>> for VMScanning {
                 std::mem::transmute(ptr),
                 len,
             );
+        }
+        if cfg!(feature = "roots_breakdown") {
+            let ms = t.unwrap().elapsed().unwrap().as_micros() as f32 / 1000f32;
+            eprintln!(" - ScanThreadRoots ({:.3}ms)", ms);
         }
     }
 
