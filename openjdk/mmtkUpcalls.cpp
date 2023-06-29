@@ -378,7 +378,7 @@ static void mmtk_scan_multiple_thread_roots(EdgesClosure closure, void* ptr, siz
   ResourceMark rm;
   auto mutators = (JavaThread**) ptr;
   MMTkRootsClosure<> cl(closure);
-  for (auto i = 0; i < len; i++)
+  for (size_t i = 0; i < len; i++)
     mutators[i]->oops_do(&cl, NULL);
 }
 
@@ -479,10 +479,10 @@ static void mmtk_scan_string_table_roots(EdgesClosure closure, bool rc_non_stuck
     MMTkHeap::heap()->scan_string_table_roots(cl, &*par_state_string);
   }
 }
-static void mmtk_scan_class_loader_data_graph_roots(EdgesClosure closure, EdgesClosure weak_closure, bool scank_all_strong_roots) {
-  MMTkRootsClosure<> cl(closure);
-  MMTkRootsClosure<> weak_cl(weak_closure);
-  MMTkHeap::heap()->scan_class_loader_data_graph_roots(cl, weak_cl, scank_all_strong_roots);
+static void mmtk_scan_class_loader_data_graph_roots(EdgesClosure closure, EdgesClosure weak_closure, bool scan_all_strong_roots) {
+  MMTkRootsClosure<false> cl(closure);
+  MMTkRootsClosure<false> weak_cl(weak_closure);
+  MMTkHeap::heap()->scan_class_loader_data_graph_roots(cl, weak_cl, scan_all_strong_roots);
 }
 static void mmtk_scan_weak_processor_roots(EdgesClosure closure, bool rc_non_stuck_objs_only) {
   if (rc_non_stuck_objs_only) {
