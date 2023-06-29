@@ -199,6 +199,18 @@ public:
       }
       return value;
     }
+    
+    template <typename T>
+    static oop oop_load_not_in_heap(T* addr) {
+      oop value = Raw::template oop_load<oop>(addr);
+      const bool on_strong_oop_ref = (decorators & ON_STRONG_OOP_REF) != 0;
+      const bool peek              = (decorators & AS_NO_KEEPALIVE) != 0;
+      const bool needs_enqueue     = (!peek && !on_strong_oop_ref);
+      if (needs_enqueue && value != NULL) {
+        runtime()->load_reference(decorators, value);
+      }
+      return value;
+    }
 
     // Defensive: will catch weak oops at addresses in heap
     template <typename T>
