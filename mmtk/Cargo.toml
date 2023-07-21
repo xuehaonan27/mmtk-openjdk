@@ -40,7 +40,7 @@ atomic = "0.5.1"
 # - change branch
 # - change repo name
 # But other changes including adding/removing whitespaces in commented lines may break the CI.
-mmtk = { git = "https://github.com/wenyuzhao/mmtk-core.git", rev = "ca2d0817b07ebd1f4c9c5846c5f4bd2666fef9b0" }
+mmtk = { git = "https://github.com/wenyuzhao/mmtk-core.git", rev = "7c0b28bb4da66b307e60382c37a32d82863b931b" }
 # Uncomment the following to build locally
 # mmtk = { path = "../../mmtk-core" }
 
@@ -53,9 +53,9 @@ release_debug_assertions = []
 mmtk_extreme_assertions = ["mmtk/extreme_assertions"]
 nogc_lock_free = ["mmtk/nogc_lock_free"]
 nogc_no_zeroing = ["mmtk/nogc_no_zeroing"]
-# Use the env var GLOBAL_ALLOC_BIT=1 when building OpenJDK so the fastpath for setting the alloc bit will be compiled in.
+# Use the env var VO_BIT=1 when building OpenJDK so the fastpath for setting the alloc bit will be compiled in.
 # See README.
-global_alloc_bit = ["mmtk/global_alloc_bit"]
+vo_bit = ["mmtk/vo_bit"]
 no_fast_alloc = []
 roots_breakdown = []
 
