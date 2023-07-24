@@ -46,7 +46,7 @@ const intptr_t FIELD_UNLOG_BITS_BASE_ADDRESS = (intptr_t) GLOBAL_SIDE_METADATA_V
 
 const intptr_t FIELD_UNLOG_BITS_BASE_ADDRESS_COMPRESSED = (intptr_t) GLOBAL_SIDE_METADATA_VM_BASE_ADDRESS;
 
-const intptr_t ALLOC_BIT_BASE_ADDRESS = GLOBAL_ALLOC_BIT_ADDRESS;
+const intptr_t VO_BIT_BASE_ADDRESS = VO_BIT_ADDRESS;
 
 struct MMTkAllocatorOffsets {
   int tlab_top_offset;
