@@ -20,7 +20,7 @@ use mmtk::util::opaque_pointer::*;
 use mmtk::util::{Address, ObjectReference};
 use mmtk::vm::edge_shape::{Edge, MemorySlice};
 use mmtk::vm::VMBinding;
-use mmtk::{MMTKBuilder, MMTK};
+use mmtk::{MMTKBuilder, Mutator, MMTK};
 
 macro_rules! with_singleton {
     (|$x: ident| $($expr:tt)*) => {
@@ -59,6 +59,29 @@ pub struct MutatorClosure {
     pub data: *mut libc::c_void,
 }
 
+impl MutatorClosure {
+    fn from_rust_closure<F, const COMPRESSED: bool>(callback: &mut F) -> Self
+    where
+        F: FnMut(&'static mut Mutator<OpenJDK<COMPRESSED>>),
+    {
+        Self {
+            func: Self::call_rust_closure::<F, COMPRESSED>,
+            data: callback as *mut F as *mut libc::c_void,
+        }
+    }
+
+    extern "C" fn call_rust_closure<F, const COMPRESSED: bool>(
+        mutator: *mut libc::c_void,
+        callback_ptr: *mut libc::c_void,
+    ) where
+        F: FnMut(&'static mut Mutator<OpenJDK<COMPRESSED>>),
+    {
+        let mutator = mutator as *mut Mutator<OpenJDK<COMPRESSED>>;
+        let callback: &mut F = unsafe { &mut *(callback_ptr as *mut F) };
+        callback(unsafe { &mut *mutator });
+    }
+}
+
 /// A closure for reporting root edges.  The C++ code should pass `data` back as the last argument.
 #[repr(C)]
 pub struct EdgesClosure {
@@ -83,8 +106,7 @@ pub struct OpenJDK_Upcalls {
     pub spawn_gc_thread: extern "C" fn(tls: VMThread, kind: libc::c_int, ctx: *mut libc::c_void),
     pub block_for_gc: extern "C" fn(),
     pub out_of_memory: extern "C" fn(tls: VMThread, err_kind: AllocationError),
-    pub get_next_mutator: extern "C" fn() -> *mut libc::c_void,
-    pub reset_mutator_iterator: extern "C" fn(),
+    pub get_mutators: extern "C" fn(closure: MutatorClosure),
     pub scan_object: extern "C" fn(
         trace: *mut c_void,
         object: ObjectReference,
