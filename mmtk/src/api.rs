@@ -169,7 +169,7 @@ pub extern "C" fn alloc(
     mutator: *mut libc::c_void,
     size: usize,
     align: usize,
-    offset: isize,
+    offset: usize,
     allocator: AllocationSemantics,
 ) -> Address {
     if cfg!(feature = "object_size_distribution") {

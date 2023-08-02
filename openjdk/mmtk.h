@@ -59,7 +59,7 @@ extern void* alloc_slow_largeobject(MMTk_Mutator mutator, size_t size,
     size_t align, size_t offset);
 
 extern void post_alloc(MMTk_Mutator mutator, void* refer,
-    int bytes, int allocator);
+    size_t bytes, int allocator);
 
 /// java.lang.Reference load barrier
 extern void mmtk_load_reference(MMTk_Mutator mutator, void* obj);
