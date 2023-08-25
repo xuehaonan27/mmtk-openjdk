@@ -98,7 +98,6 @@ pub struct EdgesClosure {
 pub struct OpenJDK_Upcalls {
     pub stop_all_mutators: extern "C" fn(
         tls: VMWorkerThread,
-        scan_mutators_in_safepoint: bool,
         closure: MutatorClosure,
         current_gc_should_unload_classes: bool,
     ),

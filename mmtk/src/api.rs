@@ -95,6 +95,10 @@ pub extern "C" fn openjdk_gc_init(calls: *const OpenJDK_Upcalls) {
             Some(PlanSelector::PageProtect)
         } else if cfg!(feature = "immix") {
             Some(PlanSelector::Immix)
+        } else if cfg!(feature = "genimmix") {
+            Some(PlanSelector::GenImmix)
+        } else if cfg!(feature = "stickyimmix") {
+            Some(PlanSelector::StickyImmix)
         } else {
             None
         };
@@ -348,14 +352,38 @@ pub extern "C" fn mmtk_harness_end_impl() {
 #[no_mangle]
 // We trust the name/value pointer is valid.
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
-pub extern "C" fn process_bulk(options: *const c_char, parallel_gc_threads: usize) -> bool {
+pub extern "C" fn process(name: *const c_char, value: *const c_char) -> bool {
+    let name_str: &CStr = unsafe { CStr::from_ptr(name) };
+    let value_str: &CStr = unsafe { CStr::from_ptr(value) };
+    let mut builder = BUILDER.lock().unwrap();
+    memory_manager::process(
+        &mut builder,
+        name_str.to_str().unwrap(),
+        value_str.to_str().unwrap(),
+    )
+}
+
+/// Pass hotspot `ParallelGCThreads` flag to mmtk
+#[no_mangle]
+pub extern "C" fn mmtk_builder_set_threads(value: usize) {
+    let mut builder = BUILDER.lock().unwrap();
+    builder.options.threads.set(value);
+}
+
+/// Pass hotspot `UseTransparentHugePages` flag to mmtk
+#[no_mangle]
+pub extern "C" fn mmtk_builder_set_transparent_hugepages(value: bool) {
+    let mut builder = BUILDER.lock().unwrap();
+    builder.options.transparent_hugepages.set(value);
+}
+
+#[no_mangle]
+// We trust the name/value pointer is valid.
+#[allow(clippy::not_unsafe_ptr_arg_deref)]
+pub extern "C" fn process_bulk(options: *const c_char) -> bool {
     let options_str: &CStr = unsafe { CStr::from_ptr(options) };
     let mut builder = BUILDER.lock().unwrap();
-    let mut result = memory_manager::process_bulk(&mut builder, options_str.to_str().unwrap());
-    if builder.options.threads.is_default {
-        result |= builder.set_option("threads", &format!("{}", parallel_gc_threads));
-    }
-    result
+    memory_manager::process_bulk(&mut builder, options_str.to_str().unwrap())
 }
 
 #[no_mangle]

@@ -135,6 +135,7 @@ impl<const COMPRESSED: bool> Scanning<OpenJDK<COMPRESSED>> for VMScanning {
             Box::new(ScanSystemDictionaryRoots::new(factory.clone())) as _,
             Box::new(ScanCodeCacheRoots::new(factory.clone())) as _,
             Box::new(ScanClassLoaderDataGraphRoots::new(factory.clone())) as _,
+            Box::new(ScanVMThreadRoots::new(factory.clone())) as _,
         ];
         if crate::singleton::<COMPRESSED>()
             .get_plan()
@@ -146,11 +147,6 @@ impl<const COMPRESSED: bool> Scanning<OpenJDK<COMPRESSED>> for VMScanning {
             &crate::singleton::<COMPRESSED>(),
             WorkBucketStage::RCProcessIncs,
             w,
-        );
-        memory_manager::add_work_packet(
-            &crate::singleton::<COMPRESSED>(),
-            WorkBucketStage::RCProcessIncs,
-            ScanVMThreadRoots::new(factory),
         );
     }
 

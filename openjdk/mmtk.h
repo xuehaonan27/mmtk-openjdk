@@ -119,7 +119,7 @@ extern char* mmtk_active_barrier();
 extern void initialize_collection(void *tls);
 extern void gc_init(size_t heap_size);
 extern bool will_never_move(void* object);
-extern bool process_bulk(char* options, size_t threads);
+extern bool process_bulk(char* options);
 extern void scan_region();
 extern void handle_user_collection_request(void *tls, bool force);
 
@@ -171,7 +171,7 @@ struct EdgesClosure {
  * OpenJDK-specific
  */
 typedef struct {
-    void (*stop_all_mutators) (void *tls, bool scan_mutators_in_safepoint, MutatorClosure closure, bool current_gc_should_unload_classes);
+    void (*stop_all_mutators) (void *tls, MutatorClosure closure, bool current_gc_should_unload_classes);
     void (*resume_mutators) (void *tls);
     void (*spawn_gc_thread) (void *tls, int kind, void *ctx);
     void (*block_for_gc) ();
@@ -278,6 +278,9 @@ inline uint8_t mmtk_get_rc_8bits(void* o) {
 inline uint8_t mmtk_get_rc(void* o) {
     return mmtk_get_rc_2bits(o);
 }
+
+extern void mmtk_builder_set_threads(size_t value);
+extern void mmtk_builder_set_transparent_hugepages(bool value);
 
 #ifdef __cplusplus
 }

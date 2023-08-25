@@ -24,7 +24,6 @@ impl<const COMPRESSED: bool> Collection<OpenJDK<COMPRESSED>> for VMCollection {
         unsafe {
             ((*UPCALLS).stop_all_mutators)(
                 tls,
-                false,
                 MutatorClosure::from_rust_closure::<_, COMPRESSED>(&mut mutator_visitor),
                 current_gc_should_unload_classes,
             );
