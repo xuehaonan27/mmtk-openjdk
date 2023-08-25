@@ -46,9 +46,6 @@ pub(crate) fn to_edges_closure<E: Edge, F: RootsWorkFactory<E>>(factory: &mut F)
 }
 
 impl<const COMPRESSED: bool> Scanning<OpenJDK<COMPRESSED>> for VMScanning {
-    const SCAN_MUTATORS_IN_SAFEPOINT: bool = false;
-    const SINGLE_THREAD_MUTATOR_SCANNING: bool = false;
-
     fn scan_object(
         tls: VMWorkerThread,
         object: ObjectReference,
@@ -86,15 +83,6 @@ impl<const COMPRESSED: bool> Scanning<OpenJDK<COMPRESSED>> for VMScanning {
     fn notify_initial_thread_scan_complete(_partial_scan: bool, _tls: VMWorkerThread) {
         // unimplemented!()
         // TODO
-    }
-
-    fn scan_roots_in_all_mutator_threads(
-        _tls: VMWorkerThread,
-        mut factory: impl RootsWorkFactory<OpenJDKEdge<COMPRESSED>>,
-    ) {
-        unsafe {
-            ((*UPCALLS).scan_roots_in_all_mutator_threads)(to_edges_closure(&mut factory));
-        }
     }
 
     fn scan_roots_in_mutator_thread(
@@ -159,15 +147,11 @@ impl<const COMPRESSED: bool> Scanning<OpenJDK<COMPRESSED>> for VMScanning {
             WorkBucketStage::RCProcessIncs,
             w,
         );
-        if !(<VMScanning as Scanning<OpenJDK<COMPRESSED>>>::SCAN_MUTATORS_IN_SAFEPOINT
-            && <VMScanning as Scanning<OpenJDK<COMPRESSED>>>::SINGLE_THREAD_MUTATOR_SCANNING)
-        {
-            memory_manager::add_work_packet(
-                &crate::singleton::<COMPRESSED>(),
-                WorkBucketStage::RCProcessIncs,
-                ScanVMThreadRoots::new(factory),
-            );
-        }
+        memory_manager::add_work_packet(
+            &crate::singleton::<COMPRESSED>(),
+            WorkBucketStage::RCProcessIncs,
+            ScanVMThreadRoots::new(factory),
+        );
     }
 
     fn supports_return_barrier() -> bool {
