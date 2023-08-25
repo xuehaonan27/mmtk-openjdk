@@ -9,7 +9,7 @@ use std::cell::UnsafeCell;
 use std::{mem, slice};
 
 trait OopIterate: Sized {
-    fn oop_iterate<E: Edge, V: EdgeVisitor<E>, const COMPRESSED: bool>(
+    fn oop_iterate<E: Edge + From<Address>, V: EdgeVisitor<E>, const COMPRESSED: bool>(
         &self,
         oop: Oop,
         closure: &mut V,
@@ -17,7 +17,7 @@ trait OopIterate: Sized {
 }
 
 impl OopIterate for OopMapBlock {
-    fn oop_iterate<E: Edge, V: EdgeVisitor<E>, const COMPRESSED: bool>(
+    fn oop_iterate<E: Edge + From<Address>, V: EdgeVisitor<E>, const COMPRESSED: bool>(
         &self,
         oop: Oop,
         closure: &mut V,
@@ -25,14 +25,14 @@ impl OopIterate for OopMapBlock {
         let log_bytes_in_oop = if COMPRESSED { 2 } else { 3 };
         let start = oop.get_field_address(self.offset);
         for i in 0..self.count as usize {
-            let edge = E::from_address(start + (i << log_bytes_in_oop));
+            let edge = (start + (i << log_bytes_in_oop)).into();
             closure.visit_edge(edge);
         }
     }
 }
 
 impl OopIterate for InstanceKlass {
-    fn oop_iterate<E: Edge, V: EdgeVisitor<E>, const COMPRESSED: bool>(
+    fn oop_iterate<E: Edge + From<Address>, V: EdgeVisitor<E>, const COMPRESSED: bool>(
         &self,
         oop: Oop,
         closure: &mut V,
@@ -48,7 +48,7 @@ impl OopIterate for InstanceKlass {
 }
 
 impl OopIterate for InstanceMirrorKlass {
-    fn oop_iterate<E: Edge, V: EdgeVisitor<E>, const COMPRESSED: bool>(
+    fn oop_iterate<E: Edge + From<Address>, V: EdgeVisitor<E>, const COMPRESSED: bool>(
         &self,
         oop: Oop,
         closure: &mut V,
@@ -78,20 +78,20 @@ impl OopIterate for InstanceMirrorKlass {
             let start: *const NarrowOop = start.to_ptr::<NarrowOop>();
             let slice = unsafe { slice::from_raw_parts(start, len as _) };
             for narrow_oop in slice {
-                closure.visit_edge(E::from_address(narrow_oop.slot()));
+                closure.visit_edge(narrow_oop.slot().into());
             }
         } else {
             let start: *const Oop = start.to_ptr::<Oop>();
             let slice = unsafe { slice::from_raw_parts(start, len as _) };
             for oop in slice {
-                closure.visit_edge(E::from_address(Address::from_ref(oop as &Oop)));
+                closure.visit_edge(Address::from_ref(oop as &Oop).into());
             }
         }
     }
 }
 
 impl OopIterate for InstanceClassLoaderKlass {
-    fn oop_iterate<E: Edge, V: EdgeVisitor<E>, const COMPRESSED: bool>(
+    fn oop_iterate<E: Edge + From<Address>, V: EdgeVisitor<E>, const COMPRESSED: bool>(
         &self,
         oop: Oop,
         closure: &mut V,
@@ -111,7 +111,7 @@ impl OopIterate for InstanceClassLoaderKlass {
 }
 
 impl OopIterate for ObjArrayKlass {
-    fn oop_iterate<E: Edge, V: EdgeVisitor<E>, const COMPRESSED: bool>(
+    fn oop_iterate<E: Edge + From<Address>, V: EdgeVisitor<E>, const COMPRESSED: bool>(
         &self,
         oop: Oop,
         closure: &mut V,
@@ -122,18 +122,18 @@ impl OopIterate for ObjArrayKlass {
         let array = unsafe { oop.as_array_oop() };
         if COMPRESSED {
             for narrow_oop in unsafe { array.data::<NarrowOop, COMPRESSED>(BasicType::T_OBJECT) } {
-                closure.visit_edge(E::from_address(narrow_oop.slot()));
+                closure.visit_edge(narrow_oop.slot().into());
             }
         } else {
             for oop in unsafe { array.data::<Oop, COMPRESSED>(BasicType::T_OBJECT) } {
-                closure.visit_edge(E::from_address(Address::from_ref(oop as &Oop)));
+                closure.visit_edge(Address::from_ref(oop as &Oop).into());
             }
         }
     }
 }
 
 impl OopIterate for TypeArrayKlass {
-    fn oop_iterate<E: Edge, V: EdgeVisitor<E>, const COMPRESSED: bool>(
+    fn oop_iterate<E: Edge + From<Address>, V: EdgeVisitor<E>, const COMPRESSED: bool>(
         &self,
         _oop: Oop,
         _closure: &mut V,
@@ -144,7 +144,7 @@ impl OopIterate for TypeArrayKlass {
 }
 
 impl OopIterate for InstanceRefKlass {
-    fn oop_iterate<E: Edge, V: EdgeVisitor<E>, const COMPRESSED: bool>(
+    fn oop_iterate<E: Edge + From<Address>, V: EdgeVisitor<E>, const COMPRESSED: bool>(
         &self,
         oop: Oop,
         closure: &mut V,
@@ -251,7 +251,7 @@ fn oop_iterate_slow<E: Edge, V: EdgeVisitor<E>>(oop: Oop, closure: &mut V, tls: 
     }
 }
 
-fn oop_iterate<E: Edge, V: EdgeVisitor<E>, const COMPRESSED: bool>(
+fn oop_iterate<E: Edge + From<Address>, V: EdgeVisitor<E>, const COMPRESSED: bool>(
     oop: Oop,
     closure: &mut V,
     klass: Option<Address>,
@@ -340,7 +340,7 @@ pub unsafe extern "C" fn scan_object_fn<E: Edge, V: EdgeVisitor<E>>(edge: Addres
     closure.visit_edge(E::from_address(edge));
 }
 
-pub fn scan_object<E: Edge, V: EdgeVisitor<E>, const COMPRESSED: bool>(
+pub fn scan_object<E: Edge + From<Address>, V: EdgeVisitor<E>, const COMPRESSED: bool>(
     object: ObjectReference,
     closure: &mut V,
     _tls: VMWorkerThread,
@@ -348,7 +348,11 @@ pub fn scan_object<E: Edge, V: EdgeVisitor<E>, const COMPRESSED: bool>(
     unsafe { oop_iterate::<E, V, COMPRESSED>(mem::transmute(object), closure, None) }
 }
 
-pub fn scan_object_with_klass<E: Edge, V: EdgeVisitor<E>, const COMPRESSED: bool>(
+pub fn scan_object_with_klass<
+    E: Edge + From<Address>,
+    V: EdgeVisitor<E>,
+    const COMPRESSED: bool,
+>(
     object: ObjectReference,
     closure: &mut V,
     _tls: VMWorkerThread,

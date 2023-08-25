@@ -440,7 +440,7 @@ pub extern "C" fn mmtk_object_reference_write_pre(
     with_mutator!(|mutator| {
         mutator
             .barrier()
-            .object_reference_write_pre(src, OpenJDKEdge(slot), target);
+            .object_reference_write_pre(src, slot.into(), target);
     })
 }
 
@@ -455,7 +455,7 @@ pub extern "C" fn mmtk_object_reference_write_post(
     with_mutator!(|mutator| {
         mutator
             .barrier()
-            .object_reference_write_post(src, OpenJDKEdge(slot), target);
+            .object_reference_write_post(src, slot.into(), target);
     })
 }
 
@@ -470,8 +470,16 @@ pub extern "C" fn mmtk_object_reference_write_slow(
     with_mutator!(|mutator| {
         mutator
             .barrier()
-            .object_reference_write_slow(src, OpenJDKEdge(slot), target);
+            .object_reference_write_slow(src, slot.into(), target);
     })
+}
+
+fn log_bytes_in_edge() -> usize {
+    if crate::use_compressed_oops() {
+        OpenJDKEdge::<true>::LOG_BYTES_IN_EDGE
+    } else {
+        OpenJDKEdge::<false>::LOG_BYTES_IN_EDGE
+    }
 }
 
 /// Array-copy pre-barrier
@@ -482,18 +490,11 @@ pub extern "C" fn mmtk_array_copy_pre(
     dst: Address,
     count: usize,
 ) {
-    let bytes = count << crate::log_bytes_in_field();
+    let bytes = count << log_bytes_in_edge();
     with_mutator!(|mutator| {
-        mutator.barrier().memory_region_copy_pre(
-            OpenJDKEdgeRange {
-                start: OpenJDKEdge(src),
-                end: OpenJDKEdge(src + bytes),
-            },
-            OpenJDKEdgeRange {
-                start: OpenJDKEdge(dst),
-                end: OpenJDKEdge(dst + bytes),
-            },
-        );
+        mutator
+            .barrier()
+            .memory_region_copy_pre((src..src + bytes).into(), (dst..dst + bytes).into());
     })
 }
 
@@ -506,17 +507,10 @@ pub extern "C" fn mmtk_array_copy_post(
     count: usize,
 ) {
     with_mutator!(|mutator| {
-        let bytes = count << crate::log_bytes_in_field();
-        mutator.barrier().memory_region_copy_post(
-            OpenJDKEdgeRange {
-                start: OpenJDKEdge(src),
-                end: OpenJDKEdge(src + bytes),
-            },
-            OpenJDKEdgeRange {
-                start: OpenJDKEdge(dst),
-                end: OpenJDKEdge(dst + bytes),
-            },
-        );
+        let bytes = count << log_bytes_in_edge();
+        mutator
+            .barrier()
+            .memory_region_copy_post((src..src + bytes).into(), (dst..dst + bytes).into());
     })
 }
 
