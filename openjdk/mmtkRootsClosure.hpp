@@ -60,7 +60,7 @@ public:
   }
 
   virtual void do_oop(oop* p)       { do_oop_work(p, false); }
-  virtual void do_oop(narrowOop* p) { do_oop_work(p, true);  }
+  virtual void do_oop(narrowOop* p) { do_oop_work(p, true); }
 };
 
 template <bool UNPINNED_ONLY = false>

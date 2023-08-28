@@ -1,5 +1,6 @@
 use super::UPCALLS;
 use crate::Edge;
+use atomic::Atomic;
 use atomic::Ordering;
 use mmtk::util::constants::*;
 use mmtk::util::conversions;
@@ -10,6 +11,7 @@ use std::ffi::CStr;
 use std::fmt;
 use std::sync::atomic::AtomicPtr;
 use std::sync::atomic::AtomicU32;
+use std::sync::atomic::AtomicUsize;
 use std::{mem, slice};
 
 #[repr(i32)]
@@ -281,39 +283,50 @@ impl InstanceRefKlass {
 }
 
 #[repr(C)]
-union KlassField {
+union KlassPointer {
+    /// uncompressed Klass pointer
     klass: &'static Klass,
+    /// compressed Klass pointer
     narrow_klass: u32,
 }
 
 #[repr(C)]
 pub struct OopDesc {
     pub mark: usize,
-    klass: KlassField,
+    klass: KlassPointer,
 }
 
-lazy_static! {
-    static ref COMPRESSED_KLASS_BASE: Address = unsafe { ((*UPCALLS).compressed_klass_base)() };
-    static ref COMPRESSED_KLASS_SHIFT: usize = unsafe { ((*UPCALLS).compressed_klass_shift)() };
+static COMPRESSED_KLASS_BASE: Atomic<Address> = Atomic::new(Address::ZERO);
+static COMPRESSED_KLASS_SHIFT: AtomicUsize = AtomicUsize::new(0);
+
+/// When enabling compressed pointers, the class pointers are also compressed.
+/// The c++ part of the binding should pass the compressed klass base and shift to rust binding, as object scanning will need it.
+pub fn set_compressed_klass_base_and_shift(base: Address, shift: usize) {
+    COMPRESSED_KLASS_BASE.store(base, Ordering::Relaxed);
+    COMPRESSED_KLASS_SHIFT.store(shift, Ordering::Relaxed);
 }
 
 impl OopDesc {
     pub fn start(&self) -> Address {
         unsafe { mem::transmute(self) }
     }
+
     pub(crate) fn klass_ptr<const COMPRESSED: bool>(&self) -> Address {
         if COMPRESSED {
             let compressed = unsafe { self.klass.narrow_klass };
-            let addr = *COMPRESSED_KLASS_BASE + ((compressed as usize) << *COMPRESSED_KLASS_SHIFT);
+            let addr = COMPRESSED_KLASS_BASE.load(Ordering::Relaxed)
+                + ((compressed as usize) << COMPRESSED_KLASS_SHIFT.load(Ordering::Relaxed));
             addr
         } else {
             unsafe { Address::from_ref(self.klass.klass) }
         }
     }
+
     pub fn klass<const COMPRESSED: bool>(&self) -> &'static Klass {
         if COMPRESSED {
             let compressed = unsafe { self.klass.narrow_klass };
-            let addr = *COMPRESSED_KLASS_BASE + ((compressed as usize) << *COMPRESSED_KLASS_SHIFT);
+            let addr = COMPRESSED_KLASS_BASE.load(Ordering::Relaxed)
+                + ((compressed as usize) << COMPRESSED_KLASS_SHIFT.load(Ordering::Relaxed));
             unsafe { &*addr.to_ptr::<Klass>() }
         } else {
             unsafe { self.klass.klass }
@@ -446,6 +459,7 @@ impl ArrayOopDesc {
             self.length::<COMPRESSED>() as _,
         )
     }
+
     pub unsafe fn slice<const COMPRESSED: bool>(
         &self,
         ty: BasicType,

@@ -81,19 +81,17 @@ MMTkHeap::MMTkHeap(MMTkCollectorPolicy* policy) :
 
 jint MMTkHeap::initialize() {
   assert(!UseTLAB , "should disable UseTLAB");
-  if (UseCompressedOops) {
-    mmtk_use_compressed_ptrs();
-  }
-  if (UseCompressedOops) {
-    assert(UseCompressedClassPointers , "should enable UseCompressedClassPointers");
-  } else {
-    assert(!UseCompressedClassPointers , "should disable UseCompressedClassPointers");
-  }
   const size_t min_heap_size = collector_policy()->min_heap_byte_size();
   const size_t max_heap_size = collector_policy()->max_heap_byte_size();
   //  printf("policy max heap size %zu, min heap size %zu\n", heap_size, collector_policy()->min_heap_byte_size());
 
   // Set options
+  if (UseCompressedOops) mmtk_use_compressed_ptrs();
+  if (UseCompressedOops) {
+    assert(UseCompressedClassPointers , "should enable UseCompressedClassPointers");
+  } else {
+    assert(!UseCompressedClassPointers , "should disable UseCompressedClassPointers");
+  }
   mmtk_builder_set_threads(ParallelGCThreads);
   mmtk_builder_set_transparent_hugepages(UseTransparentHugePages);
   if (ThirdPartyHeapOptions != NULL) {
@@ -176,6 +174,9 @@ void MMTkHeap::schedule_finalizer() {
 
 void MMTkHeap::post_initialize() {
   CollectedHeap::post_initialize();
+  if (UseCompressedOops) {
+    mmtk_set_compressed_klass_base_and_shift((void*) Universe::narrow_klass_base(), (size_t) Universe::narrow_klass_shift());
+  }
 }
 
 void MMTkHeap::enable_collection() {

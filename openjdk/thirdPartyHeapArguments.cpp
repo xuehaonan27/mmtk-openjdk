@@ -44,9 +44,6 @@ void ThirdPartyHeapArguments::initialize() {
   GCArguments::initialize();
   assert(UseThirdPartyHeap , "Error, should UseThirdPartyHeap");
   FLAG_SET_DEFAULT(UseTLAB, false);
-  if (UseCompressedOops) mmtk_use_compressed_ptrs();
-  // auto compressed_oops = mmtk_use_compressed_ptrs();
-  // FLAG_SET_DEFAULT(UseCompressedOops, compressed_oops);
   FLAG_SET_DEFAULT(UseCompressedClassPointers, UseCompressedOops);
   FLAG_SET_DEFAULT(ParallelGCThreads, Abstract_VM_Version::parallel_worker_threads());
   if (ParallelGCThreads == 0) {

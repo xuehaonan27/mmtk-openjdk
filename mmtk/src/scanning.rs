@@ -52,7 +52,7 @@ impl<const COMPRESSED: bool> Scanning<OpenJDK<COMPRESSED>> for VMScanning {
         object: ObjectReference,
         edge_visitor: &mut impl EdgeVisitor<OpenJDKEdge<COMPRESSED>>,
     ) {
-        crate::object_scanning::scan_object::<_, _, COMPRESSED>(object, edge_visitor, tls);
+        crate::object_scanning::scan_object::<COMPRESSED>(object, edge_visitor, tls);
     }
 
     fn scan_object_with_klass(
@@ -61,7 +61,7 @@ impl<const COMPRESSED: bool> Scanning<OpenJDK<COMPRESSED>> for VMScanning {
         edge_visitor: &mut impl EdgeVisitor<OpenJDKEdge<COMPRESSED>>,
         klass: Address,
     ) {
-        crate::object_scanning::scan_object_with_klass::<_, _, COMPRESSED>(
+        crate::object_scanning::scan_object_with_klass::<COMPRESSED>(
             object,
             edge_visitor,
             tls,

@@ -229,6 +229,7 @@ extern bool mmtk_set_heap_size(size_t min, size_t max);
 extern bool mmtk_use_compressed_ptrs();
 extern void* mmtk_narrow_oop_base();
 extern size_t mmtk_narrow_oop_shift();
+extern size_t mmtk_set_compressed_klass_base_and_shift(void* base, size_t shift);
 
 extern size_t used_bytes();
 extern void* starting_heap_address();

@@ -8,14 +8,13 @@ use std::collections::HashMap;
 use std::ptr::null_mut;
 use std::sync::Mutex;
 
+pub use edges::use_compressed_oops;
 use edges::{OpenJDKEdge, OpenJDKEdgeRange};
 use libc::{c_char, c_void, uintptr_t};
 use mmtk::plan::lxr::LXR;
 use mmtk::util::alloc::AllocationError;
-use mmtk::util::constants::{
-    BYTES_IN_ADDRESS, BYTES_IN_INT, LOG_BYTES_IN_ADDRESS, LOG_BYTES_IN_GBYTE, LOG_BYTES_IN_INT,
-};
-use mmtk::util::heap::vm_layout::{vm_layout, VMLayout, BYTES_IN_CHUNK};
+use mmtk::util::constants::LOG_BYTES_IN_GBYTE;
+use mmtk::util::heap::vm_layout::{VMLayout, BYTES_IN_CHUNK};
 use mmtk::util::{conversions, opaque_pointer::*};
 use mmtk::util::{Address, ObjectReference};
 use mmtk::vm::edge_shape::Edge;
@@ -210,55 +209,6 @@ pub static mut RC_ENABLED: u8 = 0;
 #[no_mangle]
 pub static mut REQUIRES_WEAK_HANDLE_BARRIER: u8 = 0;
 
-#[no_mangle]
-pub static mut HEAP_START: Address = Address::ZERO;
-
-#[no_mangle]
-pub static mut HEAP_END: Address = Address::ZERO;
-
-static mut USE_COMPRESSED_OOPS: bool = false;
-static mut LOG_BYTES_IN_FIELD: usize = LOG_BYTES_IN_ADDRESS as _;
-static mut BYTES_IN_FIELD: usize = BYTES_IN_ADDRESS as _;
-
-fn init_compressed_oop_constants() {
-    unsafe {
-        USE_COMPRESSED_OOPS = true;
-        LOG_BYTES_IN_FIELD = LOG_BYTES_IN_INT as _;
-        BYTES_IN_FIELD = BYTES_IN_INT as _;
-    }
-}
-
-fn use_compressed_oops() -> bool {
-    unsafe { USE_COMPRESSED_OOPS }
-}
-
-fn log_bytes_in_field() -> usize {
-    unsafe { LOG_BYTES_IN_FIELD }
-}
-
-static mut BASE: Address = Address::ZERO;
-static mut SHIFT: usize = 0;
-
-fn initialize_compressed_oops() {
-    let heap_end = vm_layout().heap_end.as_usize();
-    if heap_end <= (4usize << 30) {
-        unsafe {
-            BASE = Address::ZERO;
-            SHIFT = 0;
-        }
-    } else if heap_end <= (32usize << 30) {
-        unsafe {
-            BASE = Address::ZERO;
-            SHIFT = 3;
-        }
-    } else {
-        unsafe {
-            BASE = vm_layout().heap_start - 4096;
-            SHIFT = 3;
-        }
-    }
-}
-
 #[derive(Default)]
 pub struct OpenJDK<const COMPRESSED: bool>;
 
@@ -285,18 +235,14 @@ pub static MMTK_INITIALIZED: AtomicBool = AtomicBool::new(false);
 lazy_static! {
     pub static ref BUILDER: Mutex<MMTKBuilder> = Mutex::new(MMTKBuilder::new());
     pub static ref SINGLETON_COMPRESSED: MMTK<OpenJDK<true>> = {
-        let mut builder = BUILDER.lock().unwrap();
         assert!(use_compressed_oops());
-        builder.set_option("use_35bit_address_space", "true");
-        builder.set_option("use_35bit_address_space", "true");
+        let mut builder = BUILDER.lock().unwrap();
         assert!(!MMTK_INITIALIZED.load(Ordering::Relaxed));
         set_compressed_pointer_vm_layout(&mut builder);
         let ret = mmtk::memory_manager::mmtk_init(&builder);
         MMTK_INITIALIZED.store(true, std::sync::atomic::Ordering::SeqCst);
-        initialize_compressed_oops();
+        edges::initialize_compressed_oops_base_and_shift();
         unsafe {
-            HEAP_START = vm_layout().heap_start;
-            HEAP_END = vm_layout().heap_end;
             RC_ENABLED = ret
                 .get_plan()
                 .downcast_ref::<LXR<OpenJDK<true>>>()
@@ -306,13 +252,12 @@ lazy_static! {
         *ret
     };
     pub static ref SINGLETON_UNCOMPRESSED: MMTK<OpenJDK<false>> = {
+        assert!(!use_compressed_oops());
         let builder = BUILDER.lock().unwrap();
         assert!(!MMTK_INITIALIZED.load(Ordering::Relaxed));
         let ret = mmtk::memory_manager::mmtk_init(&builder);
         MMTK_INITIALIZED.store(true, std::sync::atomic::Ordering::SeqCst);
         unsafe {
-            HEAP_START = vm_layout().heap_start;
-            HEAP_END = vm_layout().heap_end;
             RC_ENABLED = ret
                 .get_plan()
                 .downcast_ref::<LXR<OpenJDK<false>>>()

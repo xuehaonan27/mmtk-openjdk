@@ -1,6 +1,6 @@
 use crate::abi::Oop;
+use crate::edges::OpenJDKEdge;
 use crate::OpenJDK;
-use crate::OpenJDKEdge;
 use crate::OpenJDK_Upcalls;
 use crate::BUILDER;
 use crate::UPCALLS;
@@ -19,6 +19,18 @@ use once_cell::sync;
 use std::cell::RefCell;
 use std::ffi::{CStr, CString};
 use std::sync::atomic::Ordering;
+
+macro_rules! with_singleton {
+    (|$x: ident| $($expr:tt)*) => {
+        if crate::use_compressed_oops() {
+            let $x: &'static mmtk::MMTK<crate::OpenJDK<true>> = &*crate::SINGLETON_COMPRESSED;
+            $($expr)*
+        } else {
+            let $x: &'static mmtk::MMTK<crate::OpenJDK<false>> = &*crate::SINGLETON_UNCOMPRESSED;
+            $($expr)*
+        }
+    };
+}
 
 macro_rules! with_mutator {
     (|$x: ident| $($expr:tt)*) => {
@@ -274,6 +286,12 @@ pub extern "C" fn total_bytes() -> usize {
 }
 
 #[no_mangle]
+#[cfg(feature = "sanity")]
+pub extern "C" fn scan_region() {
+    with_singleton!(|singleton| memory_manager::scan_region(&singleton))
+}
+
+#[no_mangle]
 pub extern "C" fn handle_user_collection_request(tls: VMMutatorThread, force: bool) {
     with_singleton!(|singleton| {
         memory_manager::handle_user_collection_request(&singleton, tls, force);
@@ -282,7 +300,12 @@ pub extern "C" fn handle_user_collection_request(tls: VMMutatorThread, force: bo
 
 #[no_mangle]
 pub extern "C" fn mmtk_use_compressed_ptrs() {
-    crate::init_compressed_oop_constants()
+    crate::edges::enable_compressed_oops()
+}
+
+#[no_mangle]
+pub extern "C" fn mmtk_set_compressed_klass_base_and_shift(base: Address, shift: usize) {
+    crate::abi::set_compressed_klass_base_and_shift(base, shift)
 }
 
 #[no_mangle]
@@ -387,12 +410,14 @@ pub extern "C" fn process_bulk(options: *const c_char) -> bool {
 
 #[no_mangle]
 pub extern "C" fn mmtk_narrow_oop_base() -> Address {
-    unsafe { crate::BASE }
+    debug_assert!(crate::use_compressed_oops());
+    crate::edges::BASE.load(Ordering::Relaxed)
 }
 
 #[no_mangle]
 pub extern "C" fn mmtk_narrow_oop_shift() -> usize {
-    unsafe { crate::SHIFT }
+    debug_assert!(crate::use_compressed_oops());
+    crate::edges::SHIFT.load(Ordering::Relaxed)
 }
 
 #[no_mangle]
@@ -516,9 +541,7 @@ pub extern "C" fn mmtk_array_copy_post(
 /// C2 Slowpath allocation barrier
 #[no_mangle]
 pub extern "C" fn mmtk_object_probable_write(mutator: *mut libc::c_void, obj: ObjectReference) {
-    with_mutator!(|mutator| {
-        mutator.barrier().object_probable_write(obj);
-    })
+    with_mutator!(|mutator| mutator.barrier().object_probable_write(obj));
 }
 
 // finalization
