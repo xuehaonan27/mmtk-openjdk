@@ -1,5 +1,6 @@
 use super::UPCALLS;
 use crate::Edge;
+use crate::OpenJDKEdge;
 use atomic::Atomic;
 use atomic::Ordering;
 use mmtk::util::constants::*;
@@ -274,11 +275,11 @@ impl InstanceRefKlass {
         }
         *DISCOVERED_OFFSET
     }
-    pub fn referent_address<E: Edge>(oop: Oop) -> E {
-        E::from_address(oop.get_field_address(Self::referent_offset()))
+    pub fn referent_address<const COMPRESSED: bool>(oop: Oop) -> OpenJDKEdge<COMPRESSED> {
+        oop.get_field_address(Self::referent_offset()).into()
     }
-    pub fn discovered_address<E: Edge>(oop: Oop) -> E {
-        E::from_address(oop.get_field_address(Self::discovered_offset()))
+    pub fn discovered_address<const COMPRESSED: bool>(oop: Oop) -> OpenJDKEdge<COMPRESSED> {
+        oop.get_field_address(Self::discovered_offset()).into()
     }
 }
 

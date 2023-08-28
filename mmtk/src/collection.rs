@@ -74,19 +74,19 @@ impl<const COMPRESSED: bool> Collection<OpenJDK<COMPRESSED>> for VMCollection {
     fn process_weak_refs<E: ProcessEdgesWork<VM = OpenJDK<COMPRESSED>>>(
         worker: &mut GCWorker<OpenJDK<COMPRESSED>>,
     ) {
-        DISCOVERED_LISTS.process_soft_weak_final_refs::<E>(worker)
+        DISCOVERED_LISTS.process_soft_weak_final_refs::<E, COMPRESSED>(worker)
     }
 
     fn process_final_refs<E: ProcessEdgesWork<VM = OpenJDK<COMPRESSED>>>(
         worker: &mut GCWorker<OpenJDK<COMPRESSED>>,
     ) {
-        DISCOVERED_LISTS.resurrect_final_refs::<E>(worker)
+        DISCOVERED_LISTS.resurrect_final_refs::<E, COMPRESSED>(worker)
     }
 
     fn process_phantom_refs<E: ProcessEdgesWork<VM = OpenJDK<COMPRESSED>>>(
         worker: &mut GCWorker<OpenJDK<COMPRESSED>>,
     ) {
-        DISCOVERED_LISTS.process_phantom_refs::<E>(worker)
+        DISCOVERED_LISTS.process_phantom_refs::<E, COMPRESSED>(worker)
     }
 
     fn update_weak_processor(lxr: bool) {

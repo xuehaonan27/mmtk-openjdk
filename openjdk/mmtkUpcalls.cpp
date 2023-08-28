@@ -528,14 +528,6 @@ static size_t mmtk_java_lang_classloader_loader_data_offset() {
   return v;
 }
 
-static void* mmtk_compressed_klass_base() {
-  return (void*) Universe::narrow_klass_base();
-}
-
-static size_t mmtk_compressed_klass_shift() {
-  return (size_t) Universe::narrow_klass_shift();
-}
-
 static void nmethod_fix_relocation(void* nm) {
   ((nmethod*) nm)->fix_oop_relocations();
 }
@@ -583,8 +575,6 @@ OpenJDK_Upcalls mmtk_upcalls = {
   mmtk_swap_reference_pending_list,
   mmtk_java_lang_class_klass_offset_in_bytes,
   mmtk_java_lang_classloader_loader_data_offset,
-  mmtk_compressed_klass_base,
-  mmtk_compressed_klass_shift,
   nmethod_fix_relocation,
   mmtk_clear_claimed_marks,
   mmtk_unload_classes,

@@ -164,7 +164,7 @@ impl OopIterate for InstanceRefKlass {
                     panic!("oop_iterate on InstanceRefKlass with reference_type as None")
                 }
                 rt => {
-                    if !Self::discover_reference::<OpenJDKEdge<COMPRESSED>, COMPRESSED>(oop, rt) {
+                    if !Self::discover_reference::<COMPRESSED>(oop, rt) {
                         Self::process_ref_as_strong(oop, closure)
                     }
                 }
@@ -200,19 +200,22 @@ impl InstanceRefKlass {
         }
         true
     }
-    fn process_ref_as_strong<E: Edge, V: EdgeVisitor<E>>(oop: Oop, closure: &mut V) {
-        let referent_addr = Self::referent_address::<E>(oop);
+    fn process_ref_as_strong<const COMPRESSED: bool>(
+        oop: Oop,
+        closure: &mut impl EdgeVisitor<E<COMPRESSED>>,
+    ) {
+        let referent_addr = Self::referent_address::<COMPRESSED>(oop);
         closure.visit_edge(referent_addr);
-        let discovered_addr = Self::discovered_address::<E>(oop);
+        let discovered_addr = Self::discovered_address::<COMPRESSED>(oop);
         closure.visit_edge(discovered_addr);
     }
-    fn discover_reference<E: Edge, const COMPRESSED: bool>(oop: Oop, rt: ReferenceType) -> bool {
+    fn discover_reference<const COMPRESSED: bool>(oop: Oop, rt: ReferenceType) -> bool {
         // Do not discover new refs during reference processing.
         if !DISCOVERED_LISTS.allow_discover() {
             return false;
         }
         // Do not discover if the referent is live.
-        let addr = InstanceRefKlass::referent_address::<E>(oop);
+        let addr = InstanceRefKlass::referent_address::<COMPRESSED>(oop);
         let referent: ObjectReference = addr.load();
         // Skip live or null referents
         if referent.is_reachable() || referent.is_null() {
@@ -226,13 +229,13 @@ impl InstanceRefKlass {
         {
             return false;
         }
-        if rt == ReferenceType::Final && DISCOVERED_LISTS.is_discovered::<E>(reference) {
+        if rt == ReferenceType::Final && DISCOVERED_LISTS.is_discovered::<COMPRESSED>(reference) {
             return false;
         }
         // Add to reference list
         DISCOVERED_LISTS
             .get(rt)
-            .add::<E, COMPRESSED>(reference, referent);
+            .add::<COMPRESSED>(reference, referent);
         true
     }
 }
