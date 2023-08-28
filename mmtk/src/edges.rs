@@ -1,6 +1,6 @@
 use std::{
     ops::Range,
-    sync::atomic::{AtomicBool, AtomicU32, AtomicUsize, Ordering},
+    sync::atomic::{AtomicU32, AtomicUsize, Ordering},
 };
 
 use atomic::Atomic;
@@ -12,44 +12,8 @@ use mmtk::{
     vm::edge_shape::{Edge, MemorySlice},
 };
 
-static USE_COMPRESSED_OOPS: AtomicBool = AtomicBool::new(false);
 pub static BASE: Atomic<Address> = Atomic::new(Address::ZERO);
 pub static SHIFT: AtomicUsize = AtomicUsize::new(0);
-
-pub fn enable_compressed_oops() {
-    static COMPRESSED_OOPS_INITIALIZED: AtomicBool = AtomicBool::new(false);
-    assert!(
-        !COMPRESSED_OOPS_INITIALIZED.fetch_or(true, Ordering::Relaxed),
-        "cannot enable compressed pointers twice."
-    );
-    if cfg!(not(target_arch = "x86_64")) {
-        panic!("Compressed pointer is only enable on x86_64 platforms.\
-            For other RISC architectures, we need to find a way to process compressed embeded pointers in code objects first.");
-    }
-    USE_COMPRESSED_OOPS.store(true, Ordering::Relaxed)
-}
-
-pub fn use_compressed_oops() -> bool {
-    USE_COMPRESSED_OOPS.load(Ordering::Relaxed)
-}
-
-pub fn initialize_compressed_oops_base_and_shift() {
-    let heap_end = mmtk::memory_manager::last_heap_address().as_usize();
-    if heap_end <= (4usize << 30) {
-        BASE.store(Address::ZERO, Ordering::Relaxed);
-        SHIFT.store(0, Ordering::Relaxed);
-    } else if heap_end <= (32usize << 30) {
-        BASE.store(Address::ZERO, Ordering::Relaxed);
-        SHIFT.store(3, Ordering::Relaxed);
-    } else {
-        // set heap base as HEAP_START - 4096, to make sure null pointer value is not conflict with HEAP_START
-        BASE.store(
-            mmtk::memory_manager::starting_heap_address() - 4096,
-            Ordering::Relaxed,
-        );
-        SHIFT.store(3, Ordering::Relaxed);
-    }
-}
 
 /// The type of edges in OpenJDK.
 /// Currently it has the same layout as `Address`, but we override its load and store methods.

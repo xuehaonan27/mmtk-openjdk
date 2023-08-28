@@ -6,7 +6,6 @@ extern crate spin;
 
 use std::collections::HashMap;
 use std::ptr::null_mut;
-use std::sync::atomic::{AtomicU32, AtomicUsize};
 use std::sync::Mutex;
 
 use edges::{OpenJDKEdge, OpenJDKEdgeRange};
@@ -14,12 +13,12 @@ use libc::{c_char, c_void, uintptr_t};
 use mmtk::plan::lxr::LXR;
 use mmtk::util::alloc::AllocationError;
 use mmtk::util::constants::{
-    BYTES_IN_ADDRESS, BYTES_IN_INT, LOG_BYTES_IN_ADDRESS, LOG_BYTES_IN_INT,
+    BYTES_IN_ADDRESS, BYTES_IN_INT, LOG_BYTES_IN_ADDRESS, LOG_BYTES_IN_GBYTE, LOG_BYTES_IN_INT,
 };
-use mmtk::util::heap::layout::vm_layout_constants::VM_LAYOUT_CONSTANTS;
-use mmtk::util::opaque_pointer::*;
+use mmtk::util::heap::vm_layout::{vm_layout, VMLayout, BYTES_IN_CHUNK};
+use mmtk::util::{conversions, opaque_pointer::*};
 use mmtk::util::{Address, ObjectReference};
-use mmtk::vm::edge_shape::{Edge, MemorySlice};
+use mmtk::vm::edge_shape::Edge;
 use mmtk::vm::VMBinding;
 use mmtk::{MMTKBuilder, Mutator, MMTK};
 
@@ -237,31 +236,11 @@ fn log_bytes_in_field() -> usize {
     unsafe { LOG_BYTES_IN_FIELD }
 }
 
-fn bytes_in_field() -> usize {
-    unsafe { BYTES_IN_FIELD }
-}
-
 static mut BASE: Address = Address::ZERO;
 static mut SHIFT: usize = 0;
 
-fn compress(o: ObjectReference) -> u32 {
-    if o.is_null() {
-        0u32
-    } else {
-        unsafe { ((o.to_raw_address() - BASE) >> SHIFT) as u32 }
-    }
-}
-
-fn decompress(v: u32) -> ObjectReference {
-    if v == 0 {
-        ObjectReference::NULL
-    } else {
-        unsafe { (BASE + ((v as usize) << SHIFT)).to_object_reference::<OpenJDK<false>>() }
-    }
-}
-
 fn initialize_compressed_oops() {
-    let heap_end = VM_LAYOUT_CONSTANTS.heap_end.as_usize();
+    let heap_end = vm_layout().heap_end.as_usize();
     if heap_end <= (4usize << 30) {
         unsafe {
             BASE = Address::ZERO;
@@ -274,7 +253,7 @@ fn initialize_compressed_oops() {
         }
     } else {
         unsafe {
-            BASE = VM_LAYOUT_CONSTANTS.heap_start - 4096;
+            BASE = vm_layout().heap_start - 4096;
             SHIFT = 3;
         }
     }
@@ -311,12 +290,13 @@ lazy_static! {
         builder.set_option("use_35bit_address_space", "true");
         builder.set_option("use_35bit_address_space", "true");
         assert!(!MMTK_INITIALIZED.load(Ordering::Relaxed));
+        set_compressed_pointer_vm_layout(&mut builder);
         let ret = mmtk::memory_manager::mmtk_init(&builder);
         MMTK_INITIALIZED.store(true, std::sync::atomic::Ordering::SeqCst);
         initialize_compressed_oops();
         unsafe {
-            HEAP_START = VM_LAYOUT_CONSTANTS.heap_start;
-            HEAP_END = VM_LAYOUT_CONSTANTS.heap_end;
+            HEAP_START = vm_layout().heap_start;
+            HEAP_END = vm_layout().heap_end;
             RC_ENABLED = ret
                 .get_plan()
                 .downcast_ref::<LXR<OpenJDK<true>>>()
@@ -331,8 +311,8 @@ lazy_static! {
         let ret = mmtk::memory_manager::mmtk_init(&builder);
         MMTK_INITIALIZED.store(true, std::sync::atomic::Ordering::SeqCst);
         unsafe {
-            HEAP_START = VM_LAYOUT_CONSTANTS.heap_start;
-            HEAP_END = VM_LAYOUT_CONSTANTS.heap_end;
+            HEAP_START = vm_layout().heap_start;
+            HEAP_END = vm_layout().heap_end;
             RC_ENABLED = ret
                 .get_plan()
                 .downcast_ref::<LXR<OpenJDK<false>>>()
@@ -387,4 +367,48 @@ fn record_alloc(size: usize) {
 extern "C" fn dump_and_reset_obj_dist() {
     assert!(cfg!(feature = "object_size_distribution"));
     mmtk::dump_and_reset_obj_dist("Dynamic", &mut OBJ_COUNT.lock().unwrap());
+}
+
+fn set_compressed_pointer_vm_layout(builder: &mut MMTKBuilder) {
+    let max_heap_size = builder.options.gc_trigger.max_heap_size();
+    assert!(
+        max_heap_size <= (32usize << LOG_BYTES_IN_GBYTE),
+        "Heap size is larger than 32 GB"
+    );
+    let rounded_heap_size = (max_heap_size + (BYTES_IN_CHUNK - 1)) & !(BYTES_IN_CHUNK - 1);
+    let mut start: usize = 0x4000_0000; // block lowest 1G
+    let (end, mut small_chunk_space_size) = match rounded_heap_size {
+        // heap <= 2G; virtual = 3G; max-small-space=2G; min-small-space=1.5G
+        heap if heap <= 2 << 30 => {
+            let end = 4usize << 30;
+            let small_space = 2 << 30;
+            (end, small_space)
+        }
+        // heap <= 29G; virtual = 31G; max-small-space=29G;
+        heap if heap <= 29 << 30 => {
+            let end = 32usize << 30;
+            let small_space = usize::min(heap * 3 / 2, 29 << 30);
+            (end, small_space)
+        }
+        // heap > 29G; virtual = 32G - 1chunk; max-small-space=30G; start=0x200_0000_0000
+        heap => {
+            // A workaround to avoid address conflict with the OpenJDK
+            // MetaSpace, which may start from 0x8_0000_0000
+            start = 0x200_0000_0000;
+            let end = start + 0x8_0000_0000 - BYTES_IN_CHUNK;
+            let small_space = usize::min(heap * 3 / 2, 30 << 30);
+            (end, small_space)
+        }
+    };
+    small_chunk_space_size =
+        (small_chunk_space_size + (BYTES_IN_CHUNK - 1)) & !(BYTES_IN_CHUNK - 1);
+    let constants = VMLayout {
+        log_address_space: 35,
+        heap_start: conversions::chunk_align_down(unsafe { Address::from_usize(start) }),
+        heap_end: conversions::chunk_align_up(unsafe { Address::from_usize(end) }),
+        log_space_extent: 31,
+        force_use_contiguous_spaces: false,
+        small_chunk_space_size: Some(small_chunk_space_size),
+    };
+    builder.set_vm_layout(constants);
 }

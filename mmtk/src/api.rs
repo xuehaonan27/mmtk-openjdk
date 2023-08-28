@@ -1,7 +1,6 @@
 use crate::abi::Oop;
 use crate::OpenJDK;
 use crate::OpenJDKEdge;
-use crate::OpenJDKEdgeRange;
 use crate::OpenJDK_Upcalls;
 use crate::BUILDER;
 use crate::UPCALLS;
