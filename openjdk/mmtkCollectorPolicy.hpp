@@ -5,7 +5,7 @@ class MMTkCollectorPolicy : public CollectorPolicy {
 protected:
   virtual void initialize_alignments() {
     _space_alignment =  1 << 19;
-    _heap_alignment = _space_alignment;
+    _heap_alignment = 1 << 21;
   }
 public:
   MMTkCollectorPolicy() {}
