@@ -278,6 +278,7 @@ inline uint8_t mmtk_get_rc(void* o) {
     return mmtk_get_rc_2bits(o);
 }
 
+extern void mmtk_builder_read_env_var_settings();
 extern void mmtk_builder_set_threads(size_t value);
 extern void mmtk_builder_set_transparent_hugepages(bool value);
 
