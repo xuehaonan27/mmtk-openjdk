@@ -507,7 +507,7 @@ checksum = "68354c5c6bd36d73ff3feceb05efa59b6acb7626617f4962be322a825e61f79a"
 [[package]]
 name = "mmtk"
 version = "0.19.0"
-source = "git+https://github.com/wenyuzhao/mmtk-core.git?rev=50fbb1a9a0ec4cccdb2c8579d1be3ba833ebadf9#50fbb1a9a0ec4cccdb2c8579d1be3ba833ebadf9"
+source = "git+https://github.com/wenyuzhao/mmtk-core.git?rev=8f8cd43933618059d757d6cf6b870aa8f3484276#8f8cd43933618059d757d6cf6b870aa8f3484276"
 dependencies = [
  "atomic",
  "atomic-traits",
@@ -530,6 +530,7 @@ dependencies = [
  "num-traits",
  "num_cpus",
  "pfm",
+ "portable-atomic",
  "regex",
  "spin",
  "strum",
@@ -540,12 +541,12 @@ dependencies = [
 [[package]]
 name = "mmtk-macros"
 version = "0.19.0"
-source = "git+https://github.com/wenyuzhao/mmtk-core.git?rev=50fbb1a9a0ec4cccdb2c8579d1be3ba833ebadf9#50fbb1a9a0ec4cccdb2c8579d1be3ba833ebadf9"
+source = "git+https://github.com/wenyuzhao/mmtk-core.git?rev=8f8cd43933618059d757d6cf6b870aa8f3484276#8f8cd43933618059d757d6cf6b870aa8f3484276"
 dependencies = [
  "proc-macro-error",
  "proc-macro2",
  "quote",
- "syn 1.0.109",
+ "syn 2.0.29",
 ]
 
 [[package]]
@@ -661,6 +662,12 @@ name = "pkg-config"
 version = "0.3.27"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "26072860ba924cbfa98ea39c8c19b4dd6a4a25423dbdf219c1eca91aa0cf6964"
+
+[[package]]
+name = "portable-atomic"
+version = "1.4.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "31114a898e107c51bb1609ffaf55a0e011cf6a4d7f1170d0015a165082c0338b"
 
 [[package]]
 name = "proc-macro-error"
