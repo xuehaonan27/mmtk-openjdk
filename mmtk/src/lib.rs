@@ -199,7 +199,7 @@ pub static mut REQUIRES_WEAK_HANDLE_BARRIER: u8 = 0;
 pub struct OpenJDK<const COMPRESSED: bool>;
 
 impl<const COMPRESSED: bool> VMBinding for OpenJDK<COMPRESSED> {
-    type VMObjectModel = object_model::VMObjectModel;
+    type VMObjectModel = object_model::VMObjectModel<COMPRESSED>;
     type VMScanning = scanning::VMScanning;
     type VMCollection = collection::VMCollection;
     type VMActivePlan = active_plan::VMActivePlan;
