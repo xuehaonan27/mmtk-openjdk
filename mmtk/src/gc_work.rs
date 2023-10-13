@@ -76,49 +76,6 @@ scan_roots_work!(ScanAOTLoaderRoots, scan_aot_loader_roots);
 scan_roots_work!(ScanSystemDictionaryRoots, scan_system_dictionary_roots);
 scan_roots_work!(ScanVMThreadRoots, scan_vm_thread_roots);
 
-extern "C" fn report_edges_and_renew_buffer_cld<
-    E: Edge,
-    F: RootsWorkFactory<E>,
-    const WEAK: bool,
->(
-    ptr: *mut Address,
-    length: usize,
-    capacity: usize,
-    factory_ptr: *mut libc::c_void,
-) -> NewBuffer {
-    let root_kind = if WEAK {
-        RootKind::Weak
-    } else {
-        RootKind::Young
-    };
-    if !ptr.is_null() {
-        let ptr = ptr as *mut E;
-        let buf = unsafe { Vec::<E>::from_raw_parts(ptr, length, capacity) };
-        if cfg!(feature = "roots_breakdown") {
-            record_roots(buf.len());
-        }
-        let factory: &mut F = unsafe { &mut *(factory_ptr as *mut F) };
-        factory.create_process_edge_roots_work(buf, root_kind);
-    }
-    let (ptr, _, capacity) = {
-        // TODO: Use Vec::into_raw_parts() when the method is available.
-        use std::mem::ManuallyDrop;
-        let new_vec = Vec::with_capacity(F::BUFFER_SIZE);
-        let mut me = ManuallyDrop::new(new_vec);
-        (me.as_mut_ptr(), me.len(), me.capacity())
-    };
-    NewBuffer { ptr, capacity }
-}
-
-fn to_edges_closure_cld<E: Edge, F: RootsWorkFactory<E>, const WEAK: bool>(
-    factory: &mut F,
-) -> EdgesClosure {
-    EdgesClosure {
-        func: report_edges_and_renew_buffer_cld::<E, F, WEAK>,
-        data: factory as *mut F as *mut libc::c_void,
-    }
-}
-
 pub struct ScanClassLoaderDataGraphRoots<E: Edge, F: RootsWorkFactory<E>> {
     factory: F,
     _p: PhantomData<E>,
@@ -144,8 +101,8 @@ impl<VM: VMBinding, F: RootsWorkFactory<VM::VMEdge>> GCWork<VM>
         };
         unsafe {
             ((*UPCALLS).scan_class_loader_data_graph_roots)(
-                to_edges_closure_cld::<VM::VMEdge, F, false>(&mut self.factory),
-                to_edges_closure_cld::<VM::VMEdge, F, true>(&mut self.factory),
+                to_edges_closure::<VM::VMEdge, F>(&mut self.factory),
+                to_edges_closure::<VM::VMEdge, F>(&mut self.factory),
                 mmtk.get_plan()
                     .current_gc_should_scan_all_classloader_strong_roots(),
             );
@@ -175,25 +132,83 @@ impl<VM: VMBinding, F: RootsWorkFactory<VM::VMEdge>> GCWork<VM>
     for ScanNewWeakHandleRoots<VM::VMEdge, F>
 {
     fn do_work(&mut self, _worker: &mut GCWorker<VM>, _mmtk: &'static MMTK<VM>) {
-        let t = if cfg!(feature = "roots_breakdown") {
-            Some(std::time::SystemTime::now())
-        } else {
-            None
-        };
-        let mut new_roots = crate::NURSERY_WEAK_HANDLE_ROOTS.lock().unwrap();
+        // let t = if cfg!(feature = "roots_breakdown") {
+        //     Some(std::time::SystemTime::now())
+        // } else {
+        //     None
+        // };
+        // let mut new_roots = crate::NURSERY_WEAK_HANDLE_ROOTS.lock().unwrap();
+        // if cfg!(feature = "roots_breakdown") {
+        //     record_roots(new_roots.len());
+        // }
+        // for slice in new_roots.chunks(mmtk::args::BUFFER_SIZE) {
+        //     let slice = unsafe { std::mem::transmute::<&[Address], &[VM::VMEdge]>(slice) };
+        //     println!("Weak Handle Count={}", slice.len());
+        //     self.factory
+        //         .create_process_edge_roots_work(slice.to_vec(), RootKind::Strong);
+        // }
+        // new_roots.clear();
+        // if cfg!(feature = "roots_breakdown") {
+        //     let ms = t.unwrap().elapsed().unwrap().as_micros() as f32 / 1000f32;
+        //     report_roots("NewWeakHandleRoots", ms);
+        // }
+        // unsafe {
+        //     ((*UPCALLS).scan_weak_processor_roots)(
+        //         to_edges_closure_cld::<VM::VMEdge, F, false>(&mut self.factory),
+        //         _mmtk
+        //             .get_plan()
+        //             .current_gc_should_scan_all_classloader_strong_roots(),
+        //     );
+        // }
+
+        unsafe {
+            ((*UPCALLS).scan_weak_processor_roots)(
+                to_edges_closure2::<VM::VMEdge, F>(&mut self.factory),
+                false,
+            );
+        }
+
+        // unsafe {
+        //     ((*UPCALLS).scams)(
+        //         to_edges_closure2::<VM::VMEdge, F>(&mut self.factory),
+        //         false,
+        //     );
+        // }
+    }
+}
+extern "C" fn report_edges_and_renew_buffer2<E: Edge, F: RootsWorkFactory<E>>(
+    ptr: *mut Address,
+    length: usize,
+    capacity: usize,
+    factory_ptr: *mut libc::c_void,
+) -> NewBuffer {
+    if !ptr.is_null() {
+        // Note: Currently OpenJDKEdge has the same layout as Address.  If the layout changes, we
+        // should fix the Rust-to-C interface.
+        let buf = unsafe { Vec::<E>::from_raw_parts(ptr as _, length, capacity) };
+        // for e in &buf {
+        // println!("{:?} -> {:?}", e.to_address(), e.load());
+        // }
         if cfg!(feature = "roots_breakdown") {
-            record_roots(new_roots.len());
+            super::gc_work::record_roots(buf.len());
         }
-        for slice in new_roots.chunks(mmtk::args::BUFFER_SIZE) {
-            let slice = unsafe { std::mem::transmute::<&[Address], &[VM::VMEdge]>(slice) };
-            self.factory
-                .create_process_edge_roots_work(slice.to_vec(), RootKind::Weak);
-        }
-        new_roots.clear();
-        if cfg!(feature = "roots_breakdown") {
-            let ms = t.unwrap().elapsed().unwrap().as_micros() as f32 / 1000f32;
-            report_roots("NewWeakHandleRoots", ms);
-        }
+        let factory: &mut F = unsafe { &mut *(factory_ptr as *mut F) };
+        factory.create_process_edge_roots_work(buf, RootKind::Strong);
+    }
+    let (ptr, _, capacity) = {
+        // TODO: Use Vec::into_raw_parts() when the method is available.
+        use std::mem::ManuallyDrop;
+        let new_vec = Vec::with_capacity(F::BUFFER_SIZE);
+        let mut me = ManuallyDrop::new(new_vec);
+        (me.as_mut_ptr(), me.len(), me.capacity())
+    };
+    NewBuffer { ptr, capacity }
+}
+
+pub(crate) fn to_edges_closure2<E: Edge, F: RootsWorkFactory<E>>(factory: &mut F) -> EdgesClosure {
+    EdgesClosure {
+        func: report_edges_and_renew_buffer2::<E, F>,
+        data: factory as *mut F as *mut libc::c_void,
     }
 }
 
@@ -214,66 +229,11 @@ impl<E: Edge, F: RootsWorkFactory<E>> ScanCodeCacheRoots<E, F> {
 impl<VM: VMBinding, F: RootsWorkFactory<VM::VMEdge>> GCWork<VM>
     for ScanCodeCacheRoots<VM::VMEdge, F>
 {
-    fn do_work(&mut self, _worker: &mut GCWorker<VM>, mmtk: &'static MMTK<VM>) {
-        let t = if cfg!(feature = "roots_breakdown") {
-            Some(std::time::SystemTime::now())
-        } else {
-            None
-        };
-        let mut edges = Vec::with_capacity(F::BUFFER_SIZE);
-        let scan_all_roots = mmtk
-            .get_plan()
-            .current_gc_should_scan_all_classloader_strong_roots()
-            || mmtk.get_plan().current_gc_should_perform_class_unloading();
-        let mut mature = crate::MATURE_CODE_CACHE_ROOTS.lock().unwrap();
-        let mut nursery_guard = crate::NURSERY_CODE_CACHE_ROOTS.lock().unwrap();
-        let nursery = std::mem::take::<HashMap<Address, Vec<Address>>>(&mut nursery_guard);
-        let mut c = 0;
-        if scan_all_roots {
-            // Collect all the mature cached roots
-            for roots in mature.values() {
-                for r in roots {
-                    edges.push(VM::VMEdge::from_address(*r));
-                    if edges.len() >= F::BUFFER_SIZE {
-                        if cfg!(feature = "roots_breakdown") {
-                            c += edges.len();
-                        }
-                        self.factory.create_process_edge_roots_work(
-                            std::mem::take(&mut edges),
-                            RootKind::Young,
-                        );
-                        edges.reserve(F::BUFFER_SIZE);
-                    }
-                }
-            }
-        }
-        // Young roots
-        for (key, roots) in nursery {
-            for r in &roots {
-                edges.push(VM::VMEdge::from_address(*r));
-                if edges.len() >= F::BUFFER_SIZE {
-                    if cfg!(feature = "roots_breakdown") {
-                        c += edges.len();
-                    }
-                    self.factory.create_process_edge_roots_work(
-                        std::mem::take(&mut edges),
-                        RootKind::Young,
-                    );
-                    edges.reserve(F::BUFFER_SIZE);
-                }
-            }
-            mature.insert(key, roots);
-        }
-        if !edges.is_empty() {
-            if cfg!(feature = "roots_breakdown") {
-                c += edges.len();
-            }
-            self.factory
-                .create_process_edge_roots_work(edges, RootKind::Young);
-        }
-        if cfg!(feature = "roots_breakdown") {
-            let ms = t.unwrap().elapsed().unwrap().as_micros() as f32 / 1000f32;
-            eprintln!(" - CodeCache roots count: {} ({:.3})", c, ms);
+    fn do_work(&mut self, _worker: &mut GCWorker<VM>, _mmtk: &'static MMTK<VM>) {
+        unsafe {
+            ((*UPCALLS).scan_code_cache_roots)(to_edges_closure::<VM::VMEdge, F>(
+                &mut self.factory,
+            ));
         }
     }
 }

@@ -152,6 +152,7 @@ impl<const COMPRESSED: bool> Edge for OpenJDKEdge<COMPRESSED> {
     }
 
     fn store(&self, object: ObjectReference) {
+        // println!("{:?} <- {:?}", self, object);
         if cfg!(any(target_arch = "x86", target_arch = "x86_64")) {
             if COMPRESSED {
                 if self.is_compressed() {
@@ -187,6 +188,7 @@ impl<const COMPRESSED: bool> Edge for OpenJDKEdge<COMPRESSED> {
         success: Ordering,
         failure: Ordering,
     ) -> Result<ObjectReference, ObjectReference> {
+        unreachable!();
         if COMPRESSED {
             if self.is_compressed() {
                 let old_value = Self::compress(old_object);

@@ -275,7 +275,7 @@ inline uint8_t mmtk_get_rc_8bits(void* o) {
 }
 
 inline uint8_t mmtk_get_rc(void* o) {
-    return mmtk_get_rc_2bits(o);
+    return mmtk_get_rc_8bits(o);
 }
 
 extern void mmtk_builder_set_threads(size_t value);

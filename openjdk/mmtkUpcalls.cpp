@@ -213,17 +213,17 @@ static void mmtk_update_weak_processor(bool lxr) {
 }
 
 static void mmtk_unload_classes() {
-  if (ClassUnloading) {
-    // Unload classes and purge SystemDictionary.
-    auto purged_classes = SystemDictionary::do_unloading(NULL, false /* Defer cleaning */);
-    MMTkIsAliveClosure is_alive;
-    MMTkForwardClosure forward;
-    MMTkHeap::heap()->complete_cleaning(&is_alive, &forward, purged_classes);
-    ClassLoaderDataGraph::purge();
-    // Resize and verify metaspace
-    MetaspaceGC::compute_new_size();
-    MetaspaceUtils::verify_metrics();
-  }
+  // if (ClassUnloading) {
+  //   // Unload classes and purge SystemDictionary.
+  //   auto purged_classes = SystemDictionary::do_unloading(NULL, false /* Defer cleaning */);
+  //   MMTkIsAliveClosure is_alive;
+  //   MMTkForwardClosure forward;
+  //   MMTkHeap::heap()->complete_cleaning(&is_alive, &forward, purged_classes);
+  //   ClassLoaderDataGraph::purge();
+  //   // Resize and verify metaspace
+  //   MetaspaceGC::compute_new_size();
+  //   MetaspaceUtils::verify_metrics();
+  // }
 }
 
 static void mmtk_gc_epilogue() {
@@ -470,13 +470,13 @@ static void mmtk_scan_class_loader_data_graph_roots(EdgesClosure closure, EdgesC
   MMTkHeap::heap()->scan_class_loader_data_graph_roots(cl, weak_cl, scan_all_strong_roots);
 }
 static void mmtk_scan_weak_processor_roots(EdgesClosure closure, bool rc_non_stuck_objs_only) {
-  if (rc_non_stuck_objs_only) {
-    MMTkRootsClosure<true> cl(closure);
-    MMTkHeap::heap()->scan_weak_processor_roots(cl);
-  } else {
+  // if (rc_non_stuck_objs_only) {
+  //   MMTkRootsClosure<true> cl(closure);
+  //   MMTkHeap::heap()->scan_weak_processor_roots(cl);
+  // } else {
     MMTkRootsClosure<false> cl(closure);
     MMTkHeap::heap()->scan_weak_processor_roots(cl);
-  }
+  // }
 }
 static void mmtk_scan_vm_thread_roots(EdgesClosure closure) { MMTkRootsClosure<> cl(closure); MMTkHeap::heap()->scan_vm_thread_roots(cl); }
 

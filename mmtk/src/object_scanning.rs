@@ -314,7 +314,7 @@ fn do_cld<E: Edge, V: EdgeVisitor<E>, const COMPRESSED: bool>(
     if !closure.should_follow_clds() {
         return;
     }
-    cld.oops_do::<_, _, COMPRESSED>(closure)
+    // cld.oops_do::<_, _, COMPRESSED>(closure)
 }
 
 fn do_klass<E: Edge, V: EdgeVisitor<E>, const COMPRESSED: bool>(klass: &Klass, closure: &mut V) {
