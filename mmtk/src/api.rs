@@ -573,7 +573,11 @@ pub extern "C" fn mmtk_is_live(object: ObjectReference) -> usize {
     if object.is_null() {
         return 0;
     }
-    debug_assert!(object.to_raw_address().is_mapped());
+    debug_assert!(
+        object.to_raw_address().is_mapped(),
+        "{:?} is not mapped",
+        object
+    );
     object.is_live() as _
 }
 
