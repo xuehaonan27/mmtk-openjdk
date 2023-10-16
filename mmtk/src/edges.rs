@@ -36,8 +36,10 @@ pub fn use_compressed_oops() -> bool {
 pub fn initialize_compressed_oops_base_and_shift() {
     let heap_start = mmtk::memory_manager::starting_heap_address().as_usize();
     let heap_end = mmtk::memory_manager::last_heap_address().as_usize();
-    println!("heap_start: 0x{:x}", heap_start);
-    println!("heap_end: 0x{:x}", heap_end);
+    if cfg!(feature = "force_narrow_oop_mode") {
+        println!("heap_start: 0x{:x}", heap_start);
+        println!("heap_end: 0x{:x}", heap_end);
+    }
     if heap_end <= (4usize << 30) {
         BASE.store(Address::ZERO, Ordering::Relaxed);
         SHIFT.store(0, Ordering::Relaxed);
