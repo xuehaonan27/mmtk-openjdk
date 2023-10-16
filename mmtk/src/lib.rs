@@ -311,27 +311,54 @@ fn set_compressed_pointer_vm_layout(builder: &mut MMTKBuilder) {
     );
     let rounded_heap_size = (max_heap_size + (BYTES_IN_CHUNK - 1)) & !(BYTES_IN_CHUNK - 1);
     let mut start: usize = 0x4000_0000; // block lowest 1G
-    let (end, mut small_chunk_space_size) = match rounded_heap_size {
-        // heap <= 2G; virtual = 3G; max-small-space=2G; min-small-space=1.5G
-        heap if heap <= 2 << 30 => {
+    let (end, mut small_chunk_space_size) = if cfg!(feature = "force_narrow_oop_mode") {
+        assert!(rounded_heap_size <= (2 << 30));
+        let heap = rounded_heap_size;
+        if cfg!(feature = "narrow_oop_mode_32bit") {
             let end = 4usize << 30;
             let small_space = 2 << 30;
             (end, small_space)
-        }
-        // heap <= 29G; virtual = 31G; max-small-space=29G;
-        heap if heap <= 29 << 30 => {
+        } else if cfg!(feature = "narrow_oop_mode_shift") {
             let end = 32usize << 30;
             let small_space = usize::min(heap * 3 / 2, 29 << 30);
             (end, small_space)
-        }
-        // heap > 29G; virtual = 32G - 1chunk; max-small-space=30G; start=0x200_0000_0000
-        heap => {
-            // A workaround to avoid address conflict with the OpenJDK
-            // MetaSpace, which may start from 0x8_0000_0000
+        } else if cfg!(feature = "narrow_oop_mode_base") {
+            // start = 0x200_0000_0000;
+            // let end = start + ((4usize << 30) - BYTES_IN_CHUNK);
+            // let small_space = 2 << 30;
+            // (end, small_space)
+            unreachable!()
+        } else if cfg!(feature = "narrow_oop_mode_base_and_shift") {
             start = 0x200_0000_0000;
             let end = start + 0x8_0000_0000 - BYTES_IN_CHUNK;
             let small_space = usize::min(heap * 3 / 2, 30 << 30);
             (end, small_space)
+        } else {
+            unreachable!()
+        }
+    } else {
+        match rounded_heap_size {
+            // heap <= 2G; virtual = 3G; max-small-space=2G; min-small-space=1.5G
+            heap if heap <= 2 << 30 => {
+                let end = 4usize << 30;
+                let small_space = 2 << 30;
+                (end, small_space)
+            }
+            // heap <= 29G; virtual = 31G; max-small-space=29G;
+            heap if heap <= 29 << 30 => {
+                let end = 32usize << 30;
+                let small_space = usize::min(heap * 3 / 2, 29 << 30);
+                (end, small_space)
+            }
+            // heap > 29G; virtual = 32G - 1chunk; max-small-space=30G; start=0x200_0000_0000
+            heap => {
+                // A workaround to avoid address conflict with the OpenJDK
+                // MetaSpace, which may start from 0x8_0000_0000
+                start = 0x200_0000_0000;
+                let end = start + 0x8_0000_0000 - BYTES_IN_CHUNK;
+                let small_space = usize::min(heap * 3 / 2, 30 << 30);
+                (end, small_space)
+            }
         }
     };
     small_chunk_space_size =
