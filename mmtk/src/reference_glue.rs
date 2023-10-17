@@ -250,7 +250,7 @@ impl<E: ProcessEdgesWork, const COMPRESSED: bool> GCWork<E::VM>
     for ProcessDiscoveredList<E, COMPRESSED>
 {
     fn do_work(&mut self, worker: &mut GCWorker<E::VM>, mmtk: &'static MMTK<E::VM>) {
-        let mut trace = E::new(vec![], false, mmtk);
+        let mut trace = E::new(vec![], false, mmtk, WorkBucketStage::Unconstrained);
         trace.set_worker(worker);
         let retain = self.rt == ReferenceType::Soft && !mmtk.get_plan().is_emergency_collection();
         let new_list = iterate_list::<_, COMPRESSED>(self.head, |reference| {
@@ -317,7 +317,7 @@ impl<E: ProcessEdgesWork, const COMPRESSED: bool> GCWork<E::VM>
     for ResurrectFinalizables<E, COMPRESSED>
 {
     fn do_work(&mut self, worker: &mut GCWorker<E::VM>, mmtk: &'static MMTK<E::VM>) {
-        let mut trace = E::new(vec![], false, mmtk);
+        let mut trace = E::new(vec![], false, mmtk, WorkBucketStage::Unconstrained);
         trace.set_worker(worker);
         let new_list = iterate_list::<_, COMPRESSED>(self.head, |reference| {
             let reference = trace.trace_object(reference);

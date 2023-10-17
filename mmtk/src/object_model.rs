@@ -6,9 +6,9 @@ use mmtk::util::copy::*;
 use mmtk::util::{Address, ObjectReference};
 use mmtk::vm::*;
 
-pub struct VMObjectModel {}
+pub struct VMObjectModel<const COMPRESSED: bool> {}
 
-impl<const COMPRESSED: bool> ObjectModel<OpenJDK<COMPRESSED>> for VMObjectModel {
+impl<const COMPRESSED: bool> ObjectModel<OpenJDK<COMPRESSED>> for VMObjectModel<COMPRESSED> {
     const GLOBAL_LOG_BIT_SPEC: VMGlobalLogBitSpec = vm_metadata::LOGGING_SIDE_METADATA_SPEC;
     const GLOBAL_FIELD_UNLOG_BIT_SPEC: VMGlobalFieldUnlogBitSpec = if COMPRESSED {
         vm_metadata::FIELD_LOGGING_SIDE_METADATA_SPEC_COMPRESSED
@@ -67,7 +67,7 @@ impl<const COMPRESSED: bool> ObjectModel<OpenJDK<COMPRESSED>> for VMObjectModel 
 
     fn copy_to(from: ObjectReference, to: ObjectReference, region: Address) -> Address {
         let need_copy = from != to;
-        let bytes = unsafe { ((*UPCALLS).get_object_size)(from) };
+        let bytes = unsafe { Oop::from(from).size::<COMPRESSED>() };
         if need_copy {
             // copy obj to target
             let dst = to.to_raw_address();
@@ -89,11 +89,7 @@ impl<const COMPRESSED: bool> ObjectModel<OpenJDK<COMPRESSED>> for VMObjectModel 
     }
 
     fn get_current_size(object: ObjectReference) -> usize {
-        if COMPRESSED {
-            unsafe { Oop::from(object).size::<true>() }
-        } else {
-            unsafe { Oop::from(object).size::<false>() }
-        }
+        unsafe { Oop::from(object).size::<COMPRESSED>() }
     }
 
     fn get_size_when_copied(object: ObjectReference) -> usize {
@@ -159,6 +155,6 @@ impl<const COMPRESSED: bool> ObjectModel<OpenJDK<COMPRESSED>> for VMObjectModel 
         // It is only valid if klass.id is between 0 and 5 (see KlassID in openjdk/src/hotspot/share/oops/klass.hpp)
         // If oop.klass is not a valid pointer, we may segfault here.
         let klass_id = oop.klass::<COMPRESSED>().id as i32;
-        klass_id >= 0 && klass_id < 6
+        (0..6).contains(&klass_id)
     }
 }

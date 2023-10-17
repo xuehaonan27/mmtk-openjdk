@@ -1,12 +1,12 @@
 use std::{
     ops::Range,
-    sync::atomic::{AtomicBool, AtomicU32, AtomicUsize, Ordering},
+    sync::atomic::{AtomicBool, AtomicUsize, Ordering, AtomicU32},
 };
 
 use atomic::Atomic;
 use mmtk::{
     util::{
-        constants::{LOG_BYTES_IN_ADDRESS, LOG_BYTES_IN_INT},
+        constants::{LOG_BYTES_IN_INT, LOG_BYTES_IN_WORD},
         Address, ObjectReference,
     },
     vm::edge_shape::{Edge, MemorySlice},
@@ -16,6 +16,9 @@ static USE_COMPRESSED_OOPS: AtomicBool = AtomicBool::new(false);
 pub static BASE: Atomic<Address> = Atomic::new(Address::ZERO);
 pub static SHIFT: AtomicUsize = AtomicUsize::new(0);
 
+/// Enables compressed oops
+///
+/// This function can only be called once during MMTkHeap::initialize.
 pub fn enable_compressed_oops() {
     static COMPRESSED_OOPS_INITIALIZED: AtomicBool = AtomicBool::new(false);
     assert!(
@@ -29,20 +32,34 @@ pub fn enable_compressed_oops() {
     USE_COMPRESSED_OOPS.store(true, Ordering::Relaxed)
 }
 
+/// Check if the compressed pointer is enabled
 pub fn use_compressed_oops() -> bool {
     USE_COMPRESSED_OOPS.load(Ordering::Relaxed)
 }
 
+/// Set compressed pointer base and shift based on heap range
 pub fn initialize_compressed_oops_base_and_shift() {
+    let heap_start = mmtk::memory_manager::starting_heap_address().as_usize();
     let heap_end = mmtk::memory_manager::last_heap_address().as_usize();
+    if cfg!(feature = "force_narrow_oop_mode") {
+        println!("heap_start: 0x{:x}", heap_start);
+        println!("heap_end: 0x{:x}", heap_end);
+    }
     if heap_end <= (4usize << 30) {
         BASE.store(Address::ZERO, Ordering::Relaxed);
         SHIFT.store(0, Ordering::Relaxed);
     } else if heap_end <= (32usize << 30) {
         BASE.store(Address::ZERO, Ordering::Relaxed);
         SHIFT.store(3, Ordering::Relaxed);
-    } else {
+    } else if cfg!(feature = "narrow_oop_mode_base") && (heap_end - heap_start) <= (4usize << 30) {
         // set heap base as HEAP_START - 4096, to make sure null pointer value is not conflict with HEAP_START
+        BASE.store(
+            mmtk::memory_manager::starting_heap_address() - 4096,
+            Ordering::Relaxed,
+        );
+        SHIFT.store(0, Ordering::Relaxed);
+    } else {
+        // set heap base as HEAP_START - 4096, to make sure null pointer value does not conflict with HEAP_START
         BASE.store(
             mmtk::memory_manager::starting_heap_address() - 4096,
             Ordering::Relaxed,
@@ -53,6 +70,16 @@ pub fn initialize_compressed_oops_base_and_shift() {
 
 /// The type of edges in OpenJDK.
 /// Currently it has the same layout as `Address`, but we override its load and store methods.
+///
+/// If `COMPRESSED = false`, every edge is uncompressed.
+///
+/// If `COMPRESSED = true`,
+/// * If this is a field of an object, the edge is compressed.
+/// * If this is a root pointer: The c++ part of the binding should pass all the root pointers to
+///   rust as tagged pointers.
+///   * If the 63rd bit of the pointer is set to 1, the value referenced by the pointer is a
+///     32-bit compressed integer.
+///   * Otherwise, it is a uncompressed root pointer.
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 #[repr(transparent)]
 pub struct OpenJDKEdge<const COMPRESSED: bool> {
@@ -64,17 +91,18 @@ impl<const COMPRESSED: bool> From<Address> for OpenJDKEdge<COMPRESSED> {
         Self { addr: value }
     }
 }
-
 impl<const COMPRESSED: bool> OpenJDKEdge<COMPRESSED> {
     pub const LOG_BYTES_IN_EDGE: usize = if COMPRESSED { 2 } else { 3 };
     pub const BYTES_IN_EDGE: usize = 1 << Self::LOG_BYTES_IN_EDGE;
 
     const MASK: usize = 1usize << 63;
 
+    /// Check if the pointer is tagged as "compressed"
     const fn is_compressed(&self) -> bool {
         self.addr.as_usize() & Self::MASK == 0
     }
 
+    /// Get the edge address with tags stripped
     const fn untagged_address(&self) -> Address {
         unsafe { Address::from_usize(self.addr.as_usize() << 1 >> 1) }
     }
@@ -234,7 +262,7 @@ impl<const COMPRESSED: bool> Edge for OpenJDKEdge<COMPRESSED> {
 /// A range of OpenJDKEdge, usually used for arrays.
 #[derive(Clone, PartialEq, Eq, Hash, Debug)]
 pub struct OpenJDKEdgeRange<const COMPRESSED: bool> {
-    pub range: Range<OpenJDKEdge<COMPRESSED>>,
+    range: Range<OpenJDKEdge<COMPRESSED>>,
 }
 
 impl<const COMPRESSED: bool> From<Range<Address>> for OpenJDKEdgeRange<COMPRESSED> {
@@ -291,17 +319,9 @@ impl<const COMPRESSED: bool> Iterator for OpenJDKEdgeRangeIterator<COMPRESSED> {
     }
 }
 
-impl<const COMPRESSED: bool> Into<Range<Address>> for OpenJDKEdgeRange<COMPRESSED> {
-    fn into(self) -> Range<Address> {
-        self.range.start.addr..self.range.end.addr
-    }
-}
-
-fn log_bytes_in_field<const COMPRESSED: bool>() -> usize {
-    if COMPRESSED {
-        2
-    } else {
-        3
+impl<const COMPRESSED: bool> From<OpenJDKEdgeRange<COMPRESSED>> for Range<Address> {
+    fn from(value: OpenJDKEdgeRange<COMPRESSED>) -> Self {
+        value.range.start.addr..value.range.end.addr
     }
 }
 
@@ -323,7 +343,7 @@ impl<const COMPRESSED: bool> MemorySlice for OpenJDKEdgeRange<COMPRESSED> {
         ChunkIterator {
             cursor: self.range.start.addr,
             limit: self.range.end.addr,
-            step: chunk_size << log_bytes_in_field::<COMPRESSED>(),
+            step: chunk_size << OpenJDKEdge::<COMPRESSED>::LOG_BYTES_IN_EDGE,
         }
     }
 
@@ -340,18 +360,18 @@ impl<const COMPRESSED: bool> MemorySlice for OpenJDKEdgeRange<COMPRESSED> {
     }
 
     fn len(&self) -> usize {
-        self.bytes() >> log_bytes_in_field::<COMPRESSED>()
+        self.bytes() >> OpenJDKEdge::<COMPRESSED>::LOG_BYTES_IN_EDGE
     }
 
     fn copy(src: &Self, tgt: &Self) {
         debug_assert_eq!(src.bytes(), tgt.bytes());
-        debug_assert_eq!(
-            src.bytes() & ((1 << LOG_BYTES_IN_ADDRESS) - 1),
-            0,
-            "bytes are not a multiple of words"
-        );
         // Raw memory copy
         if COMPRESSED {
+            debug_assert_eq!(
+                src.bytes() & ((1 << LOG_BYTES_IN_INT) - 1),
+                0,
+                "bytes are not a multiple of 32-bit integers"
+            );
             unsafe {
                 let words = tgt.bytes() >> LOG_BYTES_IN_INT;
                 let src = src.start().to_ptr::<u32>();
@@ -359,6 +379,11 @@ impl<const COMPRESSED: bool> MemorySlice for OpenJDKEdgeRange<COMPRESSED> {
                 std::ptr::copy(src, tgt, words)
             }
         } else {
+            debug_assert_eq!(
+                src.bytes() & ((1 << LOG_BYTES_IN_WORD) - 1),
+                0,
+                "bytes are not a multiple of words"
+            );
             Range::<Address>::copy(&src.clone().into(), &tgt.clone().into())
         }
     }

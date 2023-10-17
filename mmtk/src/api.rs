@@ -72,7 +72,7 @@ pub extern "C" fn mmtk_active_barrier() -> *const c_char {
 
 #[no_mangle]
 pub extern "C" fn mmtk_report_gc_start() {
-    with_singleton!(|singleton| mmtk::memory_manager::report_gc_start(&singleton));
+    with_singleton!(|singleton| mmtk::memory_manager::report_gc_start(singleton));
 }
 
 /// # Safety
@@ -148,7 +148,7 @@ pub extern "C" fn mmtk_set_heap_size(min: usize, max: usize) -> bool {
 #[no_mangle]
 pub extern "C" fn bind_mutator(tls: VMMutatorThread) -> *mut libc::c_void {
     with_singleton!(|singleton| {
-        Box::into_raw(memory_manager::bind_mutator(&singleton, tls)) as *mut libc::c_void
+        Box::into_raw(memory_manager::bind_mutator(singleton, tls)) as *mut libc::c_void
     })
 }
 
@@ -195,7 +195,7 @@ pub extern "C" fn alloc(
 
 #[no_mangle]
 pub extern "C" fn get_allocator_mapping(allocator: AllocationSemantics) -> AllocatorSelector {
-    with_singleton!(|singleton| memory_manager::get_allocator_mapping(&singleton, allocator))
+    with_singleton!(|singleton| memory_manager::get_allocator_mapping(singleton, allocator))
 }
 
 #[no_mangle]
@@ -233,7 +233,7 @@ pub extern "C" fn start_control_collector(tls: VMWorkerThread, gc_controller: *m
         let mut gc_controller =
             unsafe { Box::from_raw(gc_controller as *mut GCController<OpenJDK<true>>) };
         memory_manager::start_control_collector(
-            &crate::singleton::<true>(),
+            crate::singleton::<true>(),
             tls,
             &mut gc_controller,
         );
@@ -241,7 +241,7 @@ pub extern "C" fn start_control_collector(tls: VMWorkerThread, gc_controller: *m
         let mut gc_controller =
             unsafe { Box::from_raw(gc_controller as *mut GCController<OpenJDK<false>>) };
         memory_manager::start_control_collector(
-            &crate::singleton::<false>(),
+            crate::singleton::<false>(),
             tls,
             &mut gc_controller,
         );
@@ -254,11 +254,11 @@ pub extern "C" fn start_control_collector(tls: VMWorkerThread, gc_controller: *m
 pub extern "C" fn start_worker(tls: VMWorkerThread, worker: *mut libc::c_void) {
     if crate::use_compressed_oops() {
         let mut worker = unsafe { Box::from_raw(worker as *mut GCWorker<OpenJDK<true>>) };
-        memory_manager::start_worker::<OpenJDK<true>>(&crate::singleton::<true>(), tls, &mut worker)
+        memory_manager::start_worker::<OpenJDK<true>>(crate::singleton::<true>(), tls, &mut worker)
     } else {
         let mut worker = unsafe { Box::from_raw(worker as *mut GCWorker<OpenJDK<false>>) };
         memory_manager::start_worker::<OpenJDK<false>>(
-            &crate::singleton::<false>(),
+            crate::singleton::<false>(),
             tls,
             &mut worker,
         )
@@ -267,39 +267,39 @@ pub extern "C" fn start_worker(tls: VMWorkerThread, worker: *mut libc::c_void) {
 
 #[no_mangle]
 pub extern "C" fn initialize_collection(tls: VMThread) {
-    with_singleton!(|singleton| memory_manager::initialize_collection(&singleton, tls))
+    with_singleton!(|singleton| memory_manager::initialize_collection(singleton, tls))
 }
 
 #[no_mangle]
 pub extern "C" fn used_bytes() -> usize {
-    with_singleton!(|singleton| memory_manager::used_bytes(&singleton))
+    with_singleton!(|singleton| memory_manager::used_bytes(singleton))
 }
 
 #[no_mangle]
 pub extern "C" fn free_bytes() -> usize {
-    with_singleton!(|singleton| memory_manager::free_bytes(&singleton))
+    with_singleton!(|singleton| memory_manager::free_bytes(singleton))
 }
 
 #[no_mangle]
 pub extern "C" fn total_bytes() -> usize {
-    with_singleton!(|singleton| memory_manager::total_bytes(&singleton))
+    with_singleton!(|singleton| memory_manager::total_bytes(singleton))
 }
 
 #[no_mangle]
 #[cfg(feature = "sanity")]
 pub extern "C" fn scan_region() {
-    with_singleton!(|singleton| memory_manager::scan_region(&singleton))
+    with_singleton!(|singleton| memory_manager::scan_region(singleton))
 }
 
 #[no_mangle]
 pub extern "C" fn handle_user_collection_request(tls: VMMutatorThread, force: bool) {
     with_singleton!(|singleton| {
-        memory_manager::handle_user_collection_request(&singleton, tls, force);
+        memory_manager::handle_user_collection_request(singleton, tls, force);
     })
 }
 
 #[no_mangle]
-pub extern "C" fn mmtk_use_compressed_ptrs() {
+pub extern "C" fn mmtk_enable_compressed_oops() {
     crate::edges::enable_compressed_oops()
 }
 
@@ -324,22 +324,22 @@ pub extern "C" fn is_mapped_address(addr: Address) -> bool {
 
 #[no_mangle]
 pub extern "C" fn modify_check(object: ObjectReference) {
-    with_singleton!(|singleton| memory_manager::modify_check(&singleton, object))
+    with_singleton!(|singleton| memory_manager::modify_check(singleton, object))
 }
 
 #[no_mangle]
 pub extern "C" fn add_weak_candidate(reff: ObjectReference) {
-    with_singleton!(|singleton| memory_manager::add_weak_candidate(&singleton, reff))
+    with_singleton!(|singleton| memory_manager::add_weak_candidate(singleton, reff))
 }
 
 #[no_mangle]
 pub extern "C" fn add_soft_candidate(reff: ObjectReference) {
-    with_singleton!(|singleton| memory_manager::add_soft_candidate(&singleton, reff))
+    with_singleton!(|singleton| memory_manager::add_soft_candidate(singleton, reff))
 }
 
 #[no_mangle]
 pub extern "C" fn add_phantom_candidate(reff: ObjectReference) {
-    with_singleton!(|singleton| memory_manager::add_phantom_candidate(&singleton, reff))
+    with_singleton!(|singleton| memory_manager::add_phantom_candidate(singleton, reff))
 }
 
 // The harness_begin()/end() functions are different than other API functions in terms of the thread state.
@@ -357,7 +357,7 @@ pub extern "C" fn harness_begin(_id: usize) {
 pub extern "C" fn mmtk_harness_begin_impl() {
     // Pass null as tls, OpenJDK binding does not rely on the tls value to block the current thread and do a GC
     with_singleton!(|singleton| {
-        memory_manager::harness_begin(&singleton, VMMutatorThread(VMThread::UNINITIALIZED));
+        memory_manager::harness_begin(singleton, VMMutatorThread(VMThread::UNINITIALIZED));
     })
 }
 
@@ -368,7 +368,7 @@ pub extern "C" fn harness_end(_id: usize) {
 
 #[no_mangle]
 pub extern "C" fn mmtk_harness_end_impl() {
-    with_singleton!(|singleton| memory_manager::harness_end(&singleton))
+    with_singleton!(|singleton| memory_manager::harness_end(singleton))
 }
 
 #[no_mangle]
@@ -383,6 +383,12 @@ pub extern "C" fn process(name: *const c_char, value: *const c_char) -> bool {
         name_str.to_str().unwrap(),
         value_str.to_str().unwrap(),
     )
+}
+
+#[no_mangle]
+pub extern "C" fn mmtk_builder_read_env_var_settings() {
+    let mut builder = BUILDER.lock().unwrap();
+    builder.options.read_env_var_settings();
 }
 
 /// Pass hotspot `ParallelGCThreads` flag to mmtk
@@ -432,7 +438,7 @@ pub extern "C" fn last_heap_address() -> Address {
 
 #[no_mangle]
 pub extern "C" fn openjdk_max_capacity() -> usize {
-    with_singleton!(|singleton| memory_manager::total_bytes(&singleton))
+    with_singleton!(|singleton| memory_manager::total_bytes(singleton))
 }
 
 #[no_mangle]
@@ -553,7 +559,7 @@ pub extern "C" fn add_finalizer(_object: ObjectReference) {
 #[no_mangle]
 pub extern "C" fn get_finalized_object() -> ObjectReference {
     with_singleton!(|singleton| {
-        match memory_manager::get_finalized_object(&singleton) {
+        match memory_manager::get_finalized_object(singleton) {
             Some(obj) => obj,
             None => ObjectReference::NULL,
         }
@@ -567,7 +573,11 @@ pub extern "C" fn mmtk_is_live(object: ObjectReference) -> usize {
     if object.is_null() {
         return 0;
     }
-    debug_assert!(object.to_raw_address().is_mapped());
+    debug_assert!(
+        object.to_raw_address().is_mapped(),
+        "{:?} is not mapped",
+        object
+    );
     object.is_live() as _
 }
 

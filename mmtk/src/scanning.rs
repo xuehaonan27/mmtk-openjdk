@@ -145,7 +145,7 @@ impl<const COMPRESSED: bool> Scanning<OpenJDK<COMPRESSED>> for VMScanning {
             w.push(Box::new(ScanNewWeakHandleRoots::new(factory.clone())) as _);
         }
         memory_manager::add_work_packets(
-            &crate::singleton::<COMPRESSED>(),
+            crate::singleton::<COMPRESSED>(),
             WorkBucketStage::RCProcessIncs,
             w,
         );
