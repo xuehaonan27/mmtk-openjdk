@@ -87,3 +87,10 @@ log_stages = ["mmtk/log_stages"]
 log_work_packets = ["mmtk/log_work_packets"]
 object_size_distribution = ["mmtk/object_size_distribution"]
 discontig_space = []
+
+# Compressed pointer experiments
+force_narrow_oop_mode = []
+narrow_oop_mode_32bit = ["force_narrow_oop_mode"]
+narrow_oop_mode_shift = ["force_narrow_oop_mode"]
+narrow_oop_mode_base = ["force_narrow_oop_mode"]
+narrow_oop_mode_base_and_shift = ["force_narrow_oop_mode"]
