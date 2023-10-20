@@ -195,6 +195,18 @@ pub static mut RC_ENABLED: u8 = 0;
 #[no_mangle]
 pub static mut REQUIRES_WEAK_HANDLE_BARRIER: u8 = 0;
 
+#[no_mangle]
+pub static NO_WEAK_REF_BARRIER: u8 = cfg!(feature = "no_weak_ref_barrier") as _;
+
+#[no_mangle]
+pub static TWO_LEVEL_BARRIER: u8 = cfg!(feature = "two_level_barrier") as _;
+
+#[no_mangle]
+pub static NO_BARRIER_WORKAROUND: u8 = cfg!(feature = "no_barrier_workaround") as _;
+
+#[no_mangle]
+pub static BARRIER_SKIP_CONST_NULL: u8 = cfg!(feature = "barrier_skip_const_null") as _;
+
 #[derive(Default)]
 pub struct OpenJDK<const COMPRESSED: bool>;
 

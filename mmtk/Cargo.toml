@@ -94,3 +94,8 @@ narrow_oop_mode_32bit = ["force_narrow_oop_mode"]
 narrow_oop_mode_shift = ["force_narrow_oop_mode"]
 narrow_oop_mode_base = ["force_narrow_oop_mode"]
 narrow_oop_mode_base_and_shift = ["force_narrow_oop_mode"]
+
+no_weak_ref_barrier = []
+two_level_barrier = []
+no_barrier_workaround = []
+barrier_skip_const_null = []
