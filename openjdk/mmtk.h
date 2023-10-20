@@ -32,6 +32,7 @@ extern uint8_t NO_WEAK_REF_BARRIER;
 extern uint8_t TWO_LEVEL_BARRIER;
 extern uint8_t NO_BARRIER_WORKAROUND;
 extern uint8_t BARRIER_SKIP_CONST_NULL;
+extern uint8_t BARRIER_SKIP_NULL;
 
 inline bool disable_fast_alloc() {
     return DISABLE_ALLOCATION_FAST_PATH != 0;

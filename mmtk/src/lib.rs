@@ -207,6 +207,9 @@ pub static NO_BARRIER_WORKAROUND: u8 = cfg!(feature = "no_barrier_workaround") a
 #[no_mangle]
 pub static BARRIER_SKIP_CONST_NULL: u8 = cfg!(feature = "barrier_skip_const_null") as _;
 
+#[no_mangle]
+pub static BARRIER_SKIP_NULL: u8 = cfg!(feature = "barrier_skip_null") as _;
+
 #[derive(Default)]
 pub struct OpenJDK<const COMPRESSED: bool>;
 

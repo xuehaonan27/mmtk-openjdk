@@ -282,11 +282,14 @@ void MMTkFieldBarrierSetC1::object_reference_write_pre(LIRAccess& access, LIR_Op
 #define __ ideal.
 
 
-static void insert_write_barrier_common(MMTkIdealKit& ideal, Node* src, Node* slot, Node* val) {
+static void insert_write_barrier_common(GraphKit* kit, MMTkIdealKit& ideal, Node* src, Node* slot, Node* val) {
 #if MMTK_ENABLE_BARRIER_FASTPATH
   Node* no_base = __ top();
   float unlikely  = PROB_UNLIKELY(0.999);
 
+  if (BARRIER_SKIP_NULL != 0) {
+    __ if_then(val, BoolTest::ne, kit->null());
+  }
   Node* zero  = __ ConI(0);
   Node* addr = __ CastPX(__ ctrl(), slot);
   Node* meta_addr = __ AddP(no_base, __ ConP(side_metadata_base_address()), __ URShiftX(addr, __ ConI(UseCompressedOops ? 5 : 6)));
@@ -318,6 +321,9 @@ static void insert_write_barrier_common(MMTkIdealKit& ideal, Node* src, Node* sl
       }
     } __ end_if();
   }
+  if (BARRIER_SKIP_NULL != 0) {
+    __ end_if();
+  }
 #else
   const TypeFunc* tf = __ func_type(TypeOopPtr::BOTTOM, TypeOopPtr::BOTTOM, TypeOopPtr::BOTTOM);
   Node* x = __ make_leaf_call(tf, FN_ADDR(MMTkBarrierSetRuntime::object_reference_write_pre_call), "mmtk_barrier_call", src, slot, val);
@@ -333,7 +339,7 @@ void MMTkFieldBarrierSetC2::object_reference_write_pre(GraphKit* kit, Node* src,
 
   MMTkIdealKit ideal(kit, true);
 
-  insert_write_barrier_common(ideal, src, slot, val);
+  insert_write_barrier_common(kit, ideal, src, slot, val);
 
   kit->final_sync(ideal);
 }
