@@ -462,7 +462,7 @@ Node* MMTkFieldBarrierSetC2::load_at_resolved(C2Access& access, const Type* val_
   }
 
 #if SOFT_REFERENCE_LOAD_BARRIER
-  if (NO_WEAK_REF_BARRIER != 0) {
+  if (NO_WEAK_REF_BARRIER == 0) {
   if (on_weak) {
     reference_load_barrier(kit, adr, load, true);
   } else if (unknown) {
