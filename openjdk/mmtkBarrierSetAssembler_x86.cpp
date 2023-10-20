@@ -94,8 +94,8 @@ void MMTkBarrierSetAssembler::eden_allocate(MacroAssembler* masm, Register threa
       __ lea(end, Address(obj, var_size_in_bytes, Address::times_1));
     }
     // slowpath if end < obj
-    __ cmpptr(end, obj);
-    __ jcc(Assembler::below, slow_case);
+    // __ cmpptr(end, obj);
+    // __ jcc(Assembler::below, slow_case);
     // slowpath if end > lab.limit
     __ cmpptr(end, limit);
     __ jcc(Assembler::above, slow_case);
