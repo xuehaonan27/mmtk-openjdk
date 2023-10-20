@@ -291,7 +291,7 @@ static void insert_write_barrier_common(MMTkIdealKit& ideal, Node* src, Node* sl
   Node* addr = __ CastPX(__ ctrl(), slot);
   Node* meta_addr = __ AddP(no_base, __ ConP(side_metadata_base_address()), __ URShiftX(addr, __ ConI(UseCompressedOops ? 5 : 6)));
   Node* byte = __ load(__ ctrl(), meta_addr, TypeInt::INT, T_BYTE, Compile::AliasIdxRaw);
-  if TWO_LEVEL_BARRIER != 0 {
+  if (TWO_LEVEL_BARRIER != 0) {
     __ if_then(byte, BoolTest::ne, zero, unlikely); {
       Node* shift = __ URShiftX(addr, __ ConI(UseCompressedOops ? 2 : 3));
       shift = __ AndI(__ ConvL2I(shift), __ ConI(7));
@@ -310,7 +310,7 @@ static void insert_write_barrier_common(MMTkIdealKit& ideal, Node* src, Node* sl
     __ if_then(result, BoolTest::ne, zero, unlikely); {
       const TypeFunc* tf = __ func_type(TypeOopPtr::BOTTOM, TypeOopPtr::BOTTOM, TypeOopPtr::BOTTOM);
       Node* x = __ make_leaf_call(tf, FN_ADDR(MMTkBarrierSetRuntime::object_reference_write_slow_call), "mmtk_barrier_call", src, slot, val);
-      if NO_BARRIER_WORKAROUND == 0 {
+      if (NO_BARRIER_WORKAROUND == 0) {
         // Looks like this is necessary
         // See https://github.com/mmtk/openjdk/blob/c82e5c44adced4383162826c2c3933a83cfb139b/src/hotspot/share/gc/shenandoah/c2/shenandoahBarrierSetC2.cpp#L288-L291
         Node* call = __ ctrl()->in(0);
@@ -462,10 +462,12 @@ Node* MMTkFieldBarrierSetC2::load_at_resolved(C2Access& access, const Type* val_
   }
 
 #if SOFT_REFERENCE_LOAD_BARRIER
+  if (NO_WEAK_REF_BARRIER != 0) {
   if (on_weak) {
     reference_load_barrier(kit, adr, load, true);
   } else if (unknown) {
     reference_load_barrier_for_unknown_load(kit, obj, offset, adr, load, !need_cpu_mem_bar);
+  }
   }
 #endif
 
