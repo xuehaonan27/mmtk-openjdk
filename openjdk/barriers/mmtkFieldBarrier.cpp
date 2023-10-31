@@ -3,6 +3,7 @@
 #include "runtime/interfaceSupport.inline.hpp"
 
 #define SOFT_REFERENCE_LOAD_BARRIER true
+#define MMTK_BARRIER_EAGER_BRANCH true
 
 constexpr int kUnloggedValue = 1;
 
@@ -22,8 +23,11 @@ void MMTkFieldBarrierSetRuntime::object_reference_write_pre(oop src, oop* slot, 
 #if MMTK_ENABLE_BARRIER_FASTPATH
     intptr_t addr = ((intptr_t) (void*) slot);
     const volatile uint8_t * meta_addr = (const volatile uint8_t *) (side_metadata_base_address() + (addr >> (UseCompressedOops ? 5 : 6)));
-    intptr_t shift = (addr >> (UseCompressedOops ? 2 : 3)) & 0b111;
     uint8_t byte_val = *meta_addr;
+    #if MMTK_BARRIER_EAGER_BRANCH
+    if (byte_val == 0) return;
+    #endif
+    intptr_t shift = (addr >> (UseCompressedOops ? 2 : 3)) & 0b111;
     if (((byte_val >> shift) & 1) == kUnloggedValue) {
       ::mmtk_object_reference_write_slow((MMTk_Mutator) &Thread::current()->third_party_heap_mutator, (void*) src, (void*) slot, (void*) target);
     }
@@ -83,7 +87,11 @@ void MMTkFieldBarrierSetAssembler::object_reference_write_pre(MacroAssembler* ma
   __ lea(tmp3, dst);
   __ shrptr(tmp3, UseCompressedOops ? 5 : 6);
   __ movptr(tmp5, side_metadata_base_address());
-  __ movb(tmp5, Address(tmp5, tmp3));
+  __ movzbl(tmp5, Address(tmp5, tmp3));
+  #if MMTK_BARRIER_EAGER_BRANCH
+  __ cmpl(tmp5, 0);
+  __ jcc(Assembler::equal, done);
+  #endif
   // tmp3 = (obj >> 3) & 7
   __ lea(tmp3, dst);
   __ shrptr(tmp3, UseCompressedOops ? 2 : 3);
@@ -257,6 +265,10 @@ void MMTkFieldBarrierSetC1::object_reference_write_pre(LIRAccess& access, LIR_Op
     // uint8_t byte_val = *meta_addr;
     LIR_Opr byte_val = gen->new_register(T_INT);
     __ move(meta_addr, byte_val);
+    #if MMTK_BARRIER_EAGER_BRANCH
+    // __ cmp(lir_cond_equal, byte_val, LIR_OprFact::intConst(0));
+    // __ branch(lir_cond_equal, T_BYTE, Ldone->label());
+    #endif
     // intptr_t shift = (addr >> 3) & 0b111;
     LIR_Opr shift = gen->new_register(T_INT);
     __ move(addr, shift);
@@ -291,18 +303,19 @@ static void insert_write_barrier_common(MMTkIdealKit& ideal, Node* src, Node* sl
   Node* addr = __ CastPX(__ ctrl(), slot);
   Node* meta_addr = __ AddP(no_base, __ ConP(side_metadata_base_address()), __ URShiftX(addr, __ ConI(UseCompressedOops ? 5 : 6)));
   Node* byte = __ load(__ ctrl(), meta_addr, TypeInt::INT, T_BYTE, Compile::AliasIdxRaw);
+  #if MMTK_BARRIER_EAGER_BRANCH
+  __ if_then(byte, BoolTest::ne, zero, unlikely);
+  #endif
   Node* shift = __ URShiftX(addr, __ ConI(UseCompressedOops ? 2 : 3));
   shift = __ AndI(__ ConvL2I(shift), __ ConI(7));
   Node* result = __ AndI(__ URShiftI(byte, shift), __ ConI(1));
-
   __ if_then(result, BoolTest::ne, zero, unlikely); {
     const TypeFunc* tf = __ func_type(TypeOopPtr::BOTTOM, TypeOopPtr::BOTTOM, TypeOopPtr::BOTTOM);
     Node* x = __ make_leaf_call(tf, FN_ADDR(MMTkBarrierSetRuntime::object_reference_write_slow_call), "mmtk_barrier_call", src, slot, val);
-    // Looks like this is necessary
-    // See https://github.com/mmtk/openjdk/blob/c82e5c44adced4383162826c2c3933a83cfb139b/src/hotspot/share/gc/shenandoah/c2/shenandoahBarrierSetC2.cpp#L288-L291
-    Node* call = __ ctrl()->in(0);
-    call->add_req(slot);
   } __ end_if();
+  #if MMTK_BARRIER_EAGER_BRANCH
+  __ end_if();
+  #endif
 #else
   const TypeFunc* tf = __ func_type(TypeOopPtr::BOTTOM, TypeOopPtr::BOTTOM, TypeOopPtr::BOTTOM);
   Node* x = __ make_leaf_call(tf, FN_ADDR(MMTkBarrierSetRuntime::object_reference_write_pre_call), "mmtk_barrier_call", src, slot, val);
