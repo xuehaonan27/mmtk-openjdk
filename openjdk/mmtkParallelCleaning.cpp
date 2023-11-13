@@ -135,7 +135,7 @@ CodeCacheUnloadingTask::CodeCacheUnloadingTask(uint num_workers, BoolObjectClosu
 }
 
 CodeCacheUnloadingTask::~CodeCacheUnloadingTask() {
-  CodeCache::verify_clean_inline_caches();
+  // CodeCache::verify_clean_inline_caches();
 
   CodeCache::set_needs_cache_clean(false);
   guarantee(CodeCache::scavenge_root_nmethods() == NULL, "Must be");

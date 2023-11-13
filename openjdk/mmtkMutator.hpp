@@ -59,7 +59,7 @@ struct ImmixAllocator {
   uint8_t block_opt_tag;
   uintptr_t block_opt;
   uintptr_t mutator_recycled_blocks;
-  uintptr_t local_blocks[5];
+  uintptr_t local_blocks[6];
   uintptr_t mutator_recycled_lines;
   uint8_t retry;
 };
