@@ -1,6 +1,6 @@
 use std::{
     ops::Range,
-    sync::atomic::{AtomicBool, AtomicUsize, Ordering, AtomicU32},
+    sync::atomic::{AtomicBool, AtomicU32, AtomicUsize, Ordering},
 };
 
 use atomic::Atomic;

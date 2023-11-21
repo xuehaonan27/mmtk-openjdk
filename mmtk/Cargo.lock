@@ -517,7 +517,7 @@ checksum = "68354c5c6bd36d73ff3feceb05efa59b6acb7626617f4962be322a825e61f79a"
 [[package]]
 name = "mmtk"
 version = "0.20.0"
-source = "git+https://github.com/wenyuzhao/mmtk-core.git?rev=edfca0ef54bf447fdbf9493928a196db5795924d#edfca0ef54bf447fdbf9493928a196db5795924d"
+source = "git+https://github.com/wenyuzhao/mmtk-core.git?rev=326a1b7213d11edee169b0e6df9be9cdc6401e7d#326a1b7213d11edee169b0e6df9be9cdc6401e7d"
 dependencies = [
  "atomic",
  "atomic-traits",
@@ -551,7 +551,7 @@ dependencies = [
 [[package]]
 name = "mmtk-macros"
 version = "0.20.0"
-source = "git+https://github.com/wenyuzhao/mmtk-core.git?rev=edfca0ef54bf447fdbf9493928a196db5795924d#edfca0ef54bf447fdbf9493928a196db5795924d"
+source = "git+https://github.com/wenyuzhao/mmtk-core.git?rev=326a1b7213d11edee169b0e6df9be9cdc6401e7d#326a1b7213d11edee169b0e6df9be9cdc6401e7d"
 dependencies = [
  "proc-macro-error",
  "proc-macro2",
@@ -652,8 +652,7 @@ dependencies = [
 [[package]]
 name = "pfm"
 version = "0.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8498f5ea94bbec98f1369c70a71178a1eb821370443ef393f1bbcd9950182758"
+source = "git+https://github.com/wenyuzhao/pfm.git?branch=plm0#25e901836dbfa08a683e2b08a906a61ebf69f810"
 dependencies = [
  "libc",
  "perf-event-open-sys",
@@ -663,8 +662,7 @@ dependencies = [
 [[package]]
 name = "pfm-sys"
 version = "0.0.16-libpfm4.13.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b520e7dec2e88bed569b487e68ba1ba4e729d5980b32b6c0243fbb1424f916cf"
+source = "git+https://github.com/wenyuzhao/pfm.git?branch=plm0#25e901836dbfa08a683e2b08a906a61ebf69f810"
 dependencies = [
  "bindgen",
 ]
