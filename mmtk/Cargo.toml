@@ -49,7 +49,7 @@ mmtk = { git = "https://github.com/wenyuzhao/mmtk-core.git", rev = "af3919177124
 built = { version = "0.5.1", features = ["git2"] }
 
 [features]
-default = []
+default = ["same_stw_and_conc_threads"]
 release_debug_assertions = []
 mmtk_extreme_assertions = ["mmtk/extreme_assertions"]
 nogc_lock_free = ["mmtk/nogc_lock_free"]
@@ -59,6 +59,7 @@ nogc_no_zeroing = ["mmtk/nogc_no_zeroing"]
 vo_bit = ["mmtk/vo_bit"]
 no_fast_alloc = []
 roots_breakdown = []
+same_stw_and_conc_threads = []
 
 # This compile time constant places the mark bit in the header of the object instead of on the side.
 mark_bit_in_header = []
