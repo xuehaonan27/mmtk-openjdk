@@ -398,6 +398,13 @@ pub extern "C" fn mmtk_builder_set_threads(value: usize) {
     builder.options.threads.set(value);
 }
 
+/// Pass hotspot `ConcGCThreads` flag to mmtk
+#[no_mangle]
+pub extern "C" fn mmtk_builder_set_conc_threads(value: usize) {
+    let mut builder = BUILDER.lock().unwrap();
+    builder.options.conc_threads.set(value);
+}
+
 /// Pass hotspot `UseTransparentHugePages` flag to mmtk
 #[no_mangle]
 pub extern "C" fn mmtk_builder_set_transparent_hugepages(value: bool) {

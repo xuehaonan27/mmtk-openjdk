@@ -141,6 +141,9 @@ jint MMTkHeap::initialize() {
     Universe::set_narrow_oop_shift(mmtk_narrow_oop_shift());
     if (mmtk_verbose() > 0) fprintf(stderr, "narrow_oop_mode: %s\n", Universe::narrow_oop_mode_to_string(Universe::narrow_oop_mode()));
   }
+  if (mmtk_verbose() > 0) {
+    fprintf(stderr, "ParallelGCThreads = %d; ConcGCThreads = %d\n", ParallelGCThreads, ConcGCThreads);
+  }
 
   initialize_reserved_region(_start, _end);
 
@@ -180,6 +183,10 @@ void MMTkHeap::set_mmtk_options(bool set_defaults) {
   // if it is false, we only set options that has been overridden by command line.
   if (FLAG_IS_DEFAULT(ParallelGCThreads) == set_defaults) {
     mmtk_builder_set_threads(ParallelGCThreads);
+  }
+
+  if (FLAG_IS_DEFAULT(ConcGCThreads) == set_defaults) {
+    mmtk_builder_set_conc_threads(ConcGCThreads);
   }
 
   if (FLAG_IS_DEFAULT(UseTransparentHugePages) == set_defaults) {
