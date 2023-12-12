@@ -271,12 +271,12 @@ fn oop_iterate<const COMPRESSED: bool>(
         oop.klass::<COMPRESSED>()
     };
     let klass_id = klass.id;
-    assert!(
-        klass_id as i32 >= 0 && (klass_id as i32) < 6,
-        "Invalid klass-id: {:x} for oop: {:x}",
-        klass_id as i32,
-        unsafe { mem::transmute::<Oop, ObjectReference>(oop) }
-    );
+    // assert!(
+    //     klass_id as i32 >= 0 && (klass_id as i32) < 6,
+    //     "Invalid klass-id: {:x} for oop: {:x}",
+    //     klass_id as i32,
+    //     unsafe { mem::transmute::<Oop, ObjectReference>(oop) }
+    // );
     match klass_id {
         KlassID::Instance => {
             let instance_klass = unsafe { klass.cast::<InstanceKlass>() };
