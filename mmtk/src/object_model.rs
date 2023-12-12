@@ -48,11 +48,7 @@ impl<const COMPRESSED: bool> ObjectModel<OpenJDK<COMPRESSED>> for VMObjectModel<
         copy: CopySemantics,
         copy_context: &mut GCWorkerCopyContext<OpenJDK<COMPRESSED>>,
     ) -> Option<ObjectReference> {
-        let bytes = if crate::use_compressed_oops() {
-            unsafe { Oop::from(from).size::<true>() }
-        } else {
-            unsafe { Oop::from(from).size::<false>() }
-        };
+        let bytes = unsafe { Oop::from(from).size::<COMPRESSED>() };
         let dst = copy_context.alloc_copy(from, bytes, ::std::mem::size_of::<usize>(), 0, copy);
         if dst.is_zero() {
             return None;
@@ -143,11 +139,7 @@ impl<const COMPRESSED: bool> ObjectModel<OpenJDK<COMPRESSED>> for VMObjectModel<
 
     fn get_class_pointer(object: ObjectReference) -> Address {
         let oop: Oop = unsafe { std::mem::transmute(object) };
-        if crate::use_compressed_oops() {
-            oop.klass_ptr::<true>()
-        } else {
-            oop.klass_ptr::<false>()
-        }
+        oop.klass_ptr::<COMPRESSED>()
     }
 
     fn is_object_sane(object: ObjectReference) -> bool {
