@@ -49,7 +49,7 @@ mmtk = { git = "https://github.com/wenyuzhao/mmtk-core.git", rev = "af3919177124
 built = { version = "0.5.1", features = ["git2"] }
 
 [features]
-default = ["same_stw_and_conc_threads"]
+default = []
 release_debug_assertions = []
 mmtk_extreme_assertions = ["mmtk/extreme_assertions"]
 nogc_lock_free = ["mmtk/nogc_lock_free"]
