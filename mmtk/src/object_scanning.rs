@@ -282,6 +282,13 @@ fn oop_iterate<const COMPRESSED: bool>(
             let instance_klass = unsafe { klass.cast::<InstanceKlass>() };
             instance_klass.oop_iterate::<COMPRESSED>(oop, closure);
         }
+        KlassID::ObjArray => {
+            let array_klass = unsafe { klass.cast::<ObjArrayKlass>() };
+            array_klass.oop_iterate::<COMPRESSED>(oop, closure);
+        }
+        KlassID::TypeArray => {
+            // Skip scanning primitive arrays as they contain no reference fields.
+        }
         KlassID::InstanceClassLoader => {
             let instance_klass = unsafe { klass.cast::<InstanceClassLoaderKlass>() };
             instance_klass.oop_iterate::<COMPRESSED>(oop, closure);
@@ -289,13 +296,6 @@ fn oop_iterate<const COMPRESSED: bool>(
         KlassID::InstanceMirror => {
             let instance_klass = unsafe { klass.cast::<InstanceMirrorKlass>() };
             instance_klass.oop_iterate::<COMPRESSED>(oop, closure);
-        }
-        KlassID::ObjArray => {
-            let array_klass = unsafe { klass.cast::<ObjArrayKlass>() };
-            array_klass.oop_iterate::<COMPRESSED>(oop, closure);
-        }
-        KlassID::TypeArray => {
-            // Skip scanning primitive arrays as they contain no reference fields.
         }
         KlassID::InstanceRef => {
             let instance_klass = unsafe { klass.cast::<InstanceRefKlass>() };

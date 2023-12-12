@@ -56,7 +56,7 @@ void ThirdPartyHeapArguments::initialize() {
     vm_exit_during_initialization("The flag -XX:+UseUseThirdPartyHeap can not be combined with -XX:ParallelGCThreads=0", NULL);
   }
   uint marking_thread_num = scale_concurrent_worker_threads(ParallelGCThreads);
-  FLAG_SET_ERGO(uint, ConcGCThreads, marking_thread_num);
+  FLAG_SET_DEFAULT(ConcGCThreads, marking_thread_num);
   // Note: If you add an option here that may be forwarded to an MMTk option,
   // make sure to add appropriate code to MMTkHeap::set_mmtk_options.
 }
