@@ -5,6 +5,13 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#define ENABLE_CLASS_UNLOADING_LOGS true
+#if ENABLE_CLASS_UNLOADING_LOGS
+#define LOG_CLS_UNLOAD(...) log_info(gc)(__VA_ARGS__)
+#else
+#define LOG_CLS_UNLOAD(...)
+#endif // ENABLE_CLASS_UNLOADING_LOGS
+
 #ifdef __cplusplus
 extern "C" {
 #endif

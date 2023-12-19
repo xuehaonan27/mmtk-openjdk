@@ -334,6 +334,7 @@ ParallelCleaningTask::ParallelCleaningTask(BoolObjectClosure* is_alive,
 
 // The parallel work done by all worker threads.
 void ParallelCleaningTask::work(uint worker_id) {
+  LOG_CLS_UNLOAD("[complete_cleaning %d] _code_cache_task", worker_id);
   {
     // Do first pass of code cache cleaning.
     _code_cache_task.work_first_pass(worker_id);
@@ -341,16 +342,19 @@ void ParallelCleaningTask::work(uint worker_id) {
     // Let the threads mark that the first pass is done.
     _code_cache_task.barrier_mark(worker_id);
   }
+  LOG_CLS_UNLOAD("[complete_cleaning %d] _string_symbol_task", worker_id);
 
   {
     // Clean the Strings and Symbols.
     _string_symbol_task.work(worker_id);
   }
+  LOG_CLS_UNLOAD("[complete_cleaning %d] _resolved_method_cleaning_task", worker_id);
 
   {
     // Clean unreferenced things in the ResolvedMethodTable
     _resolved_method_cleaning_task.work();
   }
+  LOG_CLS_UNLOAD("[complete_cleaning %d] _code_cache_task2", worker_id);
 
   {
     // Wait for all workers to finish the first code cache cleaning pass.
@@ -360,11 +364,13 @@ void ParallelCleaningTask::work(uint worker_id) {
     // the liveness information gathered during the first pass.
     _code_cache_task.work_second_pass(worker_id);
   }
+  LOG_CLS_UNLOAD("[complete_cleaning %d] _klass_cleaning_task", worker_id);
 
   {
     // Clean all klasses that were not unloaded.
     _klass_cleaning_task.work();
   }
+  LOG_CLS_UNLOAD("[complete_cleaning %d] finish", worker_id);
 }
 
 }

@@ -215,15 +215,21 @@ static void mmtk_update_weak_processor(bool lxr) {
 
 static void mmtk_unload_classes() {
   if (ClassUnloading) {
+    LOG_CLS_UNLOAD("[mmtk_unload_classes] start");
     // Unload classes and purge SystemDictionary.
+    LOG_CLS_UNLOAD("[mmtk_unload_classes] SystemDictionary::do_unloading");
     auto purged_classes = SystemDictionary::do_unloading(NULL, false /* Defer cleaning */);
     MMTkIsAliveClosure is_alive;
     MMTkForwardClosure forward;
+    LOG_CLS_UNLOAD("[mmtk_unload_classes] complete_cleaning");
     MMTkHeap::heap()->complete_cleaning(&is_alive, &forward, purged_classes);
+    LOG_CLS_UNLOAD("[mmtk_unload_classes] ClassLoaderDataGraph::purge");
     ClassLoaderDataGraph::purge();
+    LOG_CLS_UNLOAD("[mmtk_unload_classes] compute_new_size");
     // Resize and verify metaspace
     MetaspaceGC::compute_new_size();
     MetaspaceUtils::verify_metrics();
+    LOG_CLS_UNLOAD("[mmtk_unload_classes] end");
   }
 }
 
