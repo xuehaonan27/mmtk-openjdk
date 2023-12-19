@@ -447,7 +447,7 @@ impl ArrayOopDesc {
             typesize_in_bytes / BYTES_IN_WORD
         }
     }
-    fn length<const COMPRESSED: bool>(&self) -> i32 {
+    pub fn length<const COMPRESSED: bool>(&self) -> i32 {
         unsafe { (Address::from_ref(self) + Self::length_offset::<COMPRESSED>()).load::<i32>() }
     }
     fn base<const COMPRESSED: bool>(&self, ty: BasicType) -> Address {
@@ -528,7 +528,7 @@ impl ChunkedHandleList {
                 if COMPRESSED {
                     word = word | (1usize << 63);
                 }
-                closure.visit_edge(E::from_address(Address::from_usize(word)))
+                closure.visit_edge(E::from_address(Address::from_usize(word)), true)
             }
         }
     }
