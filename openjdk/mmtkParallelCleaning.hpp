@@ -149,6 +149,7 @@ public:
 // To minimize the remark pause times, the tasks below are done in parallel.
 class ParallelCleaningTask : public AbstractGangTask {
 private:
+  bool                            _unloading_occurred;
   StringSymbolTableUnlinkTask     _string_symbol_task;
   CodeCacheUnloadingTask          _code_cache_task;
   KlassCleaningTask               _klass_cleaning_task;

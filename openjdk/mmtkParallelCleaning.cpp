@@ -324,6 +324,7 @@ ParallelCleaningTask::ParallelCleaningTask(BoolObjectClosure* is_alive,
                                            uint num_workers,
                                            bool unloading_occurred) :
   AbstractGangTask("Parallel Cleaning"),
+  _unloading_occurred(unloading_occurred),
   _string_symbol_task(num_workers, is_alive, forward),
   _code_cache_task(num_workers, is_alive, unloading_occurred),
   _klass_cleaning_task(is_alive),
@@ -364,9 +365,9 @@ void ParallelCleaningTask::work(uint worker_id) {
     // the liveness information gathered during the first pass.
     _code_cache_task.work_second_pass(worker_id);
   }
-  LOG_CLS_UNLOAD("[complete_cleaning %d] _klass_cleaning_task", worker_id);
 
-  {
+  if (_unloading_occurred) {
+    LOG_CLS_UNLOAD("[complete_cleaning %d] _klass_cleaning_task", worker_id);
     // Clean all klasses that were not unloaded.
     _klass_cleaning_task.work();
   }
