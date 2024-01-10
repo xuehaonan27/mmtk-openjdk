@@ -405,6 +405,10 @@ pub extern "C" fn mmtk_builder_set_conc_threads(value: usize) {
     if cfg!(feature = "same_stw_and_conc_threads") {
         let threads = *builder.options.threads;
         builder.options.conc_threads.set(threads);
+    } else if cfg!(feature = "lxr_6_conc_workers") {
+        builder.options.conc_threads.set(6);
+    } else if cfg!(feature = "lxr_12_conc_workers") {
+        builder.options.conc_threads.set(12);
     } else {
         builder.options.conc_threads.set(value);
     }

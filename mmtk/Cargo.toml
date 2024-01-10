@@ -60,6 +60,8 @@ vo_bit = ["mmtk/vo_bit"]
 no_fast_alloc = []
 roots_breakdown = []
 same_stw_and_conc_threads = []
+lxr_6_conc_workers = []
+lxr_12_conc_workers = []
 
 # This compile time constant places the mark bit in the header of the object instead of on the side.
 mark_bit_in_header = []
