@@ -204,39 +204,17 @@ impl<E: Edge, F: RootsWorkFactory<E>> ScanCodeCacheRoots<E, F> {
 impl<VM: VMBinding, F: RootsWorkFactory<VM::VMEdge>> GCWork<VM>
     for ScanCodeCacheRoots<VM::VMEdge, F>
 {
-    fn do_work(&mut self, _worker: &mut GCWorker<VM>, mmtk: &'static MMTK<VM>) {
+    fn do_work(&mut self, _worker: &mut GCWorker<VM>, _mmtk: &'static MMTK<VM>) {
         let t = if cfg!(feature = "roots_breakdown") {
             Some(std::time::SystemTime::now())
         } else {
             None
         };
         let mut edges = Vec::with_capacity(F::BUFFER_SIZE);
-        let scan_all_roots = mmtk
-            .get_plan()
-            .current_gc_should_prepare_for_class_unloading()
-            || mmtk.get_plan().current_gc_should_perform_class_unloading();
         let mut mature = crate::MATURE_CODE_CACHE_ROOTS.lock().unwrap();
         let mut nursery_guard = crate::NURSERY_CODE_CACHE_ROOTS.lock().unwrap();
         let nursery = std::mem::take::<HashMap<Address, Vec<Address>>>(&mut nursery_guard);
         let mut c = 0;
-        if scan_all_roots {
-            // Collect all the mature cached roots
-            for roots in mature.values() {
-                for r in roots {
-                    edges.push(VM::VMEdge::from_address(*r));
-                    if edges.len() >= F::BUFFER_SIZE {
-                        if cfg!(feature = "roots_breakdown") {
-                            c += edges.len();
-                        }
-                        self.factory.create_process_edge_roots_work(
-                            std::mem::take(&mut edges),
-                            RootKind::Incomplete,
-                        );
-                        edges.reserve(F::BUFFER_SIZE);
-                    }
-                }
-            }
-        }
         // Young roots
         for (key, roots) in nursery {
             for r in &roots {
@@ -247,7 +225,7 @@ impl<VM: VMBinding, F: RootsWorkFactory<VM::VMEdge>> GCWork<VM>
                     }
                     self.factory.create_process_edge_roots_work(
                         std::mem::take(&mut edges),
-                        RootKind::Incomplete,
+                        RootKind::YoungCodeCacheRoots,
                     );
                     edges.reserve(F::BUFFER_SIZE);
                 }
