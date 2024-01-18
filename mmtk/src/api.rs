@@ -641,8 +641,6 @@ pub extern "C" fn mmtk_register_nmethod(nm: Address) {
 pub extern "C" fn mmtk_unregister_nmethod(nm: Address) {
     let mut roots = crate::NURSERY_CODE_CACHE_ROOTS.lock().unwrap();
     roots.remove(&nm);
-    let mut roots = crate::MATURE_CODE_CACHE_ROOTS.lock().unwrap();
-    roots.remove(&nm);
 }
 
 #[no_mangle]
