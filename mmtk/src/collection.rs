@@ -109,6 +109,7 @@ impl<const COMPRESSED: bool> Collection<OpenJDK<COMPRESSED>> for VMCollection {
         unsafe {
             if do_unloading {
                 ((*UPCALLS).unload_classes)();
+                crate::update_code_cache_roots::<OpenJDK<COMPRESSED>>();
             }
             ((*UPCALLS).gc_epilogue)();
         }

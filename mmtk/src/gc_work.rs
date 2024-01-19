@@ -239,11 +239,12 @@ impl<VM: VMBinding, F: RootsWorkFactory<VM::VMEdge>> GCWork<VM>
             None
         };
         let mut edges = Vec::with_capacity(F::BUFFER_SIZE);
+        let mut mature = crate::MATURE_CODE_CACHE_ROOTS.lock().unwrap();
         let mut nursery_guard = crate::NURSERY_CODE_CACHE_ROOTS.lock().unwrap();
         let nursery = std::mem::take::<HashMap<Address, Vec<Address>>>(&mut nursery_guard);
         let mut c = 0;
         // Young roots
-        for (_key, roots) in nursery {
+        for (key, roots) in nursery {
             for r in &roots {
                 edges.push(VM::VMEdge::from_address(*r));
                 if edges.len() >= F::BUFFER_SIZE {
@@ -257,6 +258,7 @@ impl<VM: VMBinding, F: RootsWorkFactory<VM::VMEdge>> GCWork<VM>
                     edges.reserve(F::BUFFER_SIZE);
                 }
             }
+            mature.insert(key, roots);
         }
         if !edges.is_empty() {
             if cfg!(feature = "roots_breakdown") {

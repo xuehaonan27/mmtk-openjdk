@@ -221,9 +221,9 @@ static void mmtk_unload_classes() {
     auto purged_classes = SystemDictionary::do_unloading(NULL, false /* Defer cleaning */);
     MMTkIsAliveClosure is_alive;
     MMTkForwardClosure forward;
-    LOG_CLS_UNLOAD("[mmtk_unload_classes] forward code cache ptrs");
-    CodeBlobToOopClosure cb_cl(&forward, true);
-    CodeCache::blobs_do(&cb_cl);
+    // LOG_CLS_UNLOAD("[mmtk_unload_classes] forward code cache ptrs");
+    // CodeBlobToOopClosure cb_cl(&forward, true);
+    // CodeCache::blobs_do(&cb_cl);
     LOG_CLS_UNLOAD("[mmtk_unload_classes] complete_cleaning");
     MMTkHeap::heap()->complete_cleaning(&is_alive, &forward, purged_classes);
     LOG_CLS_UNLOAD("[mmtk_unload_classes] ClassLoaderDataGraph::purge");

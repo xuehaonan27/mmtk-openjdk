@@ -278,7 +278,24 @@ pub static MMTK_MARK_COMPACT_HEADER_RESERVED_IN_BYTES: usize =
 lazy_static! {
     /// A global storage for all the cached CodeCache root pointers
     static ref NURSERY_CODE_CACHE_ROOTS: Mutex<HashMap<Address, Vec<Address>>> = Mutex::new(HashMap::new());
+    static ref MATURE_CODE_CACHE_ROOTS: Mutex<HashMap<Address, Vec<Address>>> = Mutex::new(HashMap::new());
     static ref NURSERY_WEAK_HANDLE_ROOTS: Mutex<Vec<Address>> = Mutex::new(Vec::new());
+}
+
+fn update_code_cache_roots<VM: VMBinding>() {
+    let roots = crate::MATURE_CODE_CACHE_ROOTS.lock().unwrap();
+    for (_, roots) in &*roots {
+        for e in roots {
+            let e = VM::VMEdge::from_address(*e);
+            let o = e.load();
+            if o.is_null() {
+                continue;
+            }
+            if let Some(f) = o.get_forwarded_object() {
+                e.store(f);
+            }
+        }
+    }
 }
 
 lazy_static! {
