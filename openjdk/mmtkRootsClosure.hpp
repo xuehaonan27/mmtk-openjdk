@@ -57,7 +57,7 @@ public:
 };
 
 
-template <bool MODIFIED_ONLY, bool WEAK>
+template <bool MODIFIED_ONLY, bool WEAK, bool CLAIM = false>
 class MMTkScanCLDClosure: public CLDClosure {
  private:
   OopClosure* _oop_closure;
@@ -66,10 +66,10 @@ class MMTkScanCLDClosure: public CLDClosure {
   MMTkScanCLDClosure(OopClosure* c) : _oop_closure(c) { }
   void do_cld(ClassLoaderData* cld) {
     if (MODIFIED_ONLY) {
-      if (cld->has_modified_oops()) cld->oops_do(_oop_closure, false, /*clear_modified_oops*/true);
+      if (cld->has_modified_oops()) cld->oops_do(_oop_closure, CLAIM, /*clear_modified_oops*/true);
     } else {
       if (cld->has_modified_oops() || !WEAK)
-        cld->oops_do(_oop_closure, false, /*clear_modified_oops*/true);
+        cld->oops_do(_oop_closure, CLAIM, /*clear_modified_oops*/true);
     }
   }
 };
