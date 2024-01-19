@@ -76,7 +76,12 @@ scan_roots_work!(ScanAOTLoaderRoots, scan_aot_loader_roots);
 scan_roots_work!(ScanSystemDictionaryRoots, scan_system_dictionary_roots);
 scan_roots_work!(ScanVMThreadRoots, scan_vm_thread_roots);
 
-extern "C" fn report_edges_and_renew_buffer_cld<E: Edge, F: RootsWorkFactory<E>>(
+extern "C" fn report_edges_and_renew_buffer_cld<
+    E: Edge,
+    F: RootsWorkFactory<E>,
+    const WEAK: bool,
+    const ALL_STRONG: bool,
+>(
     ptr: *mut Address,
     length: usize,
     capacity: usize,
@@ -89,7 +94,14 @@ extern "C" fn report_edges_and_renew_buffer_cld<E: Edge, F: RootsWorkFactory<E>>
             record_roots(buf.len());
         }
         let factory: &mut F = unsafe { &mut *(factory_ptr as *mut F) };
-        factory.create_process_edge_roots_work(buf, RootKind::Incomplete);
+        let kind = if WEAK {
+            RootKind::YoungWeakCLDRoots
+        } else if ALL_STRONG {
+            RootKind::StrongCLDRoots
+        } else {
+            RootKind::YoungStrongCLDRoots
+        };
+        factory.create_process_edge_roots_work(buf, kind);
     }
     let (ptr, _, capacity) = {
         // TODO: Use Vec::into_raw_parts() when the method is available.
@@ -101,9 +113,16 @@ extern "C" fn report_edges_and_renew_buffer_cld<E: Edge, F: RootsWorkFactory<E>>
     NewBuffer { ptr, capacity }
 }
 
-fn to_edges_closure_cld<E: Edge, F: RootsWorkFactory<E>>(factory: &mut F) -> EdgesClosure {
+fn to_edges_closure_cld<
+    E: Edge,
+    F: RootsWorkFactory<E>,
+    const WEAK: bool,
+    const ALL_STRONG: bool,
+>(
+    factory: &mut F,
+) -> EdgesClosure {
     EdgesClosure {
-        func: report_edges_and_renew_buffer_cld::<E, F>,
+        func: report_edges_and_renew_buffer_cld::<E, F, WEAK, ALL_STRONG>,
         data: factory as *mut F as *mut libc::c_void,
     }
 }
@@ -131,14 +150,23 @@ impl<VM: VMBinding, F: RootsWorkFactory<VM::VMEdge>> GCWork<VM>
         } else {
             None
         };
-        unsafe {
-            ((*UPCALLS).scan_class_loader_data_graph_roots)(
-                to_edges_closure_cld::<VM::VMEdge, F>(&mut self.factory),
-                to_edges_closure_cld::<VM::VMEdge, F>(&mut self.factory),
-                mmtk.get_plan()
-                    .current_gc_should_prepare_for_class_unloading()
-                    || mmtk.get_plan().current_gc_should_perform_class_unloading(),
-            );
+        let scan_all_strong_roots = mmtk.get_plan().current_gc_should_perform_class_unloading();
+        if scan_all_strong_roots {
+            unsafe {
+                ((*UPCALLS).scan_class_loader_data_graph_roots)(
+                    to_edges_closure_cld::<VM::VMEdge, F, false, true>(&mut self.factory),
+                    to_edges_closure_cld::<VM::VMEdge, F, true, false>(&mut self.factory),
+                    scan_all_strong_roots,
+                );
+            }
+        } else {
+            unsafe {
+                ((*UPCALLS).scan_class_loader_data_graph_roots)(
+                    to_edges_closure_cld::<VM::VMEdge, F, false, false>(&mut self.factory),
+                    to_edges_closure_cld::<VM::VMEdge, F, true, false>(&mut self.factory),
+                    scan_all_strong_roots,
+                );
+            }
         }
         if cfg!(feature = "roots_breakdown") {
             let ms = t.unwrap().elapsed().unwrap().as_micros() as f32 / 1000f32;
@@ -177,7 +205,7 @@ impl<VM: VMBinding, F: RootsWorkFactory<VM::VMEdge>> GCWork<VM>
         for slice in new_roots.chunks(mmtk::args::BUFFER_SIZE) {
             let slice = unsafe { std::mem::transmute::<&[Address], &[VM::VMEdge]>(slice) };
             self.factory
-                .create_process_edge_roots_work(slice.to_vec(), RootKind::Incomplete);
+                .create_process_edge_roots_work(slice.to_vec(), RootKind::YoungWeakHandleRoots);
         }
         new_roots.clear();
         if cfg!(feature = "roots_breakdown") {
@@ -235,7 +263,7 @@ impl<VM: VMBinding, F: RootsWorkFactory<VM::VMEdge>> GCWork<VM>
                 c += edges.len();
             }
             self.factory
-                .create_process_edge_roots_work(edges, RootKind::Incomplete);
+                .create_process_edge_roots_work(edges, RootKind::YoungCodeCacheRoots);
         }
         if cfg!(feature = "roots_breakdown") {
             let ms = t.unwrap().elapsed().unwrap().as_micros() as f32 / 1000f32;
