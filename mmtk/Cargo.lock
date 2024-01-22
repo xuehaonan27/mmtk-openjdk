@@ -517,7 +517,7 @@ checksum = "68354c5c6bd36d73ff3feceb05efa59b6acb7626617f4962be322a825e61f79a"
 [[package]]
 name = "mmtk"
 version = "0.20.0"
-source = "git+https://github.com/wenyuzhao/mmtk-core.git?rev=225c7cc50a602f0401f503a54b46151f79fa0275#225c7cc50a602f0401f503a54b46151f79fa0275"
+source = "git+https://github.com/wenyuzhao/mmtk-core.git?rev=a71f52643d13c9e2dd3e13bdb74e64897b4e6fdd#a71f52643d13c9e2dd3e13bdb74e64897b4e6fdd"
 dependencies = [
  "atomic",
  "atomic-traits",
@@ -551,7 +551,7 @@ dependencies = [
 [[package]]
 name = "mmtk-macros"
 version = "0.20.0"
-source = "git+https://github.com/wenyuzhao/mmtk-core.git?rev=225c7cc50a602f0401f503a54b46151f79fa0275#225c7cc50a602f0401f503a54b46151f79fa0275"
+source = "git+https://github.com/wenyuzhao/mmtk-core.git?rev=a71f52643d13c9e2dd3e13bdb74e64897b4e6fdd#a71f52643d13c9e2dd3e13bdb74e64897b4e6fdd"
 dependencies = [
  "proc-macro-error",
  "proc-macro2",
