@@ -1,3 +1,4 @@
+use mmtk::gc_log;
 use mmtk::scheduler::{GCWorker, ProcessEdgesWork};
 use mmtk::util::alloc::AllocationError;
 use mmtk::util::opaque_pointer::*;
@@ -95,6 +96,10 @@ impl<const COMPRESSED: bool> Collection<OpenJDK<COMPRESSED>> for VMCollection {
         }
     }
 
+    fn update_code_cache() {
+        crate::update_code_cache_roots::<OpenJDK<COMPRESSED>>()
+    }
+
     fn clear_cld_claimed_marks() {
         unsafe {
             ((*UPCALLS).clear_claimed_marks)();
@@ -108,9 +113,10 @@ impl<const COMPRESSED: bool> Collection<OpenJDK<COMPRESSED>> for VMCollection {
     fn vm_release(do_unloading: bool) {
         unsafe {
             if do_unloading {
-                crate::update_code_cache_roots::<OpenJDK<COMPRESSED>>();
+                gc_log!("    - unload_classes");
                 ((*UPCALLS).unload_classes)();
             }
+            gc_log!("    - gc_epilogue");
             ((*UPCALLS).gc_epilogue)();
         }
     }
