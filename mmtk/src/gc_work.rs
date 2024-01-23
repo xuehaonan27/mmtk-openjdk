@@ -275,7 +275,7 @@ impl<VM: VMBinding, F: RootsWorkFactory<VM::VMEdge>> GCWork<VM>
         }
         if cfg!(feature = "roots_breakdown") {
             let ms = t.unwrap().elapsed().unwrap().as_micros() as f32 / 1000f32;
-            eprintln!(" - CodeCache roots count: {} ({:.3})", c, ms);
+            eprintln!(" - NewCodeCache roots count: {} ({:.3})", c, ms);
         }
     }
 }
@@ -385,6 +385,63 @@ impl<VM: VMBinding, F: RootsWorkFactory<VM::VMEdge>> GCWork<VM>
         if cfg!(feature = "roots_breakdown") {
             let ms = t.unwrap().elapsed().unwrap().as_micros() as f32 / 1000f32;
             report_roots("WeakProcessorRoots", ms);
+        }
+    }
+}
+
+pub struct ScanWeakCodeCacheRoots<E: Edge, F: RootsWorkFactory<E>> {
+    factory: F,
+    _p: PhantomData<E>,
+}
+
+impl<E: Edge, F: RootsWorkFactory<E>> ScanWeakCodeCacheRoots<E, F> {
+    pub fn new(factory: F) -> Self {
+        Self {
+            factory,
+            _p: PhantomData,
+        }
+    }
+}
+
+impl<VM: VMBinding, F: RootsWorkFactory<VM::VMEdge>> GCWork<VM>
+    for ScanWeakCodeCacheRoots<VM::VMEdge, F>
+{
+    fn do_work(&mut self, _worker: &mut GCWorker<VM>, mmtk: &'static MMTK<VM>) {
+        let t = if cfg!(feature = "roots_breakdown") {
+            Some(std::time::SystemTime::now())
+        } else {
+            None
+        };
+        let scan_all_strong_roots = mmtk.get_plan().current_gc_should_perform_class_unloading();
+        assert!(scan_all_strong_roots);
+
+        let mut edges = Vec::with_capacity(F::BUFFER_SIZE);
+        let mature = crate::MATURE_CODE_CACHE_ROOTS.lock().unwrap();
+        let mut c = 0;
+        // Young roots
+        for (_key, roots) in &*mature {
+            for r in roots {
+                edges.push(VM::VMEdge::from_address(*r));
+                if edges.len() >= F::BUFFER_SIZE {
+                    if cfg!(feature = "roots_breakdown") {
+                        c += edges.len();
+                    }
+                    self.factory
+                        .create_process_edge_roots_work(std::mem::take(&mut edges), RootKind::Weak);
+                    edges.reserve(F::BUFFER_SIZE);
+                }
+            }
+        }
+        if !edges.is_empty() {
+            if cfg!(feature = "roots_breakdown") {
+                c += edges.len();
+            }
+            self.factory
+                .create_process_edge_roots_work(edges, RootKind::Weak);
+        }
+        if cfg!(feature = "roots_breakdown") {
+            let ms = t.unwrap().elapsed().unwrap().as_micros() as f32 / 1000f32;
+            eprintln!(" - WeakodeCacheRoots roots count: {} ({:.3})", c, ms);
         }
     }
 }
