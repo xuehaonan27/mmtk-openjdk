@@ -467,7 +467,8 @@ static void mmtk_scan_aot_loader_roots(EdgesClosure closure) { MMTkRootsClosure 
 static void mmtk_scan_system_dictionary_roots(EdgesClosure closure) { MMTkRootsClosure cl(closure); MMTkHeap::heap()->scan_system_dictionary_roots(cl); }
 static void mmtk_scan_code_cache_roots(EdgesClosure closure) { MMTkRootsClosure cl(closure); MMTkHeap::heap()->scan_code_cache_roots(cl); }
 static void mmtk_scan_string_table_roots(EdgesClosure closure, bool rc_non_stuck_objs_only) {
-  UNREACHABLE();
+  MMTkRootsClosure cl(closure);
+  MMTkHeap::heap()->scan_string_table_roots(cl, NULL);
 }
 static void mmtk_scan_class_loader_data_graph_roots(EdgesClosure closure, EdgesClosure weak_closure, bool scan_all_strong_roots) {
   MMTkRootsClosure cl(closure);

@@ -82,8 +82,6 @@ void StringSymbolTableUnlinkTask::work(uint worker_id) {
   int symbols_processed = 0;
   int symbols_removed = 0;
   // if (_process_strings) {
-    StringTable::possibly_parallel_oops_do(&_par_state_string_fwd, _forward);
-    barrier_wait(worker_id);
     StringTable::possibly_parallel_unlink(&_par_state_string, _is_alive, &strings_processed, &strings_removed);
     Atomic::add(strings_processed, &_strings_processed);
     Atomic::add(strings_removed, &_strings_removed);
