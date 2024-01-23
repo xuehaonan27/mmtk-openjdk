@@ -203,13 +203,12 @@ static void mmtk_clear_claimed_marks() {
 
 static void mmtk_update_weak_processor(bool lxr) {
   HandleMark hm;
-  MMTkForwardClosure forward;
   if (lxr) {
     MMTkLXRFastIsAliveClosure is_alive;
-    WeakProcessor::weak_oops_do(&is_alive, &forward);
+    WeakProcessor::weak_oops_do(&is_alive, &do_nothing_cl);
   } else {
     MMTkIsAliveClosure is_alive;
-    WeakProcessor::weak_oops_do(&is_alive, &forward);
+    WeakProcessor::weak_oops_do(&is_alive, &do_nothing_cl);
   }
 }
 
@@ -476,7 +475,8 @@ static void mmtk_scan_class_loader_data_graph_roots(EdgesClosure closure, EdgesC
   MMTkHeap::heap()->scan_class_loader_data_graph_roots(cl, weak_cl, scan_all_strong_roots);
 }
 static void mmtk_scan_weak_processor_roots(EdgesClosure closure, bool rc_non_stuck_objs_only) {
-  UNREACHABLE();
+  MMTkRootsClosure cl(closure);
+  MMTkHeap::heap()->scan_weak_processor_roots(cl);
 }
 static void mmtk_scan_vm_thread_roots(EdgesClosure closure) { MMTkRootsClosure cl(closure); MMTkHeap::heap()->scan_vm_thread_roots(cl); }
 

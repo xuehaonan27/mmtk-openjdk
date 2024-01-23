@@ -350,3 +350,41 @@ impl<VM: VMBinding, F: RootsWorkFactory<VM::VMEdge>> GCWork<VM>
         }
     }
 }
+
+pub struct ScanWeakProcessorRoots<E: Edge, F: RootsWorkFactory<E>> {
+    factory: F,
+    _p: PhantomData<E>,
+}
+
+impl<E: Edge, F: RootsWorkFactory<E>> ScanWeakProcessorRoots<E, F> {
+    pub fn new(factory: F) -> Self {
+        Self {
+            factory,
+            _p: PhantomData,
+        }
+    }
+}
+
+impl<VM: VMBinding, F: RootsWorkFactory<VM::VMEdge>> GCWork<VM>
+    for ScanWeakProcessorRoots<VM::VMEdge, F>
+{
+    fn do_work(&mut self, _worker: &mut GCWorker<VM>, mmtk: &'static MMTK<VM>) {
+        let t = if cfg!(feature = "roots_breakdown") {
+            Some(std::time::SystemTime::now())
+        } else {
+            None
+        };
+        let scan_all_strong_roots = mmtk.get_plan().current_gc_should_perform_class_unloading();
+        assert!(scan_all_strong_roots);
+        unsafe {
+            ((*UPCALLS).scan_weak_processor_roots)(
+                to_edges_closure_weak::<VM::VMEdge, F>(&mut self.factory),
+                false,
+            );
+        }
+        if cfg!(feature = "roots_breakdown") {
+            let ms = t.unwrap().elapsed().unwrap().as_micros() as f32 / 1000f32;
+            report_roots("WeakProcessorRoots", ms);
+        }
+    }
+}
