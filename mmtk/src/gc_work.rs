@@ -159,12 +159,6 @@ impl<VM: VMBinding, F: RootsWorkFactory<VM::VMEdge>> GCWork<VM>
                     scan_all_strong_roots,
                 );
             }
-            unsafe {
-                ((*UPCALLS).scan_string_table_roots)(
-                    to_edges_closure_cld::<VM::VMEdge, F, true, false>(&mut self.factory),
-                    false,
-                );
-            }
         } else {
             unsafe {
                 ((*UPCALLS).scan_class_loader_data_graph_roots)(
