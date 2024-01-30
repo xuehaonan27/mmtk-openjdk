@@ -62,6 +62,7 @@ roots_breakdown = []
 same_stw_and_conc_threads = []
 lxr_6_conc_workers = []
 lxr_12_conc_workers = []
+g3_compatibilities = []
 
 # This compile time constant places the mark bit in the header of the object instead of on the side.
 mark_bit_in_header = []

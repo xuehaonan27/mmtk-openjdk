@@ -346,6 +346,7 @@ impl fmt::Debug for OopDesc {
 
 /// 32-bit compressed klass pointers
 #[repr(transparent)]
+#[allow(unused)]
 #[derive(Clone, Copy)]
 pub struct NarrowKlass(u32);
 
@@ -353,6 +354,7 @@ pub type Oop = &'static OopDesc;
 
 /// 32-bit compressed reference pointers
 #[repr(transparent)]
+#[allow(unused)]
 #[derive(Clone, Copy)]
 pub struct NarrowOop(u32);
 
