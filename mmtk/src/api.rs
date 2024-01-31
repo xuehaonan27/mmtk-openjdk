@@ -10,6 +10,7 @@ use mmtk::plan::BarrierSelector;
 use mmtk::scheduler::GCController;
 use mmtk::scheduler::GCWorker;
 use mmtk::util::alloc::AllocatorSelector;
+use mmtk::util::heap::vm_layout::vm_layout;
 use mmtk::util::opaque_pointer::*;
 use mmtk::util::{Address, ObjectReference};
 use mmtk::AllocationSemantics;
@@ -658,4 +659,9 @@ pub unsafe extern "C" fn mmtk_register_new_weak_handle(oop: *const Oop) {
         Address::from_ptr(oop)
     };
     crate::NURSERY_WEAK_HANDLE_ROOTS.lock().unwrap().push(addr);
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn los_start_address() -> Address {
+    vm_layout().heap_start + vm_layout().small_chunk_space_size.unwrap()
 }

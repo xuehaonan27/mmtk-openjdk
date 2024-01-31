@@ -53,6 +53,9 @@
 
 using namespace JavaClassFile;
 
+uintptr_t LOS_BOTTOM_ADDRESS;
+uintptr_t HEAP_START;
+uintptr_t HEAP_END;
 /*
 needed support from rust
 heap capacity
@@ -170,6 +173,11 @@ jint MMTkHeap::initialize() {
   _workers = new WorkGang("GC Thread", ncpus, /* are_GC_task_threads */true, /* are_ConcurrentGC_threads */false);
   _workers->initialize_workers();
   _workers->update_active_workers(Abstract_VM_Version::parallel_worker_threads());
+
+  LOS_BOTTOM_ADDRESS = (uintptr_t) los_start_address();
+  HEAP_START = (uintptr_t) starting_heap_address();
+  HEAP_END = (uintptr_t) last_heap_address();
+  printf("JDK MARK BASE %p\n", IMMIX_MARK_TABLE_BASE_ADDRESS);
 
   os::start_thread(_companion_thread);
   // Set up the GCTaskManager
@@ -368,15 +376,15 @@ void MMTkHeap::safe_object_iterate(ObjectClosure* cl) { //not sure..many depende
 }
 
 HeapWord* MMTkHeap::block_start(const void* addr) const {//OK
-  return (HeapWord*) starting_heap_address();
+  return (HeapWord*) HEAP_START;
 }
 
 size_t MMTkHeap::block_size(const HeapWord* addr) const { //OK
-  return size_t(last_heap_address()) - size_t(starting_heap_address());
+  return size_t(HEAP_END) - size_t(HEAP_START);
 }
 
 bool MMTkHeap::block_is_obj(const HeapWord* addr) const { //OK
-  return size_t(addr) >= size_t(starting_heap_address()) && size_t(addr) < size_t(last_heap_address());
+  return size_t(addr) >= size_t(HEAP_START) && size_t(addr) < size_t(HEAP_END);
 }
 
 jlong MMTkHeap::millis_since_last_gc() {//later when gc is implemented in rust

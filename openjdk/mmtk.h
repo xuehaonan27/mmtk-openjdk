@@ -4,6 +4,7 @@
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
+#include <cstdio>
 
 #define ENABLE_CLASS_UNLOADING_LOGS true
 #if ENABLE_CLASS_UNLOADING_LOGS
@@ -25,6 +26,8 @@ typedef enum {
     MmapOutOfMemory,
 } MMTkAllocationError;
 
+extern uintptr_t LOS_BOTTOM_ADDRESS;
+extern const uintptr_t IMMIX_MARK_TABLE_BASE_ADDRESS;
 extern const uintptr_t GLOBAL_SIDE_METADATA_VM_BASE_ADDRESS;
 extern const uintptr_t GLOBAL_SIDE_METADATA_VM_BASE_ADDRESS_COMPRESSED;
 extern const uintptr_t RC_TABLE_BASE_ADDRESS;
@@ -239,6 +242,7 @@ extern size_t mmtk_set_compressed_klass_base_and_shift(void* base, size_t shift)
 extern size_t used_bytes();
 extern void* starting_heap_address();
 extern void* last_heap_address();
+extern void* los_start_address();
 extern void iterator(); // ???
 
 
@@ -289,6 +293,50 @@ extern void mmtk_builder_read_env_var_settings();
 extern void mmtk_builder_set_threads(size_t value);
 extern void mmtk_builder_set_conc_threads(size_t value);
 extern void mmtk_builder_set_transparent_hugepages(bool value);
+
+inline static bool mmtk_object_is_forwarded(void* o) {
+    size_t status = *((size_t*) o);
+    return (status >> 56) != 0;
+}
+inline static void* mmtk_get_forwarded_obj(void* o) {
+    size_t status = *((size_t*) o);
+    return (void*) (status << 8 >> 8);
+}
+
+inline uint8_t mmtk_is_in_immix_space(void* o) {
+    if (o == nullptr) return false;
+    return (uintptr_t) o < LOS_BOTTOM_ADDRESS;
+}
+
+inline bool mmtk_is_immix_marked(void* o) {
+    const uintptr_t index = (uintptr_t((void*) o) ) >> log_min_obj_size;
+    // printf("IMMIX_MARK_TABLE_BASE_ADDRESS %p\n",IMMIX_MARK_TABLE_BASE_ADDRESS);
+    const uint8_t byte = *((uint8_t*) (IMMIX_MARK_TABLE_BASE_ADDRESS + (index >> 3)));
+    auto v = byte >> (index & 0b111);
+    return (v & 0b1) != 0;
+}
+
+inline uint8_t mmtk_is_live_lxr(void* o) {
+    auto original_o = o;
+    if (mmtk_is_in_immix_space(o)) {
+        while (mmtk_object_is_forwarded(o)) {
+            o = mmtk_get_forwarded_obj(o);
+        }
+        auto L = mmtk_is_immix_marked(o) && (mmtk_get_rc(o) != 0);
+        // if (L) {
+        //     if (!mmtk_is_live(o)) {
+        //         printf("mmtk_is_live_lxr: %p %d %d %d\n", o,L, mmtk_is_live(o), mmtk_object_is_forwarded(o));
+        //     }
+        // } else {
+        //     if (mmtk_is_live(o)) {
+        //         printf("mmtk_is_live_lxr: %p %d %d %d, %d %d %p\n", o,L, mmtk_is_live(o), mmtk_object_is_forwarded(o), mmtk_is_immix_marked(o), mmtk_get_rc(o), original_o);
+        //     }
+        // }
+        return L;
+    } else {
+        return mmtk_is_live(o) != 0;
+    }
+}
 
 #ifdef __cplusplus
 }

@@ -155,6 +155,13 @@ lazy_static! {
 pub static mut UPCALLS: *const OpenJDK_Upcalls = null_mut();
 
 #[no_mangle]
+pub static IMMIX_MARK_TABLE_BASE_ADDRESS: uintptr_t = crate::vm_metadata::MARKING_METADATA_SPEC
+    .as_spec()
+    .extract_side_spec()
+    .get_absolute_offset()
+    .as_usize();
+
+#[no_mangle]
 pub static GLOBAL_SIDE_METADATA_VM_BASE_ADDRESS: uintptr_t =
     mmtk::util::metadata::side_metadata::GLOBAL_SIDE_METADATA_VM_BASE_ADDRESS.as_usize();
 

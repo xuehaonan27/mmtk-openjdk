@@ -64,7 +64,7 @@ class MMTkIsAliveClosure : public BoolObjectClosure {
 public:
   inline virtual bool do_object_b(oop p) {
     if (p == NULL) return false;
-    return mmtk_is_live((void*) p) != 0;
+    return mmtk_is_live_lxr((void*) p) != 0;
   }
 };
 
