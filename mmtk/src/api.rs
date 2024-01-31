@@ -662,6 +662,6 @@ pub unsafe extern "C" fn mmtk_register_new_weak_handle(oop: *const Oop) {
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn los_start_address() -> Address {
+pub unsafe extern "C" fn mmtk_get_los_start_address() -> Address {
     vm_layout().heap_start + vm_layout().small_chunk_space_size.unwrap()
 }
