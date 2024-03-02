@@ -365,7 +365,7 @@ void MMTkHeap::initialize_serviceability() {//OK
 }
 
 // Print heap information on the given outputStream.
-void MMTkHeap::print_on(outputStream* st) const {guarantee(false, "print on not supported");}
+void MMTkHeap::print_on(outputStream* st) const {}
 
 
 // Print all GC threads (other than the VM thread)
