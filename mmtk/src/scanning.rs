@@ -149,13 +149,18 @@ impl<const COMPRESSED: bool> Scanning<OpenJDK<COMPRESSED>> for VMScanning {
         {
             w.push(Box::new(ScanNewWeakHandleRoots::new(factory.clone())) as _);
         }
+        if !crate::class_unloading_enabled() {
+            w.push(Box::new(ScanStrongStringTableRoots::new(factory.clone())) as _);
+        }
         if crate::singleton::<COMPRESSED>()
             .get_plan()
             .current_gc_should_perform_class_unloading()
         {
-            w.push(Box::new(ScanWeakStringTableRoots::new(factory.clone())) as _);
+            if crate::class_unloading_enabled() {
+                w.push(Box::new(ScanWeakCodeCacheRoots::new(factory.clone())) as _);
+                w.push(Box::new(ScanWeakStringTableRoots::new(factory.clone())) as _);
+            }
             w.push(Box::new(ScanWeakProcessorRoots::new(factory.clone())) as _);
-            w.push(Box::new(ScanWeakCodeCacheRoots::new(factory.clone())) as _);
         }
         memory_manager::add_work_packets(
             crate::singleton::<COMPRESSED>(),

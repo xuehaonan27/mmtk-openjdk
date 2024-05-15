@@ -227,12 +227,57 @@ impl<E: Edge, F: RootsWorkFactory<E>> ScanCodeCacheRoots<E, F> {
             _p: PhantomData,
         }
     }
+    fn do_strong<VM: VMBinding<VMEdge = E>>(
+        &mut self,
+        _worker: &mut GCWorker<VM>,
+        _mmtk: &'static MMTK<VM>,
+    ) {
+        let t = if cfg!(feature = "roots_breakdown") {
+            Some(std::time::SystemTime::now())
+        } else {
+            None
+        };
+        let mut edges = Vec::with_capacity(F::BUFFER_SIZE);
+        let nursery_guard = crate::NURSERY_CODE_CACHE_ROOTS.lock().unwrap();
+        let mut c = 0;
+        // Young roots
+        for (_, roots) in &*nursery_guard {
+            for r in &*roots {
+                edges.push(VM::VMEdge::from_address(*r));
+                if edges.len() >= F::BUFFER_SIZE {
+                    if cfg!(feature = "roots_breakdown") {
+                        c += edges.len();
+                    }
+                    self.factory.create_process_edge_roots_work(
+                        std::mem::take(&mut edges),
+                        RootKind::Strong,
+                    );
+                    edges.reserve(F::BUFFER_SIZE);
+                }
+            }
+        }
+        if !edges.is_empty() {
+            if cfg!(feature = "roots_breakdown") {
+                c += edges.len();
+            }
+            self.factory
+                .create_process_edge_roots_work(edges, RootKind::Strong);
+        }
+        if cfg!(feature = "roots_breakdown") {
+            let ms = t.unwrap().elapsed().unwrap().as_micros() as f32 / 1000f32;
+            eprintln!(" - NewCodeCache roots count: {} ({:.3})", c, ms);
+        }
+    }
 }
 
 impl<VM: VMBinding, F: RootsWorkFactory<VM::VMEdge>> GCWork<VM>
     for ScanCodeCacheRoots<VM::VMEdge, F>
 {
     fn do_work(&mut self, _worker: &mut GCWorker<VM>, _mmtk: &'static MMTK<VM>) {
+        if !crate::class_unloading_enabled() {
+            self.do_strong(_worker, _mmtk);
+            return;
+        }
         let t = if cfg!(feature = "roots_breakdown") {
             Some(std::time::SystemTime::now())
         } else {
@@ -304,6 +349,42 @@ fn to_edges_closure_weak<E: Edge, F: RootsWorkFactory<E>>(factory: &mut F) -> Ed
     EdgesClosure {
         func: report_edges_and_renew_buffer_weak::<E, F>,
         data: factory as *mut F as *mut libc::c_void,
+    }
+}
+
+pub struct ScanStrongStringTableRoots<E: Edge, F: RootsWorkFactory<E>> {
+    factory: F,
+    _p: PhantomData<E>,
+}
+
+impl<E: Edge, F: RootsWorkFactory<E>> ScanStrongStringTableRoots<E, F> {
+    pub fn new(factory: F) -> Self {
+        Self {
+            factory,
+            _p: PhantomData,
+        }
+    }
+}
+
+impl<VM: VMBinding, F: RootsWorkFactory<VM::VMEdge>> GCWork<VM>
+    for ScanStrongStringTableRoots<VM::VMEdge, F>
+{
+    fn do_work(&mut self, _worker: &mut GCWorker<VM>, _mmtk: &'static MMTK<VM>) {
+        let t = if cfg!(feature = "roots_breakdown") {
+            Some(std::time::SystemTime::now())
+        } else {
+            None
+        };
+        unsafe {
+            ((*UPCALLS).scan_string_table_roots)(
+                to_edges_closure::<VM::VMEdge, F>(&mut self.factory),
+                false,
+            );
+        }
+        if cfg!(feature = "roots_breakdown") {
+            let ms = t.unwrap().elapsed().unwrap().as_micros() as f32 / 1000f32;
+            report_roots("WeakStringTableRoots", ms);
+        }
     }
 }
 

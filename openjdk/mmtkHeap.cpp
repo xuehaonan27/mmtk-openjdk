@@ -86,6 +86,8 @@ jint MMTkHeap::initialize() {
   //  printf("policy max heap size %zu, min heap size %zu\n", heap_size, collector_policy()->min_heap_byte_size());
 
   if (UseCompressedOops) mmtk_enable_compressed_oops();
+  if (ClassUnloading) mmtk_setup_class_unloading(true);
+  else mmtk_setup_class_unloading(false);
 
   // Note that MMTk options may be set from several different sources, with increasing priorities:
   // 1. Default values defined in mmtk::util::options::Options
@@ -480,7 +482,11 @@ void MMTkHeap::scan_system_dictionary_roots(OopClosure& cl) {
 }
 void MMTkHeap::scan_code_cache_roots(OopClosure& cl) {
   MarkingCodeBlobClosure cb_cl(&cl, false);
-  CodeCache::blobs_do(&cb_cl);
+  if (!ClassUnloading) {
+    CodeCache::scavenge_root_nmethods_do(&cb_cl);
+  } else {
+    CodeCache::blobs_do(&cb_cl);
+  }
 }
 
 void MMTkHeap::scan_string_table_roots(OopClosure& cl, OopStorage::ParState<false, false>* par_state_string) {
@@ -494,8 +500,7 @@ void MMTkHeap::scan_string_table_roots(OopClosure& cl, OopStorage::ParState<fals
 void MMTkHeap::scan_class_loader_data_graph_roots(OopClosure& cl, OopClosure& weak_cl, bool scan_all_strong_roots) {
   if (!ClassUnloading) {
     CLDToOopClosure cld_cl(&cl, false);
-    CLDToOopClosure weak_cld_cl(&weak_cl, false);
-    ClassLoaderDataGraph::roots_cld_do(&cld_cl, &weak_cld_cl);
+    ClassLoaderDataGraph::cld_do(&cld_cl);
   } else if (scan_all_strong_roots) {
     // At the start of full heap trace, we want to scan all the strong CLD roots + all the modified CLDs.
     MMTkScanCLDClosure</*MODIFIED_ONLY*/ false, /*WEAK*/ false, /*CLAIM*/ false> cld_cl(&cl);

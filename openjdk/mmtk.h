@@ -231,6 +231,7 @@ extern bool openjdk_is_gc_initialized();
 
 extern bool mmtk_set_heap_size(size_t min, size_t max);
 
+extern void mmtk_setup_class_unloading(bool enable);
 extern bool mmtk_enable_compressed_oops();
 extern void* mmtk_narrow_oop_base();
 extern size_t mmtk_narrow_oop_shift();

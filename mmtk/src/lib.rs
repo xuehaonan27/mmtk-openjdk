@@ -417,3 +417,9 @@ fn set_no_compressed_pointer_discontig_vm_layout(builder: &mut MMTKBuilder) {
     };
     builder.set_vm_layout(constants);
 }
+
+static CLASS_UNLOADING_ENABLED: AtomicBool = AtomicBool::new(false);
+
+fn class_unloading_enabled() -> bool {
+    CLASS_UNLOADING_ENABLED.load(Ordering::SeqCst)
+}

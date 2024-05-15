@@ -304,6 +304,11 @@ pub extern "C" fn mmtk_enable_compressed_oops() {
 }
 
 #[no_mangle]
+pub extern "C" fn mmtk_setup_class_unloading(enabled: bool) {
+    crate::CLASS_UNLOADING_ENABLED.store(enabled, Ordering::SeqCst)
+}
+
+#[no_mangle]
 pub extern "C" fn mmtk_set_compressed_klass_base_and_shift(base: Address, shift: usize) {
     crate::abi::set_compressed_klass_base_and_shift(base, shift)
 }

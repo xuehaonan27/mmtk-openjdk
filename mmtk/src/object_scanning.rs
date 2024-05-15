@@ -180,6 +180,9 @@ impl InstanceRefKlass {
         mut rt: ReferenceType,
         disable_discovery: bool,
     ) -> bool {
+        if cfg!(feature = "no_weak_refs") {
+            return false;
+        }
         if rt == ReferenceType::Other {
             rt = ReferenceType::Weak;
         }
