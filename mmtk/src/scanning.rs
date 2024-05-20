@@ -142,6 +142,7 @@ impl<const COMPRESSED: bool> Scanning<OpenJDK<COMPRESSED>> for VMScanning {
             Box::new(ScanCodeCacheRoots::new(factory.clone())) as _,
             Box::new(ScanClassLoaderDataGraphRoots::new(factory.clone())) as _,
             Box::new(ScanVMThreadRoots::new(factory.clone())) as _,
+            Box::new(ScanStringTableRoots::new(factory.clone())) as _,
         ];
         if crate::singleton::<COMPRESSED>()
             .get_plan()

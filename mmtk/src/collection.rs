@@ -107,6 +107,9 @@ impl<const COMPRESSED: bool> Collection<OpenJDK<COMPRESSED>> for VMCollection {
     }
 
     fn vm_release(do_unloading: bool) {
+        if !do_unloading {
+            unsafe { ((*UPCALLS).update_weak_processor)(true) }
+        }
         unsafe {
             if do_unloading {
                 gc_log!("    - unload_classes");

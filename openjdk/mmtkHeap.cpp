@@ -603,9 +603,9 @@ void MMTkHeap::complete_cleaning(BoolObjectClosure* is_alive, OopClosure* forwar
 }
 
 void MMTkHeap::register_new_weak_handle(oop* handle) {
-  if (REQUIRES_WEAK_HANDLE_BARRIER) {
-    mmtk_register_new_weak_handle((void*) handle);
-  }
+  // if (REQUIRES_WEAK_HANDLE_BARRIER) {
+  //   mmtk_register_new_weak_handle((void*) handle);
+  // }
 }
 
 /*
