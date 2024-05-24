@@ -3,7 +3,7 @@
 #include "runtime/interfaceSupport.inline.hpp"
 
 #define SOFT_REFERENCE_LOAD_BARRIER true
-#define MMTK_BARRIER_EAGER_BRANCH true
+#define MMTK_BARRIER_EAGER_BRANCH false
 
 constexpr int kUnloggedValue = 1;
 
