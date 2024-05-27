@@ -127,10 +127,10 @@ void MMTkFieldBarrierSetAssembler::object_reference_write_pre(MacroAssembler* ma
 
 void MMTkFieldBarrierSetAssembler::arraycopy_prologue(MacroAssembler* masm, DecoratorSet decorators, BasicType type, Register src, Register dst, Register count) {
   if (type == T_OBJECT || type == T_ARRAY) {
-    // Label slow, done;
+    Label done;
     // // Bailout if count is zero
-    // __ cmpptr(count, 0);
-    // __ jcc(Assembler::equal, done);
+    __ cmpptr(count, 0);
+    __ jcc(Assembler::equal, done);
     // // Fast path if count is one
     // __ cmpptr(count, 1);
     // __ jcc(Assembler::notEqual, slow);
@@ -147,13 +147,13 @@ void MMTkFieldBarrierSetAssembler::arraycopy_prologue(MacroAssembler* masm, Deco
     // assert(count == rdx, "expected");
     // __ call_VM_leaf(CAST_FROM_FN_PTR(address, MMTkFieldBarrierSetRuntime::record_array_copy_slow), src, dst, count);
     // __ popa();
-    // __ bind(done);
     __ pusha();
     __ movptr(c_rarg0, src);
     __ movptr(c_rarg1, dst);
     __ movptr(c_rarg2, count);
     __ call_VM_leaf_base(FN_ADDR(MMTkBarrierSetRuntime::object_reference_array_copy_pre_call), 3);
     __ popa();
+    __ bind(done);
   }
 }
 
