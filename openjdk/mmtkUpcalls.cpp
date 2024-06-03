@@ -209,8 +209,7 @@ static void mmtk_update_weak_processor(bool lxr) {
     WeakProcessor::weak_oops_do(&is_alive, &fwd);
   } else {
     MMTkIsAliveClosure is_alive;
-    MMTkForwardClosure forward;
-    WeakProcessor::weak_oops_do(&is_alive, &forward);
+    WeakProcessor::weak_oops_do(&is_alive, &do_nothing_cl);
   }
 }
 
