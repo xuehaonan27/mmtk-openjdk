@@ -5,7 +5,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#define ENABLE_CLASS_UNLOADING_LOGS true
+#define ENABLE_CLASS_UNLOADING_LOGS false
 #if ENABLE_CLASS_UNLOADING_LOGS
 #define LOG_CLS_UNLOAD(...) log_info(gc)(__VA_ARGS__)
 #else
@@ -34,6 +34,11 @@ extern const uintptr_t IMMIX_ALLOCATOR_SIZE;
 extern uint8_t CONCURRENT_MARKING_ACTIVE;
 extern uint8_t RC_ENABLED;
 extern uint8_t REQUIRES_WEAK_HANDLE_BARRIER;
+extern uint8_t FIELD_BARRIER_NO_EAGER_BRANCH;
+extern uint8_t FIELD_BARRIER_NO_ARRAYCOPY;
+extern uint8_t FIELD_BARRIER_NO_ARRAYCOPY_SLOW;
+extern uint8_t FIELD_BARRIER_NO_C2_SLOW_CALL;
+extern uint8_t FIELD_BARRIER_NO_C2_RUST_CALL;
 
 inline bool disable_fast_alloc() {
     return DISABLE_ALLOCATION_FAST_PATH != 0;

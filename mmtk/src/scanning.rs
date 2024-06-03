@@ -155,7 +155,6 @@ impl<const COMPRESSED: bool> Scanning<OpenJDK<COMPRESSED>> for VMScanning {
             .current_gc_should_perform_class_unloading()
         {
             w.push(Box::new(ScanWeakStringTableRoots::new(factory.clone())) as _);
-            w.push(Box::new(ScanWeakProcessorRoots::new(factory.clone())) as _);
             w.push(Box::new(ScanWeakCodeCacheRoots::new(factory.clone())) as _);
         }
         memory_manager::add_work_packets(

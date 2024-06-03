@@ -41,7 +41,7 @@ memoffset = "0.9.0"
 # - change branch
 # - change repo name
 # But other changes including adding/removing whitespaces in commented lines may break the CI.
-mmtk = { git = "https://github.com/wenyuzhao/mmtk-core.git", rev = "de7c63292a5553fa3373da1eaa5810350a14c148" }
+mmtk = { git = "https://github.com/wenyuzhao/mmtk-core.git", rev = "eded7e1860d1fd80809280d7ddf1ec280b43caab" }
 # Uncomment the following to build locally
 # mmtk = { path = "../../mmtk-core" }
 
@@ -98,3 +98,9 @@ narrow_oop_mode_32bit = ["force_narrow_oop_mode"]
 narrow_oop_mode_shift = ["force_narrow_oop_mode"]
 narrow_oop_mode_base = ["force_narrow_oop_mode"]
 narrow_oop_mode_base_and_shift = ["force_narrow_oop_mode"]
+
+field_barrier_no_eager_branch = []
+field_barrier_no_arraycopy = []
+field_barrier_no_arraycopy_slow = []
+field_barrier_no_c2_slow_call = []
+field_barrier_no_c2_rust_call = []
