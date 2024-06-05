@@ -3,7 +3,6 @@
 #include "runtime/interfaceSupport.inline.hpp"
 
 #define SOFT_REFERENCE_LOAD_BARRIER true
-#define MMTK_BARRIER_EAGER_BRANCH true
 
 constexpr int kUnloggedValue = 1;
 
@@ -24,9 +23,8 @@ void MMTkFieldBarrierSetRuntime::object_reference_write_pre(oop src, oop* slot, 
     intptr_t addr = ((intptr_t) (void*) slot);
     const volatile uint8_t * meta_addr = (const volatile uint8_t *) (side_metadata_base_address() + (addr >> (UseCompressedOops ? 5 : 6)));
     uint8_t byte_val = *meta_addr;
-    #if MMTK_BARRIER_EAGER_BRANCH
-    if (byte_val == 0) return;
-    #endif
+    if (!FIELD_BARRIER_NO_EAGER_BRANCH)
+      if (byte_val == 0) return;
     intptr_t shift = (addr >> (UseCompressedOops ? 2 : 3)) & 0b111;
     if (((byte_val >> shift) & 1) == kUnloggedValue) {
       ::mmtk_object_reference_write_slow((MMTk_Mutator) &Thread::current()->third_party_heap_mutator, (void*) src, (void*) slot, (void*) target);
@@ -88,10 +86,10 @@ void MMTkFieldBarrierSetAssembler::object_reference_write_pre(MacroAssembler* ma
   __ shrptr(tmp3, UseCompressedOops ? 5 : 6);
   __ movptr(tmp5, side_metadata_base_address());
   __ movzbl(tmp5, Address(tmp5, tmp3));
-  #if MMTK_BARRIER_EAGER_BRANCH
-  __ cmpl(tmp5, 0);
-  __ jcc(Assembler::equal, done);
-  #endif
+  if (!FIELD_BARRIER_NO_EAGER_BRANCH) {
+    __ cmpl(tmp5, 0);
+    __ jcc(Assembler::equal, done);
+  }
   // tmp3 = (obj >> 3) & 7
   __ lea(tmp3, dst);
   __ shrptr(tmp3, UseCompressedOops ? 2 : 3);
@@ -126,11 +124,12 @@ void MMTkFieldBarrierSetAssembler::object_reference_write_pre(MacroAssembler* ma
 }
 
 void MMTkFieldBarrierSetAssembler::arraycopy_prologue(MacroAssembler* masm, DecoratorSet decorators, BasicType type, Register src, Register dst, Register count) {
+  if (FIELD_BARRIER_NO_ARRAYCOPY) return;
   if (type == T_OBJECT || type == T_ARRAY) {
-    // Label slow, done;
+    Label done;
     // // Bailout if count is zero
-    // __ cmpptr(count, 0);
-    // __ jcc(Assembler::equal, done);
+    __ cmpptr(count, 0);
+    __ jcc(Assembler::equal, done);
     // // Fast path if count is one
     // __ cmpptr(count, 1);
     // __ jcc(Assembler::notEqual, slow);
@@ -147,13 +146,13 @@ void MMTkFieldBarrierSetAssembler::arraycopy_prologue(MacroAssembler* masm, Deco
     // assert(count == rdx, "expected");
     // __ call_VM_leaf(CAST_FROM_FN_PTR(address, MMTkFieldBarrierSetRuntime::record_array_copy_slow), src, dst, count);
     // __ popa();
-    // __ bind(done);
     __ pusha();
     __ movptr(c_rarg0, src);
     __ movptr(c_rarg1, dst);
     __ movptr(c_rarg2, count);
     __ call_VM_leaf_base(FN_ADDR(MMTkBarrierSetRuntime::object_reference_array_copy_pre_call), 3);
     __ popa();
+    __ bind(done);
   }
 }
 
@@ -265,10 +264,10 @@ void MMTkFieldBarrierSetC1::object_reference_write_pre(LIRAccess& access, LIR_Op
     // uint8_t byte_val = *meta_addr;
     LIR_Opr byte_val = gen->new_register(T_INT);
     __ move(meta_addr, byte_val);
-    #if MMTK_BARRIER_EAGER_BRANCH
+    // #if MMTK_BARRIER_EAGER_BRANCH
     // __ cmp(lir_cond_equal, byte_val, LIR_OprFact::intConst(0));
     // __ branch(lir_cond_equal, T_BYTE, Ldone->label());
-    #endif
+    // #endif
     // intptr_t shift = (addr >> 3) & 0b111;
     LIR_Opr shift = gen->new_register(T_INT);
     __ move(addr, shift);
@@ -303,19 +302,18 @@ static void insert_write_barrier_common(MMTkIdealKit& ideal, Node* src, Node* sl
   Node* addr = __ CastPX(__ ctrl(), slot);
   Node* meta_addr = __ AddP(no_base, __ ConP(side_metadata_base_address()), __ URShiftX(addr, __ ConI(UseCompressedOops ? 5 : 6)));
   Node* byte = __ load(__ ctrl(), meta_addr, TypeInt::INT, T_BYTE, Compile::AliasIdxRaw);
-  #if MMTK_BARRIER_EAGER_BRANCH
-  __ if_then(byte, BoolTest::ne, zero, unlikely);
-  #endif
+  if (!FIELD_BARRIER_NO_EAGER_BRANCH)
+    __ if_then(byte, BoolTest::ne, zero, unlikely);
   Node* shift = __ URShiftX(addr, __ ConI(UseCompressedOops ? 2 : 3));
   shift = __ AndI(__ ConvL2I(shift), __ ConI(7));
   Node* result = __ AndI(__ URShiftI(byte, shift), __ ConI(1));
   __ if_then(result, BoolTest::ne, zero, unlikely); {
     const TypeFunc* tf = __ func_type(TypeOopPtr::BOTTOM, TypeOopPtr::BOTTOM, TypeOopPtr::BOTTOM);
-    Node* x = __ make_leaf_call(tf, FN_ADDR(MMTkBarrierSetRuntime::object_reference_write_slow_call), "mmtk_barrier_call", src, slot, val);
+    if (!FIELD_BARRIER_NO_C2_SLOW_CALL)
+      Node* x = __ make_leaf_call(tf, FN_ADDR(MMTkBarrierSetRuntime::object_reference_write_slow_call), "mmtk_barrier_call", src, slot, val);
   } __ end_if();
-  #if MMTK_BARRIER_EAGER_BRANCH
-  __ end_if();
-  #endif
+  if (!FIELD_BARRIER_NO_EAGER_BRANCH)
+    __ end_if();
 #else
   const TypeFunc* tf = __ func_type(TypeOopPtr::BOTTOM, TypeOopPtr::BOTTOM, TypeOopPtr::BOTTOM);
   Node* x = __ make_leaf_call(tf, FN_ADDR(MMTkBarrierSetRuntime::object_reference_write_pre_call), "mmtk_barrier_call", src, slot, val);

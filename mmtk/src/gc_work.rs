@@ -426,12 +426,14 @@ impl<VM: VMBinding, F: RootsWorkFactory<VM::VMEdge>> GCWork<VM>
     }
 }
 
+#[allow(unused)]
 pub struct ScanWeakProcessorRoots<E: Edge, F: RootsWorkFactory<E>> {
     factory: F,
     _p: PhantomData<E>,
 }
 
 impl<E: Edge, F: RootsWorkFactory<E>> ScanWeakProcessorRoots<E, F> {
+    #[allow(unused)]
     pub fn new(factory: F) -> Self {
         Self {
             factory,
