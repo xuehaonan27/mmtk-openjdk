@@ -565,13 +565,15 @@ static inline HeapWord* alloc_fast(size_t bytes, Allocator allocator) {
     allocator = AllocatorLos;
   } else if (allocator == AllocatorDefault) {
     AllocatorSelector selector = MMTkHeap::heap()->default_allocator_selector;
-    if (selector.tag == TAG_IMMIX) {
-      auto& allocator = Thread::current()->third_party_heap_mutator.allocators.immix[selector.index];
-      auto cursor = uintptr_t(allocator.cursor);
-      auto limit = uintptr_t(allocator.limit);
-      if (cursor + bytes <= limit) {
-        allocator.cursor = (void*) (cursor + bytes);
-        return (HeapWord*) cursor;
+    if (MMTK_ENABLE_ALLOCATION_FASTPATH && !disable_fast_alloc()) {
+      if (selector.tag == TAG_IMMIX) {
+        auto& allocator = Thread::current()->third_party_heap_mutator.allocators.immix[selector.index];
+        auto cursor = uintptr_t(allocator.cursor);
+        auto limit = uintptr_t(allocator.limit);
+        if (cursor + bytes <= limit) {
+          allocator.cursor = (void*) (cursor + bytes);
+          return (HeapWord*) cursor;
+        }
       }
     }
   }
