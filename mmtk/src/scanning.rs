@@ -172,4 +172,8 @@ impl<const COMPRESSED: bool> Scanning<OpenJDK<COMPRESSED>> for VMScanning {
             ((*UPCALLS).prepare_for_roots_re_scanning)();
         }
     }
+
+    fn instance_mirror_info(o: ObjectReference) -> Option<(u64, u64)> {
+        crate::object_scanning::instance_mirror_info(unsafe { std::mem::transmute(o) })
+    }
 }

@@ -380,3 +380,13 @@ pub fn scan_object_with_klass<const COMPRESSED: bool>(
 ) {
     unsafe { oop_iterate::<COMPRESSED>(mem::transmute(object), closure, Some(klass)) }
 }
+
+pub fn instance_mirror_info(oop: Oop) -> Option<(u64, u64)> {
+    if oop.klass::<false>().id == KlassID::InstanceMirror {
+        let start = InstanceMirrorKlass::start_of_static_fields(oop);
+        let len = InstanceMirrorKlass::static_oop_field_count(oop);
+        Some((start.as_usize() as u64, len as u64))
+    } else {
+        None
+    }
+}
