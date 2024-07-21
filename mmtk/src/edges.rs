@@ -385,4 +385,9 @@ impl<const COMPRESSED: bool> MemorySlice for OpenJDKEdgeRange<COMPRESSED> {
             Range::<Address>::copy(&src.clone().into(), &tgt.clone().into())
         }
     }
+
+    fn get(&self, index: usize) -> Self::Edge {
+        let addr = self.range.start.addr + (index << OpenJDKEdge::<COMPRESSED>::LOG_BYTES_IN_EDGE);
+        addr.into()
+    }
 }
