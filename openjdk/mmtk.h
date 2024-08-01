@@ -5,6 +5,13 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#define ENABLE_CLASS_UNLOADING_LOGS false
+#if ENABLE_CLASS_UNLOADING_LOGS
+#define LOG_CLS_UNLOAD(...) log_info(gc)(__VA_ARGS__)
+#else
+#define LOG_CLS_UNLOAD(...)
+#endif // ENABLE_CLASS_UNLOADING_LOGS
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -27,6 +34,11 @@ extern const uintptr_t IMMIX_ALLOCATOR_SIZE;
 extern uint8_t CONCURRENT_MARKING_ACTIVE;
 extern uint8_t RC_ENABLED;
 extern uint8_t REQUIRES_WEAK_HANDLE_BARRIER;
+extern uint8_t FIELD_BARRIER_NO_EAGER_BRANCH;
+extern uint8_t FIELD_BARRIER_NO_ARRAYCOPY;
+extern uint8_t FIELD_BARRIER_NO_ARRAYCOPY_SLOW;
+extern uint8_t FIELD_BARRIER_NO_C2_SLOW_CALL;
+extern uint8_t FIELD_BARRIER_NO_C2_RUST_CALL;
 
 inline bool disable_fast_alloc() {
     return DISABLE_ALLOCATION_FAST_PATH != 0;
@@ -280,6 +292,7 @@ inline uint8_t mmtk_get_rc(void* o) {
 
 extern void mmtk_builder_read_env_var_settings();
 extern void mmtk_builder_set_threads(size_t value);
+extern void mmtk_builder_set_conc_threads(size_t value);
 extern void mmtk_builder_set_transparent_hugepages(bool value);
 
 #ifdef __cplusplus

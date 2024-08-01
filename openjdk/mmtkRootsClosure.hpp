@@ -8,7 +8,6 @@
 #include "utilities/globalDefinitions.hpp"
 #include "classfile/classLoaderData.inline.hpp"
 
-template <bool UNPINNED_ONLY = false>
 class MMTkRootsClosure : public OopClosure {
   EdgesClosure _edges_closure;
   void** _buffer;
@@ -19,12 +18,6 @@ class MMTkRootsClosure : public OopClosure {
   void do_oop_work(T* p, bool narrow) {
     T heap_oop = RawAccess<>::oop_load(p);
     if (!CompressedOops::is_null(heap_oop)) {
-      if (UNPINNED_ONLY) {
-        auto o = CompressedOops::decode(heap_oop);
-        if (3 == mmtk_get_rc((void*) o)) {
-          return;
-        }
-      }
       if (UseCompressedOops && !narrow) {
         guarantee((uintptr_t(p) & (1ull << 63)) == 0, "test");
         p = (T*) (uintptr_t(p) | (1ull << 63));
@@ -63,57 +56,8 @@ public:
   virtual void do_oop(narrowOop* p) { do_oop_work(p, true); }
 };
 
-template <bool UNPINNED_ONLY = false>
-class MMTkCollectRootObjects : public OopClosure {
-  EdgesClosure _edges_closure;
-  void** _buffer;
-  size_t _cap;
-  size_t _cursor;
 
-  template <class T>
-  void do_oop_work(T* p, bool narrow) {
-    T heap_oop = RawAccess<>::oop_load(p);
-    if (!CompressedOops::is_null(heap_oop)) {
-      auto o = CompressedOops::decode(heap_oop);
-      if (UNPINNED_ONLY && 3 == mmtk_get_rc((void*) o)) {
-        return;
-      }
-      _buffer[_cursor++] = (void*) o;
-      if (_cursor >= _cap) {
-        flush();
-      }
-    }
-  }
-
-  void flush() {
-    if (_cursor > 0) {
-      NewBuffer buf = _edges_closure.invoke(_buffer, _cursor, _cap);
-      _buffer = buf.buf;
-      _cap = buf.cap;
-      _cursor = 0;
-    }
-  }
-
-public:
-
-  MMTkCollectRootObjects(EdgesClosure edges_closure): _edges_closure(edges_closure), _cursor(0) {
-    NewBuffer buf = edges_closure.invoke(NULL, 0, 0);
-    _buffer = buf.buf;
-    _cap = buf.cap;
-  }
-
-  ~MMTkCollectRootObjects() {
-    if (_cursor > 0) flush();
-    if (_buffer != NULL) {
-      release_buffer(_buffer, _cursor, _cap);
-    }
-  }
-
-  virtual void do_oop(oop* p)       { do_oop_work(p, false); }
-  virtual void do_oop(narrowOop* p) { do_oop_work(p, true);  }
-};
-
-template <bool MODIFIED_ONLY, bool WEAK>
+template <bool MODIFIED_ONLY, bool WEAK, bool CLAIM = false>
 class MMTkScanCLDClosure: public CLDClosure {
  private:
   OopClosure* _oop_closure;
@@ -122,10 +66,10 @@ class MMTkScanCLDClosure: public CLDClosure {
   MMTkScanCLDClosure(OopClosure* c) : _oop_closure(c) { }
   void do_cld(ClassLoaderData* cld) {
     if (MODIFIED_ONLY) {
-      if (cld->has_modified_oops()) cld->oops_do(_oop_closure, false, /*clear_modified_oops*/true);
+      if (cld->has_modified_oops()) cld->oops_do(_oop_closure, CLAIM, /*clear_modified_oops*/true);
     } else {
       if (cld->has_modified_oops() || !WEAK)
-        cld->oops_do(_oop_closure, false, /*clear_modified_oops*/true);
+        cld->oops_do(_oop_closure, CLAIM, /*clear_modified_oops*/true);
     }
   }
 };

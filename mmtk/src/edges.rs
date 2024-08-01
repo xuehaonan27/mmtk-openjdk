@@ -1,6 +1,6 @@
 use std::{
     ops::Range,
-    sync::atomic::{AtomicBool, AtomicUsize, Ordering, AtomicU32},
+    sync::atomic::{AtomicBool, AtomicU32, AtomicUsize, Ordering},
 };
 
 use atomic::Atomic;
@@ -384,5 +384,10 @@ impl<const COMPRESSED: bool> MemorySlice for OpenJDKEdgeRange<COMPRESSED> {
             );
             Range::<Address>::copy(&src.clone().into(), &tgt.clone().into())
         }
+    }
+
+    fn get(&self, index: usize) -> Self::Edge {
+        let addr = self.range.start.addr + (index << OpenJDKEdge::<COMPRESSED>::LOG_BYTES_IN_EDGE);
+        addr.into()
     }
 }

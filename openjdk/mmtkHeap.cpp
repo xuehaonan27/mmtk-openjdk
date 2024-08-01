@@ -141,6 +141,9 @@ jint MMTkHeap::initialize() {
     Universe::set_narrow_oop_shift(mmtk_narrow_oop_shift());
     if (mmtk_verbose() > 0) fprintf(stderr, "narrow_oop_mode: %s\n", Universe::narrow_oop_mode_to_string(Universe::narrow_oop_mode()));
   }
+  if (mmtk_verbose() > 0) {
+    fprintf(stderr, "ParallelGCThreads = %d; ConcGCThreads = %d\n", ParallelGCThreads, ConcGCThreads);
+  }
 
   initialize_reserved_region(_start, _end);
 
@@ -180,6 +183,10 @@ void MMTkHeap::set_mmtk_options(bool set_defaults) {
   // if it is false, we only set options that has been overridden by command line.
   if (FLAG_IS_DEFAULT(ParallelGCThreads) == set_defaults) {
     mmtk_builder_set_threads(ParallelGCThreads);
+  }
+
+  if (FLAG_IS_DEFAULT(ConcGCThreads) == set_defaults) {
+    mmtk_builder_set_conc_threads(ConcGCThreads);
   }
 
   if (FLAG_IS_DEFAULT(UseTransparentHugePages) == set_defaults) {
@@ -305,9 +312,16 @@ bool MMTkHeap::card_mark_must_follow_store() const { //OK
 
 void MMTkHeap::collect(GCCause::Cause cause) {//later when gc is implemented in rust
   if (cause == GCCause::_gc_locker) {
+    #ifndef PRODUCT
+      auto safepoint_check_required = JNICritical_lock->_safepoint_check_required;
+      JNICritical_lock->_safepoint_check_required = Monitor::_safepoint_check_sometimes;
+    #endif
     MutexLockerEx locker(JNICritical_lock, Mutex::_no_safepoint_check_flag);
     // Notify the VMCompanionThread to trigger another VM_MMTkSTWOperation.
     JNICritical_lock->notify_all();
+    #ifndef PRODUCT
+      JNICritical_lock->_safepoint_check_required = safepoint_check_required;
+    #endif
   }
   handle_user_collection_request((MMTk_Mutator) &Thread::current()->third_party_heap_mutator, cause != GCCause::_java_lang_system_gc);
 }
@@ -479,13 +493,13 @@ void MMTkHeap::scan_string_table_roots(OopClosure& cl, OopStorage::ParState<fals
 
 void MMTkHeap::scan_class_loader_data_graph_roots(OopClosure& cl, OopClosure& weak_cl, bool scan_all_strong_roots) {
   if (!ClassUnloading) {
-      CLDToOopClosure cld_cl(&cl, false);
-      CLDToOopClosure weak_cld_cl(&weak_cl, false);
-      ClassLoaderDataGraph::roots_cld_do(&cld_cl, &weak_cld_cl);
+    CLDToOopClosure cld_cl(&cl, false);
+    CLDToOopClosure weak_cld_cl(&weak_cl, false);
+    ClassLoaderDataGraph::roots_cld_do(&cld_cl, &weak_cld_cl);
   } else if (scan_all_strong_roots) {
     // At the start of full heap trace, we want to scan all the strong CLD roots + all the modified CLDs.
-    MMTkScanCLDClosure</*MODIFIED_ONLY*/ false, /*WEAK*/ false> cld_cl(&cl);
-    MMTkScanCLDClosure</*MODIFIED_ONLY*/ true, /*WEAK*/ true> weak_cld_cl(&weak_cl);
+    MMTkScanCLDClosure</*MODIFIED_ONLY*/ false, /*WEAK*/ false, /*CLAIM*/ false> cld_cl(&cl);
+    MMTkScanCLDClosure</*MODIFIED_ONLY*/ true, /*WEAK*/ true, /*CLAIM*/ false> weak_cld_cl(&weak_cl);
     ClassLoaderDataGraph::roots_cld_do(&cld_cl, &weak_cld_cl);
   } else {
     // Normal RC pause: We simply apply increments to modified CLD roots. No decrements will be applied on these roots.

@@ -346,6 +346,7 @@ impl fmt::Debug for OopDesc {
 
 /// 32-bit compressed klass pointers
 #[repr(transparent)]
+#[allow(unused)]
 #[derive(Clone, Copy)]
 pub struct NarrowKlass(u32);
 
@@ -353,6 +354,7 @@ pub type Oop = &'static OopDesc;
 
 /// 32-bit compressed reference pointers
 #[repr(transparent)]
+#[allow(unused)]
 #[derive(Clone, Copy)]
 pub struct NarrowOop(u32);
 
@@ -447,7 +449,7 @@ impl ArrayOopDesc {
             typesize_in_bytes / BYTES_IN_WORD
         }
     }
-    fn length<const COMPRESSED: bool>(&self) -> i32 {
+    pub fn length<const COMPRESSED: bool>(&self) -> i32 {
         unsafe { (Address::from_ref(self) + Self::length_offset::<COMPRESSED>()).load::<i32>() }
     }
     fn base<const COMPRESSED: bool>(&self, ty: BasicType) -> Address {
@@ -528,7 +530,7 @@ impl ChunkedHandleList {
                 if COMPRESSED {
                     word = word | (1usize << 63);
                 }
-                closure.visit_edge(E::from_address(Address::from_usize(word)))
+                closure.visit_edge(E::from_address(Address::from_usize(word)), true)
             }
         }
     }

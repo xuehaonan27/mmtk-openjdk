@@ -82,6 +82,9 @@ void MMTkVMCompanionThread::run() {
         #endif
         MutexLockerEx locker(JNICritical_lock, Mutex::_no_safepoint_check_flag);
         while (GCLocker::is_active_and_needs_gc()) {
+          #ifndef PRODUCT
+            JNICritical_lock->_safepoint_check_required = Monitor::_safepoint_check_sometimes;
+          #endif
           JNICritical_lock->wait(true);
         }
         #ifndef PRODUCT
@@ -179,7 +182,7 @@ void MMTkVMCompanionThread::wait_for_reached(stw_state desired_state) {
 // This method will block until the GC requests start-the-world.
 void MMTkVMCompanionThread::reach_suspended_and_wait_for_resume() {
   assert(Thread::current()->is_VM_thread(), "reach_suspended_and_wait_for_resume can only be executed by the VM thread");
-  
+
   MutexLockerEx locker(_lock, Mutex::_no_safepoint_check_flag);
 
   // Tell the waiter thread that the world has stopped.

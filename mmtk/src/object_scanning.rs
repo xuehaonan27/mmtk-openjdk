@@ -6,6 +6,7 @@ use mmtk::util::opaque_pointer::*;
 use mmtk::util::{Address, ObjectReference};
 use mmtk::vm::edge_shape::Edge;
 use mmtk::vm::EdgeVisitor;
+use mmtk::vm::ObjectKind;
 use std::cell::UnsafeCell;
 use std::{mem, slice};
 
@@ -25,11 +26,10 @@ impl OopIterate for OopMapBlock {
         oop: Oop,
         closure: &mut impl EdgeVisitor<E<COMPRESSED>>,
     ) {
-        let log_bytes_in_oop = if COMPRESSED { 2 } else { 3 };
         let start = oop.get_field_address(self.offset);
         for i in 0..self.count as usize {
-            let edge = (start + (i << log_bytes_in_oop)).into();
-            closure.visit_edge(edge);
+            let edge = (start + (i << E::<COMPRESSED>::LOG_BYTES_IN_EDGE)).into();
+            closure.visit_edge(edge, false);
         }
     }
 }
@@ -80,13 +80,13 @@ impl OopIterate for InstanceMirrorKlass {
             let start: *const NarrowOop = start.to_ptr::<NarrowOop>();
             let slice = unsafe { slice::from_raw_parts(start, len as _) };
             for narrow_oop in slice {
-                closure.visit_edge(narrow_oop.slot().into());
+                closure.visit_edge(narrow_oop.slot().into(), false);
             }
         } else {
             let start: *const Oop = start.to_ptr::<Oop>();
             let slice = unsafe { slice::from_raw_parts(start, len as _) };
             for oop in slice {
-                closure.visit_edge(Address::from_ref(oop as &Oop).into());
+                closure.visit_edge(Address::from_ref(oop as &Oop).into(), false);
             }
         }
     }
@@ -123,11 +123,11 @@ impl OopIterate for ObjArrayKlass {
         let array = unsafe { oop.as_array_oop() };
         if COMPRESSED {
             for narrow_oop in unsafe { array.data::<NarrowOop, COMPRESSED>(BasicType::T_OBJECT) } {
-                closure.visit_edge(narrow_oop.slot().into());
+                closure.visit_edge(narrow_oop.slot().into(), false);
             }
         } else {
             for oop in unsafe { array.data::<Oop, COMPRESSED>(BasicType::T_OBJECT) } {
-                closure.visit_edge(Address::from_ref(oop as &Oop).into());
+                closure.visit_edge(Address::from_ref(oop as &Oop).into(), false);
             }
         }
     }
@@ -205,9 +205,9 @@ impl InstanceRefKlass {
         closure: &mut impl EdgeVisitor<E<COMPRESSED>>,
     ) {
         let referent_addr = Self::referent_address::<COMPRESSED>(oop);
-        closure.visit_edge(referent_addr);
+        closure.visit_edge(referent_addr, false);
         let discovered_addr = Self::discovered_address::<COMPRESSED>(oop);
-        closure.visit_edge(discovered_addr);
+        closure.visit_edge(discovered_addr, false);
     }
     fn discover_reference<const COMPRESSED: bool>(oop: Oop, rt: ReferenceType) -> bool {
         // Do not discover new refs during reference processing.
@@ -271,23 +271,15 @@ fn oop_iterate<const COMPRESSED: bool>(
         oop.klass::<COMPRESSED>()
     };
     let klass_id = klass.id;
-    assert!(
-        klass_id as i32 >= 0 && (klass_id as i32) < 6,
-        "Invalid klass-id: {:x} for oop: {:x}",
-        klass_id as i32,
-        unsafe { mem::transmute::<Oop, ObjectReference>(oop) }
-    );
+    // assert!(
+    //     klass_id as i32 >= 0 && (klass_id as i32) < 6,
+    //     "Invalid klass-id: {:x} for oop: {:x}",
+    //     klass_id as i32,
+    //     unsafe { mem::transmute::<Oop, ObjectReference>(oop) }
+    // );
     match klass_id {
         KlassID::Instance => {
             let instance_klass = unsafe { klass.cast::<InstanceKlass>() };
-            instance_klass.oop_iterate::<COMPRESSED>(oop, closure);
-        }
-        KlassID::InstanceClassLoader => {
-            let instance_klass = unsafe { klass.cast::<InstanceClassLoaderKlass>() };
-            instance_klass.oop_iterate::<COMPRESSED>(oop, closure);
-        }
-        KlassID::InstanceMirror => {
-            let instance_klass = unsafe { klass.cast::<InstanceMirrorKlass>() };
             instance_klass.oop_iterate::<COMPRESSED>(oop, closure);
         }
         KlassID::ObjArray => {
@@ -296,6 +288,14 @@ fn oop_iterate<const COMPRESSED: bool>(
         }
         KlassID::TypeArray => {
             // Skip scanning primitive arrays as they contain no reference fields.
+        }
+        KlassID::InstanceClassLoader => {
+            let instance_klass = unsafe { klass.cast::<InstanceClassLoaderKlass>() };
+            instance_klass.oop_iterate::<COMPRESSED>(oop, closure);
+        }
+        KlassID::InstanceMirror => {
+            let instance_klass = unsafe { klass.cast::<InstanceMirrorKlass>() };
+            instance_klass.oop_iterate::<COMPRESSED>(oop, closure);
         }
         KlassID::InstanceRef => {
             let instance_klass = unsafe { klass.cast::<InstanceRefKlass>() };
@@ -331,6 +331,17 @@ pub fn is_val_array<const COMPRESSED: bool>(oop: Oop) -> bool {
     oop.klass::<COMPRESSED>().id == KlassID::TypeArray
 }
 
+pub fn get_obj_kind<const COMPRESSED: bool>(oop: Oop) -> ObjectKind {
+    let cls_id = oop.klass::<COMPRESSED>().id;
+    match cls_id {
+        KlassID::TypeArray => ObjectKind::ValArray,
+        KlassID::ObjArray => {
+            ObjectKind::ObjArray(unsafe { oop.as_array_oop().length::<COMPRESSED>() as u32 })
+        }
+        _ => ObjectKind::Scalar,
+    }
+}
+
 pub fn obj_array_data<const COMPRESSED: bool>(oop: Oop) -> crate::OpenJDKEdgeRange<COMPRESSED> {
     unsafe {
         let array = oop.as_array_oop();
@@ -350,7 +361,7 @@ pub unsafe extern "C" fn scan_object_fn<
 ) {
     let ptr: *mut u8 = CLOSURE.with(|x| *x.get());
     let closure = &mut *(ptr as *mut V);
-    closure.visit_edge(edge.into());
+    closure.visit_edge(edge.into(), false);
 }
 
 pub fn scan_object<const COMPRESSED: bool>(

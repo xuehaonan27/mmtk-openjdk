@@ -7,6 +7,7 @@ use mmtk::scheduler::RootKind;
 use mmtk::scheduler::WorkBucketStage;
 use mmtk::util::opaque_pointer::*;
 use mmtk::util::{Address, ObjectReference};
+use mmtk::vm::ObjectKind;
 use mmtk::vm::{EdgeVisitor, RootsWorkFactory, Scanning};
 use mmtk::Mutator;
 use mmtk::MutatorContext;
@@ -81,6 +82,10 @@ impl<const COMPRESSED: bool> Scanning<OpenJDK<COMPRESSED>> for VMScanning {
         crate::object_scanning::is_val_array::<COMPRESSED>(unsafe { std::mem::transmute(o) })
     }
 
+    fn get_obj_kind(o: ObjectReference) -> ObjectKind {
+        crate::object_scanning::get_obj_kind::<COMPRESSED>(unsafe { std::mem::transmute(o) })
+    }
+
     fn notify_initial_thread_scan_complete(_partial_scan: bool, _tls: VMWorkerThread) {
         // unimplemented!()
         // TODO
@@ -143,6 +148,13 @@ impl<const COMPRESSED: bool> Scanning<OpenJDK<COMPRESSED>> for VMScanning {
             .requires_weak_root_scanning()
         {
             w.push(Box::new(ScanNewWeakHandleRoots::new(factory.clone())) as _);
+        }
+        if crate::singleton::<COMPRESSED>()
+            .get_plan()
+            .current_gc_should_perform_class_unloading()
+        {
+            w.push(Box::new(ScanWeakStringTableRoots::new(factory.clone())) as _);
+            w.push(Box::new(ScanWeakCodeCacheRoots::new(factory.clone())) as _);
         }
         memory_manager::add_work_packets(
             crate::singleton::<COMPRESSED>(),

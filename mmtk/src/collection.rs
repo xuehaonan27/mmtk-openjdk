@@ -1,3 +1,4 @@
+use mmtk::gc_log;
 use mmtk::scheduler::{GCWorker, ProcessEdgesWork};
 use mmtk::util::alloc::AllocationError;
 use mmtk::util::opaque_pointer::*;
@@ -108,8 +109,10 @@ impl<const COMPRESSED: bool> Collection<OpenJDK<COMPRESSED>> for VMCollection {
     fn vm_release(do_unloading: bool) {
         unsafe {
             if do_unloading {
+                gc_log!("    - unload_classes");
                 ((*UPCALLS).unload_classes)();
             }
+            gc_log!("    - gc_epilogue");
             ((*UPCALLS).gc_epilogue)();
         }
     }
