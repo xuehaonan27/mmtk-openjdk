@@ -603,7 +603,7 @@ pub extern "C" fn mmtk_get_forwarded_ref(object: ObjectReference) -> ObjectRefer
 
 thread_local! {
     /// Cache all the pointers reported by the current thread.
-    static NMETHOD_SLOTS: RefCell<Vec<Address>> = RefCell::new(vec![]);
+    static NMETHOD_SLOTS: RefCell<Vec<Address>> = const { RefCell::new(vec![]) };
 }
 
 /// Report a list of pointers in nmethod to mmtk.
