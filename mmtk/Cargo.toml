@@ -1,6 +1,6 @@
 [package]
 name = "mmtk_openjdk"
-version = "0.22.0"
+version = "0.23.0"
 authors = [" <>"]
 rust-version = "1.70.0"
 build = "build.rs"
@@ -41,7 +41,7 @@ memoffset = "0.9.0"
 # - change branch
 # - change repo name
 # But other changes including adding/removing whitespaces in commented lines may break the CI.
-mmtk = { git = "https://github.com/wenyuzhao/mmtk-core.git", rev = "de15100e840b4713a39f01f1dff6f5026c20e542" }
+mmtk = { git = "https://github.com/wenyuzhao/mmtk-core.git", rev = "4160431da6c54df0b25eee7d58a6f341166d3bd3" }
 # Uncomment the following to build locally
 # mmtk = { path = "../../mmtk-core" }
 
@@ -54,7 +54,7 @@ release_debug_assertions = []
 mmtk_extreme_assertions = ["mmtk/extreme_assertions"]
 nogc_lock_free = ["mmtk/nogc_lock_free"]
 nogc_no_zeroing = ["mmtk/nogc_no_zeroing"]
-# Use the env var VO_BIT=1 when building OpenJDK so the fastpath for setting the alloc bit will be compiled in.
+# Use the env var MMTK_VO_BIT=1 when building OpenJDK so the fastpath for setting the alloc bit will be compiled in.
 # See README.
 vo_bit = ["mmtk/vo_bit"]
 no_fast_alloc = []
