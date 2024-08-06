@@ -138,38 +138,61 @@ impl<const COMPRESSED: bool> OpenJDKEdge<COMPRESSED> {
     }
 
     /// encode an object pointer to its u32 compressed form
-    fn compress(o: ObjectReference) -> u32 {
-        if o.is_null() {
-            0u32
-        } else {
-            ((o.to_raw_address() - BASE.load(Ordering::Relaxed)) >> SHIFT.load(Ordering::Relaxed))
-                as u32
-        }
+    fn compress(o: Option<ObjectReference>) -> u32 {
+        let Some(o) = o else {
+            return 0;
+        };
+        ((o.to_raw_address() - BASE.load(Ordering::Relaxed)) >> SHIFT.load(Ordering::Relaxed))
+            as u32
     }
 
     /// decode an object pointer from its u32 compressed form
-    fn decompress(v: u32) -> ObjectReference {
+    fn decompress(v: u32) -> Option<ObjectReference> {
         if v == 0 {
-            ObjectReference::NULL
+            None
         } else {
-            ObjectReference::from_raw_address(
-                BASE.load(Ordering::Relaxed) + ((v as usize) << SHIFT.load(Ordering::Relaxed)),
-            )
+            // Note on `unsafe`: `v` must be positive here, so the result must be positive.
+            let objref = unsafe {
+                ObjectReference::from_raw_address_unchecked(
+                    BASE.load(Ordering::Relaxed) + ((v as usize) << SHIFT.load(Ordering::Relaxed)),
+                )
+            };
+            Some(objref)
+        }
+    }
+
+    /// Store a null reference in the slot.
+    pub fn store_null(&self) {
+        if cfg!(any(target_arch = "x86", target_arch = "x86_64")) {
+            if COMPRESSED {
+                if self.is_compressed() {
+                    self.x86_write_unaligned::<u32, true>(0)
+                } else {
+                    self.x86_write_unaligned::<Address, true>(Address::ZERO)
+                }
+            } else {
+                self.x86_write_unaligned::<Address, false>(Address::ZERO)
+            }
+        } else {
+            debug_assert!(!COMPRESSED);
+            unsafe { self.addr.store(0) }
         }
     }
 }
 
 impl<const COMPRESSED: bool> Edge for OpenJDKEdge<COMPRESSED> {
-    fn load(&self) -> ObjectReference {
+    fn load(&self) -> Option<ObjectReference> {
         if cfg!(any(target_arch = "x86", target_arch = "x86_64")) {
             if COMPRESSED {
                 if self.is_compressed() {
                     Self::decompress(self.x86_read_unaligned::<u32, true>())
                 } else {
-                    self.x86_read_unaligned::<ObjectReference, true>()
+                    let addr = self.x86_read_unaligned::<Address, true>();
+                    ObjectReference::from_raw_address(addr)
                 }
             } else {
-                self.x86_read_unaligned::<ObjectReference, false>()
+                let addr = self.x86_read_unaligned::<Address, false>();
+                ObjectReference::from_raw_address(addr)
             }
         } else {
             debug_assert!(!COMPRESSED);
@@ -177,16 +200,16 @@ impl<const COMPRESSED: bool> Edge for OpenJDKEdge<COMPRESSED> {
         }
     }
 
-    fn store(&self, object: ObjectReference) {
+    fn store(&self, object: Option<ObjectReference>) {
         if cfg!(any(target_arch = "x86", target_arch = "x86_64")) {
             if COMPRESSED {
                 if self.is_compressed() {
                     self.x86_write_unaligned::<u32, true>(Self::compress(object))
                 } else {
-                    self.x86_write_unaligned::<ObjectReference, true>(object)
+                    self.x86_write_unaligned::<Option<ObjectReference>, true>(object)
                 }
             } else {
-                self.x86_write_unaligned::<ObjectReference, false>(object)
+                self.x86_write_unaligned::<Option<ObjectReference>, false>(object)
             }
         } else {
             debug_assert!(!COMPRESSED);
@@ -208,11 +231,11 @@ impl<const COMPRESSED: bool> Edge for OpenJDKEdge<COMPRESSED> {
 
     fn compare_exchange(
         &self,
-        old_object: ObjectReference,
-        new_object: ObjectReference,
+        old_object: Option<ObjectReference>,
+        new_object: Option<ObjectReference>,
         success: Ordering,
         failure: Ordering,
-    ) -> Result<ObjectReference, ObjectReference> {
+    ) -> Result<Option<ObjectReference>, Option<ObjectReference>> {
         if COMPRESSED {
             if self.is_compressed() {
                 let old_value = Self::compress(old_object);
@@ -227,26 +250,33 @@ impl<const COMPRESSED: bool> Edge for OpenJDKEdge<COMPRESSED> {
                 }
             } else {
                 let slot = self.untagged_address();
+                let old_value = old_object
+                    .map(|o| o.to_raw_address().as_usize())
+                    .unwrap_or(0);
+                let new_value = new_object
+                    .map(|o| o.to_raw_address().as_usize())
+                    .unwrap_or(0);
                 unsafe {
-                    match slot.compare_exchange::<AtomicUsize>(
-                        old_object.to_raw_address().as_usize(),
-                        new_object.to_raw_address().as_usize(),
-                        success,
-                        failure,
-                    ) {
+                    match slot
+                        .compare_exchange::<AtomicUsize>(old_value, new_value, success, failure)
+                    {
                         Ok(v) => Ok(ObjectReference::from_raw_address(Address::from_usize(v))),
                         Err(v) => Err(ObjectReference::from_raw_address(Address::from_usize(v))),
                     }
                 }
             }
         } else {
+            let old_value = old_object
+                .map(|o| o.to_raw_address().as_usize())
+                .unwrap_or(0);
+            let new_value = new_object
+                .map(|o| o.to_raw_address().as_usize())
+                .unwrap_or(0);
             unsafe {
-                match self.addr.compare_exchange::<AtomicUsize>(
-                    old_object.to_raw_address().as_usize(),
-                    new_object.to_raw_address().as_usize(),
-                    success,
-                    failure,
-                ) {
+                match self
+                    .addr
+                    .compare_exchange::<AtomicUsize>(old_value, new_value, success, failure)
+                {
                     Ok(v) => Ok(ObjectReference::from_raw_address(Address::from_usize(v))),
                     Err(v) => Err(ObjectReference::from_raw_address(Address::from_usize(v))),
                 }

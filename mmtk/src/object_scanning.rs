@@ -217,9 +217,11 @@ impl InstanceRefKlass {
         }
         // Do not discover if the referent is live.
         let addr = InstanceRefKlass::referent_address::<COMPRESSED>(oop);
-        let referent: ObjectReference = addr.load();
+        let Some(referent) = addr.load() else {
+            return false;
+        };
         // Skip live or null referents
-        if referent.is_reachable::<OpenJDK<COMPRESSED>>() || referent.is_null() {
+        if referent.is_reachable::<OpenJDK<COMPRESSED>>() {
             return false;
         }
         // Skip young referents

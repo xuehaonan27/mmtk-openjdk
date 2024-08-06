@@ -9,6 +9,7 @@ use mmtk::memory_manager;
 use mmtk::plan::BarrierSelector;
 use mmtk::scheduler::GCWorker;
 use mmtk::util::alloc::AllocatorSelector;
+use mmtk::util::api_util::NullableObjectReference;
 use mmtk::util::opaque_pointer::*;
 use mmtk::util::{Address, ObjectReference};
 use mmtk::AllocationSemantics;
@@ -450,14 +451,14 @@ pub extern "C" fn mmtk_object_reference_clone_pre(
 #[no_mangle]
 pub extern "C" fn mmtk_object_reference_write_pre(
     mutator: *mut libc::c_void,
-    src: ObjectReference,
+    src: NullableObjectReference,
     slot: Address,
-    target: ObjectReference,
+    target: NullableObjectReference,
 ) {
     with_mutator!(|mutator| {
         mutator
             .barrier()
-            .object_reference_write_pre(src, slot.into(), target);
+            .object_reference_write_pre(src.into(), slot.into(), target.into());
     })
 }
 
@@ -465,14 +466,14 @@ pub extern "C" fn mmtk_object_reference_write_pre(
 #[no_mangle]
 pub extern "C" fn mmtk_object_reference_write_post(
     mutator: *mut libc::c_void,
-    src: ObjectReference,
+    src: NullableObjectReference,
     slot: Address,
-    target: ObjectReference,
+    target: NullableObjectReference,
 ) {
     with_mutator!(|mutator| {
         mutator
             .barrier()
-            .object_reference_write_post(src, slot.into(), target);
+            .object_reference_write_post(src.into(), slot.into(), target.into());
     })
 }
 
@@ -480,14 +481,14 @@ pub extern "C" fn mmtk_object_reference_write_post(
 #[no_mangle]
 pub extern "C" fn mmtk_object_reference_write_slow(
     mutator: *mut libc::c_void,
-    src: ObjectReference,
+    src: NullableObjectReference,
     slot: Address,
-    target: ObjectReference,
+    target: NullableObjectReference,
 ) {
     with_mutator!(|mutator| {
         mutator
             .barrier()
-            .object_reference_write_slow(src, slot.into(), target);
+            .object_reference_write_slow(src.into(), slot.into(), target.into());
     })
 }
 
@@ -544,22 +545,18 @@ pub extern "C" fn add_finalizer(_object: ObjectReference) {
 }
 
 #[no_mangle]
-pub extern "C" fn get_finalized_object() -> ObjectReference {
-    with_singleton!(|singleton| {
-        match memory_manager::get_finalized_object(singleton) {
-            Some(obj) => obj,
-            None => ObjectReference::NULL,
-        }
-    })
+pub extern "C" fn get_finalized_object() -> NullableObjectReference {
+    with_singleton!(|singleton| memory_manager::get_finalized_object(singleton).into())
 }
 
 /// Test if an object is live at the end of a GC.
 /// Note: only call this method after the liveness tracing and before gc release.
 #[no_mangle]
-pub extern "C" fn mmtk_is_live(object: ObjectReference) -> usize {
-    if object.is_null() {
+pub extern "C" fn mmtk_is_live(object: NullableObjectReference) -> usize {
+    let o: Option<ObjectReference> = object.into();
+    let Some(object) = o else {
         return 0;
-    }
+    };
     debug_assert!(
         object.to_raw_address().is_mapped(),
         "{:?} is not mapped",
@@ -570,11 +567,17 @@ pub extern "C" fn mmtk_is_live(object: ObjectReference) -> usize {
 
 /// If the object is non-null and forwarded, return the forwarded pointer. Otherwise, return the original pointer.
 #[no_mangle]
-pub extern "C" fn mmtk_get_forwarded_ref(object: ObjectReference) -> ObjectReference {
-    if object.is_null() {
-        return object;
+pub extern "C" fn mmtk_get_forwarded_ref(
+    object: NullableObjectReference,
+) -> NullableObjectReference {
+    let o: Option<ObjectReference> = object.into();
+    let Some(o) = o else {
+        return ObjectReference::NULL.into();
+    };
+    match o.get_forwarded_object2() {
+        Some(o) => Some(o).into(),
+        None => object,
     }
-    object.get_forwarded_object2().unwrap_or(object)
 }
 
 thread_local! {
