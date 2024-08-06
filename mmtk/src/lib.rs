@@ -8,8 +8,6 @@ use std::collections::HashMap;
 use std::ptr::null_mut;
 use std::sync::Mutex;
 
-pub use edges::use_compressed_oops;
-use edges::{OpenJDKEdge, OpenJDKEdgeRange};
 use libc::{c_char, c_void, uintptr_t};
 use mmtk::plan::lxr::LXR;
 use mmtk::util::alloc::AllocationError;
@@ -17,21 +15,23 @@ use mmtk::util::constants::LOG_BYTES_IN_GBYTE;
 use mmtk::util::heap::vm_layout::{VMLayout, BYTES_IN_CHUNK};
 use mmtk::util::{conversions, opaque_pointer::*};
 use mmtk::util::{Address, ObjectReference};
-use mmtk::vm::edge_shape::Edge;
+use mmtk::vm::slot::Slot;
 use mmtk::vm::VMBinding;
 use mmtk::{MMTKBuilder, Mutator, MMTK};
+pub use slots::use_compressed_oops;
+use slots::{OpenJDKSlot, OpenJDKSlotRange};
 
 mod abi;
 pub mod active_plan;
 pub mod api;
 mod build_info;
 pub mod collection;
-mod edges;
 mod gc_work;
 pub mod object_model;
 mod object_scanning;
 pub mod reference_glue;
 pub mod scanning;
+mod slots;
 pub(crate) mod vm_metadata;
 
 #[repr(C)]
@@ -70,9 +70,9 @@ impl MutatorClosure {
     }
 }
 
-/// A closure for reporting root edges.  The C++ code should pass `data` back as the last argument.
+/// A closure for reporting root slots.  The C++ code should pass `data` back as the last argument.
 #[repr(C)]
-pub struct EdgesClosure {
+pub struct SlotsClosure {
     pub func: extern "C" fn(
         buf: *mut Address,
         size: usize,
@@ -113,24 +113,24 @@ pub struct OpenJDK_Upcalls {
     pub referent_offset: extern "C" fn() -> i32,
     pub discovered_offset: extern "C" fn() -> i32,
     pub dump_object_string: extern "C" fn(object: ObjectReference) -> *const c_char,
-    pub scan_roots_in_all_mutator_threads: extern "C" fn(closure: EdgesClosure),
-    pub scan_roots_in_mutator_thread: extern "C" fn(closure: EdgesClosure, tls: VMMutatorThread),
+    pub scan_roots_in_all_mutator_threads: extern "C" fn(closure: SlotsClosure),
+    pub scan_roots_in_mutator_thread: extern "C" fn(closure: SlotsClosure, tls: VMMutatorThread),
     pub scan_multiple_thread_roots:
-        extern "C" fn(closure: EdgesClosure, ptr: OpaquePointer, len: usize),
-    pub scan_universe_roots: extern "C" fn(closure: EdgesClosure),
-    pub scan_jni_handle_roots: extern "C" fn(closure: EdgesClosure),
-    pub scan_object_synchronizer_roots: extern "C" fn(closure: EdgesClosure),
-    pub scan_management_roots: extern "C" fn(closure: EdgesClosure),
-    pub scan_jvmti_export_roots: extern "C" fn(closure: EdgesClosure),
-    pub scan_aot_loader_roots: extern "C" fn(closure: EdgesClosure),
-    pub scan_system_dictionary_roots: extern "C" fn(closure: EdgesClosure),
-    pub scan_code_cache_roots: extern "C" fn(closure: EdgesClosure),
-    pub scan_string_table_roots: extern "C" fn(closure: EdgesClosure, rc_non_stuck_objs_only: bool),
+        extern "C" fn(closure: SlotsClosure, ptr: OpaquePointer, len: usize),
+    pub scan_universe_roots: extern "C" fn(closure: SlotsClosure),
+    pub scan_jni_handle_roots: extern "C" fn(closure: SlotsClosure),
+    pub scan_object_synchronizer_roots: extern "C" fn(closure: SlotsClosure),
+    pub scan_management_roots: extern "C" fn(closure: SlotsClosure),
+    pub scan_jvmti_export_roots: extern "C" fn(closure: SlotsClosure),
+    pub scan_aot_loader_roots: extern "C" fn(closure: SlotsClosure),
+    pub scan_system_dictionary_roots: extern "C" fn(closure: SlotsClosure),
+    pub scan_code_cache_roots: extern "C" fn(closure: SlotsClosure),
+    pub scan_string_table_roots: extern "C" fn(closure: SlotsClosure, rc_non_stuck_objs_only: bool),
     pub scan_class_loader_data_graph_roots:
-        extern "C" fn(closure: EdgesClosure, weak_closure: EdgesClosure, scan_weak: bool),
+        extern "C" fn(closure: SlotsClosure, weak_closure: SlotsClosure, scan_weak: bool),
     pub scan_weak_processor_roots:
-        extern "C" fn(closure: EdgesClosure, rc_non_stuck_objs_only: bool),
-    pub scan_vm_thread_roots: extern "C" fn(closure: EdgesClosure),
+        extern "C" fn(closure: SlotsClosure, rc_non_stuck_objs_only: bool),
+    pub scan_vm_thread_roots: extern "C" fn(closure: SlotsClosure),
     pub number_of_mutators: extern "C" fn() -> usize,
     pub schedule_finalizer: extern "C" fn(),
     pub prepare_for_roots_re_scanning: extern "C" fn(),
@@ -217,8 +217,8 @@ impl<const COMPRESSED: bool> VMBinding for OpenJDK<COMPRESSED> {
     type VMActivePlan = active_plan::VMActivePlan;
     type VMReferenceGlue = reference_glue::VMReferenceGlue;
 
-    type VMEdge = OpenJDKEdge<COMPRESSED>;
-    type VMMemorySlice = OpenJDKEdgeRange<COMPRESSED>;
+    type VMSlot = OpenJDKSlot<COMPRESSED>;
+    type VMMemorySlice = OpenJDKSlotRange<COMPRESSED>;
 
     const MIN_ALIGNMENT: usize = 8;
     const MAX_ALIGNMENT: usize = 8;
@@ -239,7 +239,7 @@ lazy_static! {
         set_compressed_pointer_vm_layout(&mut builder);
         let ret = mmtk::memory_manager::mmtk_init(&builder);
         MMTK_INITIALIZED.store(true, std::sync::atomic::Ordering::SeqCst);
-        edges::initialize_compressed_oops_base_and_shift();
+        slots::initialize_compressed_oops_base_and_shift();
         unsafe {
             RC_ENABLED = ret
                 .get_plan()

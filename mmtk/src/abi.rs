@@ -1,13 +1,13 @@
 use super::UPCALLS;
-use crate::Edge;
-use crate::OpenJDKEdge;
+use crate::OpenJDKSlot;
+use crate::Slot;
 use atomic::Atomic;
 use atomic::Ordering;
 use mmtk::util::constants::*;
 use mmtk::util::conversions;
 use mmtk::util::ObjectReference;
 use mmtk::util::{Address, OpaquePointer};
-use mmtk::vm::EdgeVisitor;
+use mmtk::vm::SlotVisitor;
 use std::ffi::CStr;
 use std::fmt;
 use std::sync::atomic::AtomicPtr;
@@ -286,10 +286,10 @@ impl InstanceRefKlass {
         }
         *DISCOVERED_OFFSET
     }
-    pub fn referent_address<const COMPRESSED: bool>(oop: Oop) -> OpenJDKEdge<COMPRESSED> {
+    pub fn referent_address<const COMPRESSED: bool>(oop: Oop) -> OpenJDKSlot<COMPRESSED> {
         oop.get_field_address(Self::referent_offset()).into()
     }
-    pub fn discovered_address<const COMPRESSED: bool>(oop: Oop) -> OpenJDKEdge<COMPRESSED> {
+    pub fn discovered_address<const COMPRESSED: bool>(oop: Oop) -> OpenJDKSlot<COMPRESSED> {
         oop.get_field_address(Self::discovered_offset()).into()
     }
 }
@@ -481,10 +481,10 @@ impl ArrayOopDesc {
     pub unsafe fn slice<const COMPRESSED: bool>(
         &self,
         ty: BasicType,
-    ) -> crate::OpenJDKEdgeRange<COMPRESSED> {
+    ) -> crate::OpenJDKSlotRange<COMPRESSED> {
         let base = self.base::<COMPRESSED>(ty);
         let start = base;
-        let lshift = OpenJDKEdge::<COMPRESSED>::LOG_BYTES_IN_EDGE;
+        let lshift = OpenJDKSlot::<COMPRESSED>::LOG_BYTES_IN_SLOT;
         let end = base + ((self.length::<COMPRESSED>() as usize) << lshift);
         (start..end).into()
     }
@@ -528,7 +528,7 @@ struct ChunkedHandleList {
 }
 
 impl ChunkedHandleList {
-    unsafe fn oops_do_chunk<E: Edge, V: EdgeVisitor<E>, const COMPRESSED: bool>(
+    unsafe fn oops_do_chunk<S: Slot, V: SlotVisitor<S>, const COMPRESSED: bool>(
         &self,
         chunk: &'static Chunk,
         size: u32,
@@ -541,12 +541,12 @@ impl ChunkedHandleList {
                 if COMPRESSED {
                     word = word | (1usize << 63);
                 }
-                closure.visit_edge(E::from_address(Address::from_usize(word)), true)
+                closure.visit_slot(S::from_address(Address::from_usize(word)), true)
             }
         }
     }
 
-    fn oops_do<E: Edge, V: EdgeVisitor<E>, const COMPRESSED: bool>(&self, closure: &mut V) {
+    fn oops_do<S: Slot, V: SlotVisitor<S>, const COMPRESSED: bool>(&self, closure: &mut V) {
         let head = self.head.load(Ordering::Acquire);
         if !head.is_null() {
             let head = unsafe { &*head };
@@ -591,7 +591,7 @@ impl ClassLoaderData {
             .is_ok()
     }
 
-    pub fn oops_do<E: Edge, V: EdgeVisitor<E>, const COMPRESSED: bool>(&self, closure: &mut V) {
+    pub fn oops_do<S: Slot, V: SlotVisitor<S>, const COMPRESSED: bool>(&self, closure: &mut V) {
         if closure.should_claim_clds() && !self.claim() {
             return;
         }

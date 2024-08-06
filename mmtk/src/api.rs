@@ -1,5 +1,5 @@
 use crate::abi::Oop;
-use crate::edges::OpenJDKEdge;
+use crate::slots::OpenJDKSlot;
 use crate::OpenJDK;
 use crate::OpenJDK_Upcalls;
 use crate::BUILDER;
@@ -277,7 +277,7 @@ pub extern "C" fn handle_user_collection_request(tls: VMMutatorThread, force: bo
 
 #[no_mangle]
 pub extern "C" fn mmtk_enable_compressed_oops() {
-    crate::edges::enable_compressed_oops()
+    crate::slots::enable_compressed_oops()
 }
 
 #[no_mangle]
@@ -405,13 +405,13 @@ pub extern "C" fn process_bulk(options: *const c_char) -> bool {
 #[no_mangle]
 pub extern "C" fn mmtk_narrow_oop_base() -> Address {
     debug_assert!(crate::use_compressed_oops());
-    crate::edges::BASE.load(Ordering::Relaxed)
+    crate::slots::BASE.load(Ordering::Relaxed)
 }
 
 #[no_mangle]
 pub extern "C" fn mmtk_narrow_oop_shift() -> usize {
     debug_assert!(crate::use_compressed_oops());
-    crate::edges::SHIFT.load(Ordering::Relaxed)
+    crate::slots::SHIFT.load(Ordering::Relaxed)
 }
 
 #[no_mangle]
@@ -492,11 +492,11 @@ pub extern "C" fn mmtk_object_reference_write_slow(
     })
 }
 
-fn log_bytes_in_edge() -> usize {
+fn log_bytes_in_slot() -> usize {
     if crate::use_compressed_oops() {
-        OpenJDKEdge::<true>::LOG_BYTES_IN_EDGE
+        OpenJDKSlot::<true>::LOG_BYTES_IN_SLOT
     } else {
-        OpenJDKEdge::<false>::LOG_BYTES_IN_EDGE
+        OpenJDKSlot::<false>::LOG_BYTES_IN_SLOT
     }
 }
 
@@ -508,7 +508,7 @@ pub extern "C" fn mmtk_array_copy_pre(
     dst: Address,
     count: usize,
 ) {
-    let bytes = count << log_bytes_in_edge();
+    let bytes = count << log_bytes_in_slot();
     with_mutator!(|mutator| {
         mutator
             .barrier()
@@ -525,7 +525,7 @@ pub extern "C" fn mmtk_array_copy_post(
     count: usize,
 ) {
     with_mutator!(|mutator| {
-        let bytes = count << log_bytes_in_edge();
+        let bytes = count << log_bytes_in_slot();
         mutator
             .barrier()
             .memory_region_copy_post((src..src + bytes).into(), (dst..dst + bytes).into());

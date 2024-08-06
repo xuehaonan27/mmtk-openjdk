@@ -4,20 +4,20 @@ use std::sync::atomic::AtomicBool;
 use std::sync::Mutex;
 
 use crate::abi::{InstanceRefKlass, Oop, ReferenceType};
-use crate::edges::OpenJDKEdge;
+use crate::slots::OpenJDKSlot;
 use crate::OpenJDK;
 use atomic::Ordering;
 use mmtk::scheduler::{GCWork, GCWorker, ProcessEdgesWork, WorkBucketStage};
 use mmtk::util::opaque_pointer::VMWorkerThread;
 use mmtk::util::ObjectReference;
-use mmtk::vm::edge_shape::Edge;
+use mmtk::vm::slot::Slot;
 use mmtk::vm::ReferenceGlue;
 use mmtk::MMTK;
 
 fn set_referent<const COMPRESSED: bool>(reff: ObjectReference, referent: Option<ObjectReference>) {
     let oop = Oop::from(reff);
     let slot = InstanceRefKlass::referent_address::<COMPRESSED>(oop);
-    // mmtk::plan::lxr::record_edge_for_validation(slot, referent);
+    mmtk::plan::lxr::record_slot_for_validation(slot, referent);
     slot.store(referent)
 }
 
@@ -28,7 +28,7 @@ fn get_referent<const COMPRESSED: bool>(object: ObjectReference) -> Option<Objec
 
 fn get_next_reference_slot<const COMPRESSED: bool>(
     object: ObjectReference,
-) -> OpenJDKEdge<COMPRESSED> {
+) -> OpenJDKSlot<COMPRESSED> {
     let oop = Oop::from(object);
     InstanceRefKlass::discovered_address::<COMPRESSED>(oop)
 }
@@ -42,7 +42,7 @@ fn set_next_reference<const COMPRESSED: bool>(
     next: Option<ObjectReference>,
 ) {
     let slot = get_next_reference_slot::<COMPRESSED>(object);
-    // mmtk::plan::lxr::record_edge_for_validation(slot, next);
+    mmtk::plan::lxr::record_slot_for_validation(slot, next);
     slot.store(next)
 }
 
