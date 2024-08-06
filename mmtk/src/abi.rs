@@ -190,24 +190,29 @@ impl InstanceKlass {
     const HEADER_SIZE: usize = mem::size_of::<Self>() / BYTES_IN_WORD;
     const VTABLE_START_OFFSET: usize = Self::HEADER_SIZE * BYTES_IN_WORD;
     const MISC_IS_ANONYMOUS: u16 = 1 << 5;
+
     fn start_of_vtable(&self) -> *const usize {
         (Address::from_ref(self) + Self::VTABLE_START_OFFSET).to_ptr()
     }
+
     fn start_of_itable(&self) -> *const usize {
         unsafe { self.start_of_vtable().add(self.klass.vtable_len as _) }
     }
+
     fn nonstatic_oop_map_count(&self) -> usize {
         let oop_map_block_size = mem::size_of::<OopMapBlock>();
         let oop_map_block_size_up =
             mmtk::util::conversions::raw_align_up(oop_map_block_size, BYTES_IN_WORD);
         self.nonstatic_oop_map_size as usize / (oop_map_block_size_up >> LOG_BYTES_IN_WORD)
     }
+
     pub fn nonstatic_oop_maps(&self) -> &'static [OopMapBlock] {
         let start_of_itable = self.start_of_itable();
         let start = unsafe { start_of_itable.add(self.itable_len as _) as *const OopMapBlock };
         let count = self.nonstatic_oop_map_count();
         unsafe { slice::from_raw_parts(start, count) }
     }
+
     pub fn is_anonymous(&self) -> bool {
         self.misc_flags & Self::MISC_IS_ANONYMOUS != 0
     }
@@ -382,6 +387,7 @@ impl From<ObjectReference> for &OopDesc {
     }
 }
 
+/// Convert Oop to ObjectReference
 impl Into<ObjectReference> for &OopDesc {
     fn into(self) -> ObjectReference {
         unsafe { mem::transmute::<&OopDesc, _>(self) }
@@ -467,10 +473,10 @@ impl ArrayOopDesc {
         let base_offset_in_bytes = Self::header_size::<COMPRESSED>(ty) * BYTES_IN_WORD;
         Address::from_ref(self) + base_offset_in_bytes
     }
-    // This provides an easy way to access the array data in Rust. However, the array data
-    // is Java types, so we have to map Java types to Rust types. The caller needs to guarantee:
-    // 1. <T> matches the actual Java type
-    // 2. <T> matches the argument, BasicType `ty`
+    /// This provides an easy way to access the array data in Rust. However, the array data
+    /// is Java types, so we have to map Java types to Rust types. The caller needs to guarantee:
+    /// 1. `<T>` matches the actual Java type
+    /// 2. `<T>` matches the argument, BasicType `ty`
     pub unsafe fn data<T, const COMPRESSED: bool>(&self, ty: BasicType) -> &[T] {
         slice::from_raw_parts(
             self.base::<COMPRESSED>(ty).to_ptr(),

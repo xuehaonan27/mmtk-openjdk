@@ -65,6 +65,7 @@ object iterator??!!
 
 //mmtkGCTaskManager* MMTkHeap::_mmtk_gc_task_manager = NULL;
 
+
 MMTkHeap* MMTkHeap::_heap = NULL;
 
 MMTkHeap::MMTkHeap(MMTkCollectorPolicy* policy) :

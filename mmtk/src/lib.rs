@@ -155,6 +155,10 @@ lazy_static! {
 pub static mut UPCALLS: *const OpenJDK_Upcalls = null_mut();
 
 #[no_mangle]
+pub static GLOBAL_SIDE_METADATA_BASE_ADDRESS: uintptr_t =
+    mmtk::util::metadata::side_metadata::GLOBAL_SIDE_METADATA_BASE_ADDRESS.as_usize();
+
+#[no_mangle]
 pub static GLOBAL_SIDE_METADATA_VM_BASE_ADDRESS: uintptr_t =
     mmtk::util::metadata::side_metadata::GLOBAL_SIDE_METADATA_VM_BASE_ADDRESS.as_usize();
 
