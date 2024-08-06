@@ -221,7 +221,11 @@ pub extern "C" fn post_alloc(
 
 #[no_mangle]
 pub extern "C" fn will_never_move(object: ObjectReference) -> bool {
-    !object.is_movable()
+    if crate::use_compressed_oops() {
+        !object.is_movable::<OpenJDK<true>>()
+    } else {
+        !object.is_movable::<OpenJDK<false>>()
+    }
 }
 
 #[no_mangle]
@@ -561,7 +565,7 @@ pub extern "C" fn mmtk_is_live(object: ObjectReference) -> usize {
         "{:?} is not mapped",
         object
     );
-    object.is_live() as _
+    object.is_live2() as _
 }
 
 /// If the object is non-null and forwarded, return the forwarded pointer. Otherwise, return the original pointer.
@@ -570,7 +574,7 @@ pub extern "C" fn mmtk_get_forwarded_ref(object: ObjectReference) -> ObjectRefer
     if object.is_null() {
         return object;
     }
-    object.get_forwarded_object().unwrap_or(object)
+    object.get_forwarded_object2().unwrap_or(object)
 }
 
 thread_local! {

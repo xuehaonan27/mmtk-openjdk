@@ -266,11 +266,15 @@ impl<E: ProcessEdgesWork, const COMPRESSED: bool> GCWork<E::VM>
             if referent.is_null() {
                 // Remove from the discovered list
                 return DiscoveredListIterationResult::Remove;
-            } else if referent.is_reachable() || retain {
+            } else if referent.is_reachable::<OpenJDK<COMPRESSED>>() || retain {
                 // Keep this referent
                 let forwarded = trace.trace_object(referent);
-                debug_assert!(forwarded.get_forwarded_object().is_none());
-                debug_assert!(reference.get_forwarded_object().is_none());
+                debug_assert!(forwarded
+                    .get_forwarded_object::<OpenJDK<COMPRESSED>>()
+                    .is_none());
+                debug_assert!(reference
+                    .get_forwarded_object::<OpenJDK<COMPRESSED>>()
+                    .is_none());
                 set_referent::<COMPRESSED>(reference, forwarded);
                 // Remove from the discovered list
                 return DiscoveredListIterationResult::Remove;
@@ -324,7 +328,9 @@ impl<E: ProcessEdgesWork, const COMPRESSED: bool> GCWork<E::VM>
             let referent = get_referent::<COMPRESSED>(reference);
             let forwarded = trace.trace_object(referent);
             set_referent::<COMPRESSED>(reference, forwarded);
-            debug_assert!(forwarded.get_forwarded_object().is_none());
+            debug_assert!(forwarded
+                .get_forwarded_object::<OpenJDK<COMPRESSED>>()
+                .is_none());
             return DiscoveredListIterationResult::Enqueue(reference);
         });
 
@@ -360,20 +366,26 @@ fn iterate_list<
         debug_assert!(!reference.is_null());
         // debug_assert!(reference.is_live());
         // Update reference forwarding pointer
-        if let Some(forwarded) = reference.get_forwarded_object() {
+        if let Some(forwarded) = reference.get_forwarded_object::<OpenJDK<COMPRESSED>>() {
             reference = forwarded;
         }
-        debug_assert!(reference.get_forwarded_object().is_none());
-        debug_assert!(reference.is_reachable());
+        debug_assert!(reference
+            .get_forwarded_object::<OpenJDK<COMPRESSED>>()
+            .is_none());
+        debug_assert!(reference.is_reachable::<OpenJDK<COMPRESSED>>());
         // Update next_ref forwarding pointer
         let next_ref = get_next_reference::<COMPRESSED>(reference);
-        let next_ref = next_ref.get_forwarded_object().unwrap_or(next_ref);
-        debug_assert!(next_ref.get_forwarded_object().is_none());
+        let next_ref = next_ref
+            .get_forwarded_object::<OpenJDK<COMPRESSED>>()
+            .unwrap_or(next_ref);
+        debug_assert!(next_ref
+            .get_forwarded_object::<OpenJDK<COMPRESSED>>()
+            .is_none());
         // Reaches the end of the list?
         let end_of_list = next_ref == reference || next_ref.is_null();
         // Remove `reference` from current list
         set_next_reference::<COMPRESSED>(reference, ObjectReference::NULL);
-        if let Some(forwarded_ref) = reference.get_forwarded_object() {
+        if let Some(forwarded_ref) = reference.get_forwarded_object::<OpenJDK<COMPRESSED>>() {
             set_next_reference::<COMPRESSED>(forwarded_ref, ObjectReference::NULL);
         }
         // Process reference

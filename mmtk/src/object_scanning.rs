@@ -1,6 +1,7 @@
 use super::abi::*;
 use super::UPCALLS;
 use crate::reference_glue::DISCOVERED_LISTS;
+use crate::OpenJDK;
 use crate::OpenJDKEdge;
 use mmtk::util::opaque_pointer::*;
 use mmtk::util::{Address, ObjectReference};
@@ -218,7 +219,7 @@ impl InstanceRefKlass {
         let addr = InstanceRefKlass::referent_address::<COMPRESSED>(oop);
         let referent: ObjectReference = addr.load();
         // Skip live or null referents
-        if referent.is_reachable() || referent.is_null() {
+        if referent.is_reachable::<OpenJDK<COMPRESSED>>() || referent.is_null() {
             return false;
         }
         // Skip young referents
