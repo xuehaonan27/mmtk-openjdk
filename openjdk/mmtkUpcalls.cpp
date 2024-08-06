@@ -29,7 +29,6 @@
 #include "memory/iterator.inline.hpp"
 #include "memory/resourceArea.hpp"
 #include "mmtkCollectorThread.hpp"
-#include "mmtkContextThread.hpp"
 #include "mmtkHeap.hpp"
 #include "mmtkRootsClosure.hpp"
 #include "mmtkUpcalls.hpp"
@@ -264,19 +263,9 @@ static void mmtk_resume_mutators(void *tls) {
   log_debug(gc)("Mutators notified.");
 }
 
-static const int GC_THREAD_KIND_CONTROLLER = 0;
 static const int GC_THREAD_KIND_WORKER = 1;
 static void mmtk_spawn_gc_thread(void* tls, int kind, void* ctx) {
   switch (kind) {
-    case GC_THREAD_KIND_CONTROLLER: {
-      MMTkContextThread* t = new MMTkContextThread(ctx);
-      if (!os::create_thread(t, os::pgc_thread, WORKER_STACK_SIZE)) {
-        printf("Failed to create thread");
-        guarantee(false, "panic");
-      }
-      os::start_thread(t);
-      break;
-    }
     case GC_THREAD_KIND_WORKER: {
       MMTkHeap::heap()->new_collector_thread();
       MMTkCollectorThread* t = new MMTkCollectorThread(ctx);
