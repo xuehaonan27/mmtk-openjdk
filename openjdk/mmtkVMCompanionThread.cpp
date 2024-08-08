@@ -100,16 +100,6 @@ void MMTkVMCompanionThread::run() {
       // calls request(_threads_resumed).
       VMThread::execute(&op);
     }
-
-    // Tell the waiter thread that the world has resumed.
-    log_trace(gc)("MMTkVMCompanionThread: Notifying threads resumption...");
-    if (!_wait_for_gc_locker) {
-      MutexLockerEx locker(_lock, Mutex::_no_safepoint_check_flag);
-      assert(_desired_state == _threads_resumed, "start-the-world should be requested.");
-      assert(_reached_state == _threads_suspended, "Threads should still be suspended at this moment.");
-      _reached_state = _threads_resumed;
-      _lock->notify_all();
-    }
   }
 }
 
