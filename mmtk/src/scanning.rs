@@ -3,8 +3,8 @@ use crate::Slot;
 use crate::{NewBuffer, OpenJDKSlot, UPCALLS};
 use crate::{OpenJDK, SlotsClosure};
 use mmtk::memory_manager;
+use mmtk::scheduler::BucketId;
 use mmtk::scheduler::RootKind;
-use mmtk::scheduler::WorkBucketStage;
 use mmtk::util::opaque_pointer::*;
 use mmtk::util::{Address, ObjectReference};
 use mmtk::vm::ObjectKind;
@@ -132,35 +132,62 @@ impl<const COMPRESSED: bool> Scanning<OpenJDK<COMPRESSED>> for VMScanning {
         factory: impl RootsWorkFactory<OpenJDKSlot<COMPRESSED>>,
     ) {
         let mut w = vec![
-            Box::new(ScanUniverseRoots::new(factory.clone())) as _,
-            Box::new(ScanJNIHandlesRoots::new(factory.clone())) as _,
-            Box::new(ScanObjectSynchronizerRoots::new(factory.clone())) as _,
-            Box::new(ScanManagementRoots::new(factory.clone())) as _,
-            Box::new(ScanJvmtiExportRoots::new(factory.clone())) as _,
-            Box::new(ScanAOTLoaderRoots::new(factory.clone())) as _,
-            Box::new(ScanSystemDictionaryRoots::new(factory.clone())) as _,
-            Box::new(ScanCodeCacheRoots::new(factory.clone())) as _,
-            Box::new(ScanClassLoaderDataGraphRoots::new(factory.clone())) as _,
-            Box::new(ScanVMThreadRoots::new(factory.clone())) as _,
+            Box::new(ScanUniverseRoots::<OpenJDK<COMPRESSED>, _>::new(
+                factory.clone(),
+            )) as _,
+            Box::new(ScanJNIHandlesRoots::<OpenJDK<COMPRESSED>, _>::new(
+                factory.clone(),
+            )) as _,
+            Box::new(ScanObjectSynchronizerRoots::<OpenJDK<COMPRESSED>, _>::new(
+                factory.clone(),
+            )) as _,
+            Box::new(ScanManagementRoots::<OpenJDK<COMPRESSED>, _>::new(
+                factory.clone(),
+            )) as _,
+            Box::new(ScanJvmtiExportRoots::<OpenJDK<COMPRESSED>, _>::new(
+                factory.clone(),
+            )) as _,
+            Box::new(ScanAOTLoaderRoots::<OpenJDK<COMPRESSED>, _>::new(
+                factory.clone(),
+            )) as _,
+            Box::new(ScanSystemDictionaryRoots::<OpenJDK<COMPRESSED>, _>::new(
+                factory.clone(),
+            )) as _,
+            Box::new(ScanCodeCacheRoots::<OpenJDK<COMPRESSED>, _>::new(
+                factory.clone(),
+            )) as _,
+            Box::new(ScanClassLoaderDataGraphRoots::<OpenJDK<COMPRESSED>, _>::new(factory.clone()))
+                as _,
+            Box::new(ScanVMThreadRoots::<OpenJDK<COMPRESSED>, _>::new(
+                factory.clone(),
+            )) as _,
         ];
         if crate::singleton::<COMPRESSED>()
             .get_plan()
             .requires_weak_root_scanning()
         {
-            w.push(Box::new(ScanNewWeakHandleRoots::new(factory.clone())) as _);
+            w.push(
+                Box::new(ScanNewWeakHandleRoots::<OpenJDK<COMPRESSED>, _>::new(
+                    factory.clone(),
+                )) as _,
+            );
         }
         if crate::singleton::<COMPRESSED>()
             .get_plan()
             .current_gc_should_perform_class_unloading()
         {
-            w.push(Box::new(ScanWeakStringTableRoots::new(factory.clone())) as _);
-            w.push(Box::new(ScanWeakCodeCacheRoots::new(factory.clone())) as _);
+            w.push(
+                Box::new(ScanWeakStringTableRoots::<OpenJDK<COMPRESSED>, _>::new(
+                    factory.clone(),
+                )) as _,
+            );
+            w.push(
+                Box::new(ScanWeakCodeCacheRoots::<OpenJDK<COMPRESSED>, _>::new(
+                    factory.clone(),
+                )) as _,
+            );
         }
-        memory_manager::add_work_packets(
-            crate::singleton::<COMPRESSED>(),
-            WorkBucketStage::RCProcessIncs,
-            w,
-        );
+        memory_manager::add_work_packets(crate::singleton::<COMPRESSED>(), BucketId::Roots, w);
     }
 
     fn supports_return_barrier() -> bool {

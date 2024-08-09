@@ -47,8 +47,8 @@ macro_rules! scan_roots_work {
             }
         }
 
-        impl<VM: VMBinding, F: RootsWorkFactory<VM::VMSlot>> GCWork<VM> for $struct_name<VM, F> {
-            fn do_work(&mut self, _worker: &mut GCWorker<VM>, _mmtk: &'static MMTK<VM>) {
+        impl<VM: VMBinding, F: RootsWorkFactory<VM::VMSlot>> GCWork for $struct_name<VM, F> {
+            fn do_work(&mut self) {
                 let t = if cfg!(feature = "roots_breakdown") {
                     Some(std::time::SystemTime::now())
                 } else {
@@ -127,12 +127,12 @@ fn to_slots_closure_cld<
     }
 }
 
-pub struct ScanClassLoaderDataGraphRoots<S: Slot, F: RootsWorkFactory<S>> {
+pub struct ScanClassLoaderDataGraphRoots<VM: VMBinding, F: RootsWorkFactory<VM::VMSlot>> {
     factory: F,
-    _p: PhantomData<S>,
+    _p: PhantomData<VM>,
 }
 
-impl<S: Slot, F: RootsWorkFactory<S>> ScanClassLoaderDataGraphRoots<S, F> {
+impl<VM: VMBinding, F: RootsWorkFactory<VM::VMSlot>> ScanClassLoaderDataGraphRoots<VM, F> {
     pub fn new(factory: F) -> Self {
         Self {
             factory,
@@ -141,10 +141,11 @@ impl<S: Slot, F: RootsWorkFactory<S>> ScanClassLoaderDataGraphRoots<S, F> {
     }
 }
 
-impl<VM: VMBinding, F: RootsWorkFactory<VM::VMSlot>> GCWork<VM>
-    for ScanClassLoaderDataGraphRoots<VM::VMSlot, F>
+impl<VM: VMBinding, F: RootsWorkFactory<VM::VMSlot>> GCWork
+    for ScanClassLoaderDataGraphRoots<VM, F>
 {
-    fn do_work(&mut self, _worker: &mut GCWorker<VM>, mmtk: &'static MMTK<VM>) {
+    fn do_work(&mut self) {
+        let mmtk = GCWorker::<VM>::mmtk();
         let t = if cfg!(feature = "roots_breakdown") {
             Some(std::time::SystemTime::now())
         } else {
@@ -175,12 +176,12 @@ impl<VM: VMBinding, F: RootsWorkFactory<VM::VMSlot>> GCWork<VM>
     }
 }
 
-pub struct ScanNewWeakHandleRoots<S: Slot, F: RootsWorkFactory<S>> {
+pub struct ScanNewWeakHandleRoots<VM: VMBinding, F: RootsWorkFactory<VM::VMSlot>> {
     factory: F,
-    _p: PhantomData<S>,
+    _p: PhantomData<VM>,
 }
 
-impl<S: Slot, F: RootsWorkFactory<S>> ScanNewWeakHandleRoots<S, F> {
+impl<VM: VMBinding, F: RootsWorkFactory<VM::VMSlot>> ScanNewWeakHandleRoots<VM, F> {
     pub fn new(factory: F) -> Self {
         Self {
             factory,
@@ -189,10 +190,8 @@ impl<S: Slot, F: RootsWorkFactory<S>> ScanNewWeakHandleRoots<S, F> {
     }
 }
 
-impl<VM: VMBinding, F: RootsWorkFactory<VM::VMSlot>> GCWork<VM>
-    for ScanNewWeakHandleRoots<VM::VMSlot, F>
-{
-    fn do_work(&mut self, _worker: &mut GCWorker<VM>, _mmtk: &'static MMTK<VM>) {
+impl<VM: VMBinding, F: RootsWorkFactory<VM::VMSlot>> GCWork for ScanNewWeakHandleRoots<VM, F> {
+    fn do_work(&mut self) {
         let t = if cfg!(feature = "roots_breakdown") {
             Some(std::time::SystemTime::now())
         } else {
@@ -215,12 +214,12 @@ impl<VM: VMBinding, F: RootsWorkFactory<VM::VMSlot>> GCWork<VM>
     }
 }
 
-pub struct ScanCodeCacheRoots<S: Slot, F: RootsWorkFactory<S>> {
+pub struct ScanCodeCacheRoots<VM: VMBinding, F: RootsWorkFactory<VM::VMSlot>> {
     factory: F,
-    _p: PhantomData<S>,
+    _p: PhantomData<VM>,
 }
 
-impl<S: Slot, F: RootsWorkFactory<S>> ScanCodeCacheRoots<S, F> {
+impl<VM: VMBinding, F: RootsWorkFactory<VM::VMSlot>> ScanCodeCacheRoots<VM, F> {
     pub fn new(factory: F) -> Self {
         Self {
             factory,
@@ -229,10 +228,8 @@ impl<S: Slot, F: RootsWorkFactory<S>> ScanCodeCacheRoots<S, F> {
     }
 }
 
-impl<VM: VMBinding, F: RootsWorkFactory<VM::VMSlot>> GCWork<VM>
-    for ScanCodeCacheRoots<VM::VMSlot, F>
-{
-    fn do_work(&mut self, _worker: &mut GCWorker<VM>, _mmtk: &'static MMTK<VM>) {
+impl<VM: VMBinding, F: RootsWorkFactory<VM::VMSlot>> GCWork for ScanCodeCacheRoots<VM, F> {
+    fn do_work(&mut self) {
         let t = if cfg!(feature = "roots_breakdown") {
             Some(std::time::SystemTime::now())
         } else {
@@ -307,12 +304,12 @@ fn to_slots_closure_weak<S: Slot, F: RootsWorkFactory<S>>(factory: &mut F) -> Sl
     }
 }
 
-pub struct ScanWeakStringTableRoots<S: Slot, F: RootsWorkFactory<S>> {
+pub struct ScanWeakStringTableRoots<VM: VMBinding, F: RootsWorkFactory<VM::VMSlot>> {
     factory: F,
-    _p: PhantomData<S>,
+    _p: PhantomData<VM>,
 }
 
-impl<S: Slot, F: RootsWorkFactory<S>> ScanWeakStringTableRoots<S, F> {
+impl<VM: VMBinding, F: RootsWorkFactory<VM::VMSlot>> ScanWeakStringTableRoots<VM, F> {
     pub fn new(factory: F) -> Self {
         Self {
             factory,
@@ -321,10 +318,9 @@ impl<S: Slot, F: RootsWorkFactory<S>> ScanWeakStringTableRoots<S, F> {
     }
 }
 
-impl<VM: VMBinding, F: RootsWorkFactory<VM::VMSlot>> GCWork<VM>
-    for ScanWeakStringTableRoots<VM::VMSlot, F>
-{
-    fn do_work(&mut self, _worker: &mut GCWorker<VM>, mmtk: &'static MMTK<VM>) {
+impl<VM: VMBinding, F: RootsWorkFactory<VM::VMSlot>> GCWork for ScanWeakStringTableRoots<VM, F> {
+    fn do_work(&mut self) {
+        let mmtk = GCWorker::<VM>::mmtk();
         let t = if cfg!(feature = "roots_breakdown") {
             Some(std::time::SystemTime::now())
         } else {
@@ -346,12 +342,12 @@ impl<VM: VMBinding, F: RootsWorkFactory<VM::VMSlot>> GCWork<VM>
 }
 
 #[allow(unused)]
-pub struct ScanWeakProcessorRoots<S: Slot, F: RootsWorkFactory<S>> {
+pub struct ScanWeakProcessorRoots<VM: VMBinding, F: RootsWorkFactory<VM::VMSlot>> {
     factory: F,
-    _p: PhantomData<S>,
+    _p: PhantomData<VM>,
 }
 
-impl<S: Slot, F: RootsWorkFactory<S>> ScanWeakProcessorRoots<S, F> {
+impl<VM: VMBinding, F: RootsWorkFactory<VM::VMSlot>> ScanWeakProcessorRoots<VM, F> {
     #[allow(unused)]
     pub fn new(factory: F) -> Self {
         Self {
@@ -361,10 +357,9 @@ impl<S: Slot, F: RootsWorkFactory<S>> ScanWeakProcessorRoots<S, F> {
     }
 }
 
-impl<VM: VMBinding, F: RootsWorkFactory<VM::VMSlot>> GCWork<VM>
-    for ScanWeakProcessorRoots<VM::VMSlot, F>
-{
-    fn do_work(&mut self, _worker: &mut GCWorker<VM>, mmtk: &'static MMTK<VM>) {
+impl<VM: VMBinding, F: RootsWorkFactory<VM::VMSlot>> GCWork for ScanWeakProcessorRoots<VM, F> {
+    fn do_work(&mut self) {
+        let mmtk = GCWorker::<VM>::mmtk();
         let t = if cfg!(feature = "roots_breakdown") {
             Some(std::time::SystemTime::now())
         } else {
@@ -385,12 +380,12 @@ impl<VM: VMBinding, F: RootsWorkFactory<VM::VMSlot>> GCWork<VM>
     }
 }
 
-pub struct ScanWeakCodeCacheRoots<S: Slot, F: RootsWorkFactory<S>> {
+pub struct ScanWeakCodeCacheRoots<VM: VMBinding, F: RootsWorkFactory<VM::VMSlot>> {
     factory: F,
-    _p: PhantomData<S>,
+    _p: PhantomData<VM>,
 }
 
-impl<S: Slot, F: RootsWorkFactory<S>> ScanWeakCodeCacheRoots<S, F> {
+impl<VM: VMBinding, F: RootsWorkFactory<VM::VMSlot>> ScanWeakCodeCacheRoots<VM, F> {
     pub fn new(factory: F) -> Self {
         Self {
             factory,
@@ -399,10 +394,9 @@ impl<S: Slot, F: RootsWorkFactory<S>> ScanWeakCodeCacheRoots<S, F> {
     }
 }
 
-impl<VM: VMBinding, F: RootsWorkFactory<VM::VMSlot>> GCWork<VM>
-    for ScanWeakCodeCacheRoots<VM::VMSlot, F>
-{
-    fn do_work(&mut self, _worker: &mut GCWorker<VM>, mmtk: &'static MMTK<VM>) {
+impl<VM: VMBinding, F: RootsWorkFactory<VM::VMSlot>> GCWork for ScanWeakCodeCacheRoots<VM, F> {
+    fn do_work(&mut self) {
+        let mmtk = GCWorker::<VM>::mmtk();
         let t = if cfg!(feature = "roots_breakdown") {
             Some(std::time::SystemTime::now())
         } else {

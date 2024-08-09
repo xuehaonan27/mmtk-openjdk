@@ -160,6 +160,7 @@ impl OopIterate for InstanceRefKlass {
             self.instance_klass.reference_type,
             disable_discovery,
         ) {
+            unimplemented!();
             match self.instance_klass.reference_type {
                 ReferenceType::None => {
                     panic!("oop_iterate on InstanceRefKlass with reference_type as None")
