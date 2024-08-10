@@ -158,7 +158,7 @@ impl<const COMPRESSED: bool> Scanning<OpenJDK<COMPRESSED>> for VMScanning {
         }
         memory_manager::add_work_packets(
             crate::singleton::<COMPRESSED>(),
-            WorkBucketStage::RCProcessIncs,
+            WorkBucketStage::Prepare,
             w,
         );
     }
