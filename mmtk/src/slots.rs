@@ -120,7 +120,11 @@ impl<const COMPRESSED: bool> OpenJDKSlot<COMPRESSED> {
                 self.addr
             };
             let ptr = slot.to_ptr::<T>();
-            ptr.read_unaligned()
+            if cfg!(feature = "unaligned") {
+                ptr.read_unaligned()
+            } else {
+                ptr.read()
+            }
         }
     }
 
@@ -133,7 +137,11 @@ impl<const COMPRESSED: bool> OpenJDKSlot<COMPRESSED> {
                 self.addr
             };
             let ptr = slot.to_mut_ptr::<T>();
-            ptr.write_unaligned(v)
+            if cfg!(feature = "unaligned") {
+                ptr.write_unaligned(v)
+            } else {
+                ptr.write(v)
+            }
         }
     }
 

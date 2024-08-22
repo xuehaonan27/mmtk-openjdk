@@ -109,3 +109,5 @@ field_barrier_no_arraycopy = []
 field_barrier_no_arraycopy_slow = []
 field_barrier_no_c2_slow_call = []
 field_barrier_no_c2_rust_call = []
+
+unaligned = []
