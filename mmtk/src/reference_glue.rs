@@ -349,6 +349,7 @@ impl<E: ProcessEdgesWork, const COMPRESSED: bool> GCWork for ProcessDiscoveredLi
                 unsafe { *slot = ObjectReference::NULL };
             }
         }
+        trace.process_slots();
         trace.flush();
     }
 }
@@ -390,6 +391,7 @@ impl<E: ProcessEdgesWork, const COMPRESSED: bool> GCWork for ResurrectFinalizabl
             let old_head = unsafe { ((*crate::UPCALLS).swap_reference_pending_list)(head) };
             set_next_reference::<COMPRESSED>(tail, Some(old_head));
         }
+        trace.process_slots();
         trace.flush();
     }
 }
