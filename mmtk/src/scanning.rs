@@ -4,7 +4,6 @@ use crate::{NewBuffer, OpenJDKSlot, UPCALLS};
 use crate::{OpenJDK, SlotsClosure};
 use mmtk::memory_manager;
 use mmtk::scheduler::RootKind;
-use mmtk::scheduler::WorkBucketStage;
 use mmtk::util::opaque_pointer::*;
 use mmtk::util::{Address, ObjectReference};
 use mmtk::vm::ObjectKind;
@@ -158,7 +157,7 @@ impl<const COMPRESSED: bool> Scanning<OpenJDK<COMPRESSED>> for VMScanning {
         }
         memory_manager::add_work_packets(
             crate::singleton::<COMPRESSED>(),
-            WorkBucketStage::RCProcessIncs,
+            factory.roots_stage(),
             w,
         );
     }
