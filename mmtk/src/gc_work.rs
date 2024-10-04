@@ -7,7 +7,6 @@ use crate::UPCALLS;
 use mmtk::scheduler::*;
 use mmtk::vm::RootsWorkFactory;
 use mmtk::vm::*;
-use mmtk::MMTK;
 use std::collections::HashMap;
 use std::marker::PhantomData;
 use std::sync::atomic::{AtomicUsize, Ordering};
