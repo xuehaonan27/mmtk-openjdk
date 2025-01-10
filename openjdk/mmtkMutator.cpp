@@ -33,7 +33,7 @@ HeapWord* MMTkMutatorContext::alloc(size_t bytes, Allocator allocator) {
     allocator = AllocatorLos;
   } else {
     AllocatorSelector selector = MMTkHeap::heap()->default_allocator_selector;
-    if (selector.tag == TAG_IMMIX) {
+    if (selector.tag == TAG_IMMIX && !disable_fast_alloc()) {
       auto& allocator = allocators.immix[selector.index];
       auto cursor = uintptr_t(allocator.cursor);
       auto limit = uintptr_t(allocator.limit);

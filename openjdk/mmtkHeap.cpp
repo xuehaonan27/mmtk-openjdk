@@ -566,7 +566,7 @@ static inline HeapWord* alloc_fast(size_t bytes, Allocator allocator) {
     allocator = AllocatorLos;
   } else if (allocator == AllocatorDefault) {
     AllocatorSelector selector = MMTkHeap::heap()->default_allocator_selector;
-    if (selector.tag == TAG_IMMIX) {
+    if (selector.tag == TAG_IMMIX && !disable_fast_alloc()) {
       auto& allocator = Thread::current()->third_party_heap_mutator.allocators.immix[selector.index];
       auto cursor = uintptr_t(allocator.cursor);
       auto limit = uintptr_t(allocator.limit);
