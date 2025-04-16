@@ -221,7 +221,7 @@ impl InstanceRefKlass {
             return false;
         };
         // Skip live or null referents
-        if referent.is_reachable::<OpenJDK<COMPRESSED>>() {
+        if referent.is_reachable() {
             return false;
         }
         // Skip young referents

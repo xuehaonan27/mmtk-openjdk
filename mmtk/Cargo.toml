@@ -1,8 +1,8 @@
 [package]
 name = "mmtk_openjdk"
-version = "0.27.0"
+version = "0.28.0"
 authors = [" <>"]
-rust-version = "1.71.1"
+rust-version = "1.73.0"
 build = "build.rs"
 edition = "2021"
 
@@ -36,6 +36,7 @@ once_cell = "1.16.0"
 atomic = "0.6.0"
 memoffset = "0.9.0"
 cfg-if = "1.0"
+probe = "0.5"
 
 # Be very careful to commit any changes to the following mmtk dependency, as our CI scripts (including mmtk-core CI)
 # rely on matching these lines to modify them: e.g. comment out the git dependency and use the local path.
@@ -43,7 +44,7 @@ cfg-if = "1.0"
 # - change branch
 # - change repo name
 # But other changes including adding/removing whitespaces in commented lines may break the CI.
-mmtk = { git = "https://github.com/wenyuzhao/mmtk-core.git", rev = "76c5060610214d2bdb938955b5265f356b99ecfa" }
+mmtk = { git = "https://github.com/wenyuzhao/mmtk-core.git", rev = "888635739d83e0f8ef03beae8cc745b2162bb2e7" }
 # Uncomment the following to build locally
 # mmtk = { path = "../../mmtk-core" }
 

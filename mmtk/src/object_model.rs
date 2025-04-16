@@ -116,8 +116,6 @@ impl<const COMPRESSED: bool> ObjectModel<OpenJDK<COMPRESSED>> for VMObjectModel<
         object.to_raw_address()
     }
 
-    const IN_OBJECT_ADDRESS_OFFSET: isize = 0;
-
     fn dump_object(object: ObjectReference) {
         use std::ffi::CStr;
         let c_string = unsafe { ((*UPCALLS).dump_object_string)(std::mem::transmute(object)) };

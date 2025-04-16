@@ -17,3 +17,5 @@ target/
 
 /repos/mmtk-core
 /repos/openjdk
+
+__pycache__
