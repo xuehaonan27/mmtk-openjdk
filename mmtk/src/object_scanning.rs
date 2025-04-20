@@ -252,10 +252,10 @@ fn oop_iterate_slow<const COMPRESSED: bool, V: SlotVisitor<S<COMPRESSED>>>(
     unsafe {
         CLOSURE.with(|x| *x.get() = closure as *mut V as *mut u8);
         ((*UPCALLS).scan_object)(
-            mem::transmute(
+            mem::transmute::<*const unsafe extern "C" fn(Address), *mut libc::c_void>(
                 scan_object_fn::<COMPRESSED, V> as *const unsafe extern "C" fn(slot: Address),
             ),
-            mem::transmute(oop),
+            mem::transmute::<&OopDesc, ObjectReference>(oop),
             tls,
             closure.should_follow_clds(),
             closure.should_claim_clds(),
@@ -372,7 +372,13 @@ pub fn scan_object<const COMPRESSED: bool>(
     closure: &mut impl SlotVisitor<S<COMPRESSED>>,
     _tls: VMWorkerThread,
 ) {
-    unsafe { oop_iterate::<COMPRESSED>(mem::transmute(object), closure, None) }
+    unsafe {
+        oop_iterate::<COMPRESSED>(
+            mem::transmute::<ObjectReference, &OopDesc>(object),
+            closure,
+            None,
+        )
+    }
 }
 
 pub fn scan_object_with_klass<const COMPRESSED: bool>(
@@ -381,5 +387,11 @@ pub fn scan_object_with_klass<const COMPRESSED: bool>(
     _tls: VMWorkerThread,
     klass: Address,
 ) {
-    unsafe { oop_iterate::<COMPRESSED>(mem::transmute(object), closure, Some(klass)) }
+    unsafe {
+        oop_iterate::<COMPRESSED>(
+            mem::transmute::<ObjectReference, &OopDesc>(object),
+            closure,
+            Some(klass),
+        )
+    }
 }
