@@ -2,9 +2,8 @@
 extern crate lazy_static;
 extern crate atomic;
 extern crate once_cell;
-extern crate spin;
-#[macro_use]
 extern crate probe;
+extern crate spin;
 
 use std::collections::HashMap;
 use std::ptr::null_mut;

@@ -1,7 +1,6 @@
 use super::abi::*;
 use super::UPCALLS;
 use crate::reference_glue::DISCOVERED_LISTS;
-use crate::OpenJDK;
 use crate::OpenJDKSlot;
 use mmtk::util::opaque_pointer::*;
 use mmtk::util::{Address, ObjectReference};
