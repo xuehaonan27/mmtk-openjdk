@@ -44,7 +44,7 @@ probe = "0.5"
 # - change branch
 # - change repo name
 # But other changes including adding/removing whitespaces in commented lines may break the CI.
-mmtk = { git = "https://github.com/wenyuzhao/mmtk-core.git", rev = "432ce914cf78ab933ebd77ae53492019eba663ad" }
+mmtk = { git = "https://github.com/wenyuzhao/mmtk-core.git", rev = "97443c056874fb3c9aa447e42d264c28b30af84d" }
 # Uncomment the following to build locally
 # mmtk = { path = "../../mmtk-core" }
 
