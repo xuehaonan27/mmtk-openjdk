@@ -56,7 +56,6 @@ features = [
     "survival_ratio",
     "log_gc",
     "log_stages",
-    # "log_work_packets", # Get a lot of useless informations
     "measure_trace_rate",
     "measure_rc_rate",
     "perf_counter",
@@ -67,8 +66,6 @@ features = [
     "remset_counter",
     "lxr_satb_live_bytes_counter",
     "rust_mem_counter",
-    # "log_outstanding_packets",
-    # "log_all_inc_packets",
     "lxr_log_reclaim",
     "lxr_srv_ratio_counter",
 ]
